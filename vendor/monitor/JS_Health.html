@@ -1,0 +1,1376 @@
+<script>
+// ===================================================================
+// DATA HEALTH
+//
+// A triage list of data checks ("By check"), a per-municipality worklist
+// ("By municipality"), the SM7 data quality dimensions ("Scorecard") and the
+// PEA/MDE follow-up list ("Fix list"), all narrowed by one scope: a province
+// or a municipality. The page reports severity, not a score: a check with open
+// items is Critical or To verify, and only a check with nothing open passes.
+// The Scorecard counts passed checks per dimension; it computes no score.
+//
+// Every check is described once in dhChecks(); the list, the detail panel,
+// the municipality table, the CSV files and the memo all read from it, so a
+// check has one name and one count everywhere.
+//
+// The household roster lists (names) come from apiHouseholdIssues, which sends
+// names and birthdates to editors only.
+// ===================================================================
+
+S.healthView = 'check';      // 'check' | 'muni' | 'score' | 'fix'
+S.healthScope = '';          // '' | 'p:<province>' | 'm:<province>|<municipality>'
+S.healthSeverity = 'all';    // 'all' | 'critical' | 'verify' | 'passed'
+S.healthSearch = '';
+S.healthTableSearch = {};    // check id | 'muni' -> local search string
+S.healthOpen = null;         // check id -> detail open; null until the first render opens the worst check
+S.healthPage = {};           // check id -> rows shown
+S.healthGroup = {};          // check id -> grouped by municipality
+S.healthShowPassed = false;
+S.healthShowClean = false;
+S.hhIssues = null;
+S.hhIssuesFor = '';
+S.hhIssuesLoading = false;
+S.fixList = null;            // apiFixList for S.fixListFor
+S.fixListFor = '';
+S.fixListLoading = false;
+S.fixStatus = 'open';        // 'open' | 'new' | 'still' | 'resolved'
+
+var DH_PAGE = 25;
+var DH_SHORT = { quorum: 'Quorum', sequence: 'Sequence', noname: 'No name', dup: 'Listed twice', cross: 'Other barangay',
+                 late: 'Late 7+ days', dates: 'Dates', twice: 'Two records', attdup: 'Attendee twice', names: 'Names', bday: 'Birthdates',
+                 cv_missing: 'Volunteers missing', cv_sfmsc: 'SFMSC to fix', cv_tagging: 'CV untagged', cv_gaps: 'CV gaps' };
+
+// SM7 Table 8, the six dimensions of data quality. Every check names one (dim).
+var DH_DIMS = [
+  { id: 'accuracy',     name: 'Accuracy',     icon: 'target',       sm7: 'Measures what it is meant to measure; also called validity.' },
+  { id: 'reliability',  name: 'Reliability',  icon: 'repeat',       sm7: 'Collected the same way every time, whoever encodes it and whenever.' },
+  { id: 'completeness', name: 'Completeness', icon: 'list-checks',  sm7: 'Everything that should be in the system is there.' },
+  { id: 'precision',    name: 'Precision',    icon: 'crosshair',    sm7: 'Gives the same result when measured again under the same conditions.',
+    none: 'Needs a sample of records checked again against the paper forms. The exports cannot show it.' },
+  { id: 'timeliness',   name: 'Timeliness',   icon: 'clock',        sm7: 'Up to date, and available when it is needed.' },
+  { id: 'integrity',    name: 'Integrity',    icon: 'shield-check', sm7: 'Protected from deliberate or accidental bias, such as rows counted twice.' }
+];
+var DH_SEV = {
+  critical: { label: 'Critical',  pill: 'bad'  },
+  verify:   { label: 'To verify', pill: 'warn' },
+  passed:   { label: 'Passed',    pill: 'good' }
+};
+
+// ---- state changes --------------------------------------------------
+
+function setHealthScope(v) { S.healthScope = v || ''; S.healthPage = {}; renderHealth(); }
+function setHealthView(v) { S.healthView = v; renderHealth(); }
+function setHealthSeverity(v) { S.healthSeverity = v; renderHealth(); }
+function toggleHealthCheck(id) { S.healthOpen = S.healthOpen || {}; S.healthOpen[id] = !S.healthOpen[id]; renderHealth(); }
+function healthShowMore(id, all) { S.healthPage[id] = all ? 1e9 : (S.healthPage[id] || DH_PAGE) + DH_PAGE; renderHealth(); }
+function toggleHealthGroup(id) { S.healthGroup[id] = !S.healthGroup[id]; renderHealth(); }
+function toggleHealthPassed() { S.healthShowPassed = !S.healthShowPassed; renderHealth(); }
+function toggleHealthClean() { S.healthShowClean = !S.healthShowClean; renderHealth(); }
+function onHealthTableSearch(id, val, cursor) {
+  S.healthTableSearch = S.healthTableSearch || {};
+  S.healthTableSearch[id] = val;
+  if (S.healthPage) S.healthPage[id] = DH_PAGE;
+  renderHealth();
+  var inp = $('he-tbl-search-' + id);
+  if (inp) {
+    inp.focus({ preventScroll: true });
+    var p = (typeof cursor === 'number' && cursor >= 0) ? cursor : inp.value.length;
+    try { inp.setSelectionRange(p, p); } catch (e) {}
+  }
+}
+function clearHealthTableSearch(id) {
+  onHealthTableSearch(id, '', 0);
+}
+function openHealthMuni(prov, muni) {
+  S.healthScope = 'm:' + prov + '|' + muni;
+  S.healthView = 'check';
+  S.healthPage = {};
+  renderHealth();
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+// ---- household roster lists ------------------------------------------
+
+function hhIssuesKey(o) {
+  return (o && o.generatedAt || '') + '|' + (o && o.editor ? 'editor' : 'viewer');
+}
+
+function loadHouseholdIssues() {
+  if (S.hhIssuesLoading) return;
+  S.hhIssuesLoading = true;
+  var key = hhIssuesKey(S.overview);
+  call('apiHouseholdIssues', getEditorPasskey()).then(function (d) {
+    S.hhIssues = d;
+  }).catch(function (e) {
+    S.hhIssues = { error: e.message };
+  }).then(function () {
+    S.hhIssuesFor = key;
+    S.hhIssuesLoading = false;
+    renderHealth();
+  });
+}
+
+/** The roster lists when they match the loaded snapshot, else null (and a load starts). */
+function dhRoster(o) {
+  if (!o.health.householdRoster) return null;
+  if (S.hhIssuesFor !== hhIssuesKey(o)) { loadHouseholdIssues(); return null; }
+  return S.hhIssues && !S.hhIssues.error ? S.hhIssues : null;
+}
+
+// ---- small helpers -----------------------------------------------------
+
+function dhArg(s) { return esc(s).replace(/'/g, "\\'"); }
+
+function hhActLabel(code) {
+  var acts = (S.overview && S.overview.activities) || [];
+  for (var i = 0; i < acts.length; i++) if (acts[i].code === code) return acts[i].label;
+  return code;
+}
+
+function dhInScope(p) {
+  var sc = S.healthScope;
+  if (!sc) return true;
+  if (sc.indexOf('p:') === 0) return p.province === sc.slice(2);
+  return (p.province + '|' + p.municipality) === sc.slice(2);
+}
+
+function dhScopeLabel() {
+  var sc = S.healthScope;
+  if (!sc) return 'Caraga Region';
+  if (sc.indexOf('p:') === 0) return sc.slice(2);
+  var parts = sc.slice(2).split('|');
+  return parts[1] + ' (' + parts[0] + ')';
+}
+
+function dhMuniCell(p) {
+  if (!p.municipality) return '—';
+  return '<button class="link font-bold" onclick="openMuni(\'' + dhArg(p.province + '|' + p.municipality) + '\')">' +
+    esc(p.municipality) + '</button> <span class="tiny">' + esc(p.province || '') + '</span>';
+}
+
+function dhPlain(p) {
+  return esc(p.municipality || '—') + (p.province ? ' <span class="tiny">' + esc(p.province) + '</span>' : '');
+}
+
+function dhUnit(count, one, many) { return n(count) + ' ' + (count === 1 ? one : many); }
+
+function dhMatches(q, texts) {
+  if (!q) return true;
+  var qn = normSearch(q);
+  return texts.some(function (t) { return normSearch(t || '').indexOf(qn) !== -1; });
+}
+
+function dhDistinctMunis(rows, placesOf) {
+  var s = {};
+  rows.forEach(function (r) {
+    placesOf(r).forEach(function (p) { if (dhInScope(p)) s[p.province + '|' + p.municipality] = true; });
+  });
+  return Object.keys(s).length;
+}
+
+// ---- the checks ------------------------------------------------------
+
+/**
+ * One object per check. rows() returns the full list (null while it loads);
+ * places(row) the barangays a row belongs to, for scope and the municipality
+ * table. regionLevel checks are not split by municipality: their lists are
+ * export samples, or they have no list at all.
+ */
+function dhChecks(o) {
+  var h = o.health;
+  var roster = dhRoster(o);
+  var rs = h.householdRoster;
+  var editor = !!(roster && roster.editor);
+  var hidden = '<span class="dh-locked"><i data-lucide="lock" class="w-3 h-3"></i> Hidden</span>';
+  var one = function (r) { return [r]; };
+  var unmappedReal = Math.max(0, (h.unmapped || 0) - (h.unmappedBlank || h.unmappedBlankNameAndSeq || 0));
+
+  function col(label, cell, csv, cls) { return { label: label, cell: cell, csv: csv, cls: cls || '' }; }
+  var colMuni = col('Municipality', dhMuniCell, function (r) { return r.municipality; });
+  var colProv = col('Province', null, function (r) { return r.province; });
+  var colBrgy = col('Barangay', function (r) { return esc(r.barangay || '—'); }, function (r) { return r.barangay; });
+  var colAsm = col('Assembly', function (r) { return '<span class="tiny">' + esc(hhActLabel(r.actCode)) + '</span>'; }, function (r) { return hhActLabel(r.actCode); });
+  var colAct = col('Activity', function (r) { return '<span class="tiny">' + esc(hhActLabel(r.actCode)) + '</span>'; }, function (r) { return hhActLabel(r.actCode); });
+  var colBrgyOrMuni = col('Barangay', function (r) { return r.barangay ? esc(r.barangay) : '<span class="tiny">Municipal level</span>'; }, function (r) { return r.barangay || 'Municipal level'; });
+  var dq = h.dqa || null;   // null on a snapshot saved before these checks existed
+
+  return [
+    {
+      id: 'unmapped', dim: 'accuracy', name: 'Unclassified export rows', icon: 'help-circle', severity: 'critical', regionLevel: true, sample: true,
+      unit: ['row', 'rows'], total: unmappedReal,
+      meaning: 'Participant rows that match no PCRP activity, so they are not counted anywhere.',
+      why: 'The activity was encoded in KCIS with a sequence number or name the monitor does not recognise. Rows with Crip Mc09 Activity Id = 0 (other modalities) are already excluded.',
+      steps: ['Check the sequence number and activity name in the examples below.',
+              'Correct the activity in KCIS, or ask the RPMO to add the spelling as an alias.',
+              'Re-export and re-import the participants file.'],
+      rows: function () { return h.unmappedSamples || []; }, places: one,
+      cols: [col('Municipality', dhPlain, function (r) { return r.municipality; }), colProv, colBrgy,
+             col('Sequence', function (r) { return esc(r.seq || '—'); }, function (r) { return r.seq; }),
+             col('Activity name', function (r) { return esc(r.name || '—'); }, function (r) { return r.name; })],
+      text: function (r) { return [r.province, r.municipality, r.barangay, r.seq, r.name]; },
+      detail: function (r) { return 'Sequence "' + (r.seq || '') + '", name "' + (r.name || '') + '"'; }
+    },
+    {
+      id: 'baseline', dim: 'accuracy', name: 'Barangays not in the baseline', icon: 'map-pin-off', severity: 'critical', regionLevel: true, sample: true,
+      unit: ['row', 'rows'], total: h.notInBaseline || 0,
+      meaning: 'Export rows whose barangay is not in the monitored baseline, so they are left out of every figure.',
+      why: 'The barangay is spelled differently in KCIS, has a PSGC code the baseline does not have, or its municipality is switched off.',
+      steps: ['Check the barangay in the examples below against Import & Setup › Baseline.',
+              'If the municipality is switched off, switch it back on; otherwise correct the name or PSGC code in KCIS or the baseline.',
+              'Re-import or click Recompute.'],
+      rows: function () { return h.notInBaselineSamples || []; }, places: one,
+      cols: [col('Municipality (as exported)', dhPlain, function (r) { return r.municipality; }), colProv, colBrgy,
+             col('Activity', function (r) { return esc(r.activity || '—'); }, function (r) { return r.activity; })],
+      text: function (r) { return [r.province, r.municipality, r.barangay, r.activity]; },
+      detail: function (r) { return 'Activity ' + (r.activity || ''); }
+    },
+    {
+      id: 'quorum', dim: 'reliability', name: 'Household quorum inconsistencies', icon: 'scale', severity: 'critical',
+      unit: ['barangay', 'barangays'], total: (h.householdFlags || []).length,
+      meaning: 'Barangays where the 1st BA household figures cannot both be right, which makes the 70% quorum unreliable.',
+      why: 'Households marked present exceed the attendees encoded, or households are listed but none is marked present. Usually an attendance sheet not yet encoded, or "Is Present" left blank.',
+      steps: ['Compare the household roster with the signed attendance sheet for that assembly.',
+              'Encode the missing attendees, or correct "Is Present" in the household roster in KCIS.',
+              'Re-export and re-import both files.'],
+      rows: function () { return h.householdFlags || []; }, places: one,
+      cols: [colMuni, colProv, colBrgy, col('What does not add up', function (r) { return esc(r.issue); }, function (r) { return r.issue; })],
+      text: function (r) { return [r.province, r.municipality, r.barangay, r.issue]; },
+      detail: function (r) { return r.issue; }
+    },
+    {
+      id: 'sequence', dim: 'completeness', name: 'Encoded out of sequence', icon: 'git-merge', severity: 'verify',
+      unit: ['barangay', 'barangays'], total: h.outOfSequence || 0,
+      meaning: 'A later milestone is encoded while an earlier one is not, so the earlier record is missing from KCIS.',
+      why: 'The earlier activity was conducted but never encoded, or was encoded under another barangay.',
+      steps: ['Confirm with the barangay that the earlier activity was conducted.',
+              'Encode the missing record in KCIS with its attendance sheet.'],
+      rows: function () { return h.outOfSequenceRows || h.outOfSequenceSamples || []; }, places: one,
+      cols: [colMuni, colProv, colBrgy, col('Missing', function (r) { return esc(r.issue); }, function (r) { return r.issue; })],
+      text: function (r) { return [r.province, r.municipality, r.barangay, r.issue]; },
+      detail: function (r) { return r.issue; }
+    },
+    {
+      id: 'noname', dim: 'completeness', name: 'Household rows with no name', icon: 'user-round-x', severity: 'verify', roster: true,
+      unit: ['barangay assembly', 'barangay assemblies'], total: rs ? rs.blankBarangays : 0,
+      meaning: 'Household roster rows with no first and no last name.',
+      why: 'Blank lines added to the roster and never filled in, or names typed into the wrong field.',
+      steps: ['Open the barangay\'s household roster in KCIS for that assembly.',
+              'Fill in the household head\'s name from the attendance sheet, or delete the row if it is not a real household.',
+              'Re-export and re-import the household file.'],
+      rows: function () { return roster ? roster.blank || [] : null; }, places: one,
+      sub: function (rows) {
+        var t = rows.reduce(function (a, b) { a.r += b.rows; a.p += b.present; return a; }, { r: 0, p: 0 });
+        return n(t.r) + ' rows · ' + n(t.p) + ' marked present, counted in K2';
+      },
+      subRegion: rs ? n(rs.blankRows) + ' rows · ' + n(rs.blankPresent) + ' marked present, counted in K2' : '',
+      cols: [colMuni, colProv, colBrgy, colAsm,
+             col('Rows with no name', function (r) { return '<strong>' + n(r.rows) + '</strong>'; }, function (r) { return r.rows; }, 'num'),
+             col('Marked present', function (r) { return n(r.present); }, function (r) { return r.present; }, 'num')],
+      text: function (r) { return [r.province, r.municipality, r.barangay, hhActLabel(r.actCode), String(r.rows), String(r.present)]; },
+      detail: function (r) { return r.rows + ' rows with no name (' + r.present + ' marked present), ' + hhActLabel(r.actCode); }
+    },
+    {
+      id: 'dup', dim: 'integrity', name: 'Same person listed twice in a barangay', icon: 'copy', severity: 'verify', roster: true, names: true,
+      unit: ['person', 'people'], total: rs ? rs.dupGroups : 0,
+      meaning: 'The same name and birthdate appears more than once in one barangay\'s roster for the same assembly.',
+      why: 'The household was encoded twice, often when two encoders worked on one roster or an upload was repeated.',
+      steps: ['Keep one row per household in the barangay roster in KCIS.',
+              'Where the copies disagree on "Is Present", keep the value on the signed attendance sheet.',
+              'Re-export and re-import the household file.'],
+      rows: function () { return roster ? roster.duplicates || [] : null; }, places: one,
+      sub: function (rows) {
+        var x = rows.reduce(function (a, d) { a.r += d.times - 1; a.p += Math.max(0, d.presentCount - 1); return a; }, { r: 0, p: 0 });
+        return n(x.r) + ' extra rows · add ' + n(x.p) + ' present households to K2';
+      },
+      subRegion: rs ? n(rs.dupExtraRows) + ' extra rows · add ' + n(rs.dupExtraPresent) + ' present households to K2' : '',
+      cols: [colMuni, colProv, colBrgy, colAsm,
+             col('Name', function (r) { return editor ? '<strong>' + esc(r.name) + '</strong>' : hidden; }, function (r) { return editor ? r.name : ''; }),
+             col('Birthdate', function (r) { return editor ? esc(r.birthdate || '—') : hidden; }, function (r) { return editor ? r.birthdate : ''; }),
+             col('Listed', function (r) { return '<strong>' + n(r.times) + '×</strong>'; }, function (r) { return r.times; }, 'num'),
+             col('Marked present', function (r) { return n(r.presentCount) + ' of ' + n(r.times); }, function (r) { return r.presentCount; }, 'num')],
+      text: function (r) { return [r.province, r.municipality, r.barangay, r.name, r.birthdate, hhActLabel(r.actCode)]; },
+      detail: function (r) { return (editor ? r.name + ', ' : '') + 'listed ' + r.times + '× (' + hhActLabel(r.actCode) + ')'; }
+    },
+    {
+      id: 'cross', dim: 'integrity', name: 'Same household head in two or more barangays', icon: 'git-compare', severity: 'verify', roster: true, names: true,
+      unit: ['household head', 'household heads'], total: rs ? rs.crossLikely + rs.crossPossible : 0,
+      meaning: 'A household head is listed in more than one barangay. A household belongs to one barangay, so one listing is probably wrong.',
+      why: 'The household was tagged to the wrong barangay, moved and was listed again, or two people share a name (more likely for Possible matches). Likely = same name and birthdate; Possible = same name, a birthdate missing.',
+      steps: ['Ask the MDE/PEA of each barangay listed where the household actually lives.',
+              'Remove or re-tag the listing in the wrong barangay in KCIS.',
+              'For Possible matches, compare birthdates on the attendance sheets before changing anything.'],
+      rows: function () { return roster ? roster.crossBarangay || [] : null; },
+      places: function (c) { return c.barangays; },
+      sub: function (rows) {
+        var lk = rows.filter(function (c) { return c.confidence === 'Likely'; }).length;
+        var ax = rows.filter(function (c) { return c.acrossMunicipalities; }).length;
+        return n(lk) + ' likely · ' + n(rows.length - lk) + ' possible · ' + n(ax) + ' across municipalities';
+      },
+      subRegion: rs ? n(rs.crossLikely) + ' likely · ' + n(rs.crossPossible) + ' possible · ' + n(rs.crossAcrossMunicipalities) + ' across municipalities' : '',
+      cols: [col('Household head', function (r) { return editor ? '<strong>' + esc(r.name) + '</strong>' : hidden; }, function (r) { return editor ? r.name : ''; }),
+             col('Birthdate', function (r) { return editor ? esc(r.birthdate || '—') : hidden; }, function (r) { return editor ? r.birthdate : ''; }),
+             col('Match', function (r) {
+               return '<span class="pill ' + (r.confidence === 'Likely' ? 'bad' : 'warn') + ' text-[10px] font-bold">' + esc(r.confidence) + '</span>' +
+                 (r.acrossMunicipalities ? ' <span class="pill bad text-[10px] font-bold">Other municipality</span>' : '');
+             }, function (r) { return r.confidence + (r.acrossMunicipalities ? ' (across municipalities)' : ''); }),
+             col('Listed in', function (r) {
+               return r.barangays.map(function (b) {
+                 return '<div class="dh-place">' + esc(b.barangay) + ', ' + dhMuniCell(b) +
+                   '<span class="tiny"> · ' + esc(hhActLabel(b.actCode)) + (b.present ? ' · present' : ' · not present') +
+                   (b.times > 1 ? ' · listed ' + b.times + '×' : '') + '</span></div>';
+               }).join('');
+             }, function (r) { return r.barangays.map(function (b) { return b.barangay + ', ' + b.municipality + ' (' + b.province + ')'; }).join(' ; '); })],
+      text: function (r) {
+        return [r.name, r.birthdate, r.confidence, r.acrossMunicipalities ? 'Other municipality' : ''].concat(
+          r.barangays.map(function (b) { return b.municipality + ' ' + b.barangay + ' ' + b.province + ' ' + hhActLabel(b.actCode); })
+        );
+      },
+      detail: function (r) {
+        return (editor ? r.name + ': ' : '') + r.confidence + ' match in ' +
+          r.barangays.map(function (b) { return b.barangay + ', ' + b.municipality; }).join(' and ');
+      }
+    },
+  ].concat(dhQualityChecks(dq, col, colMuni, colProv, colBrgyOrMuni, colAct, one))
+   .concat(dhVolunteerChecks(o, col, colMuni, colProv, colBrgy, one)).concat([
+    {
+      id: 'sex', dim: 'completeness', name: 'Attendees with no sex recorded', icon: 'user-x', severity: 'verify', regionLevel: true,
+      unit: ['attendee', 'attendees'], total: h.sexNotRecorded || 0,
+      meaning: '1st BA attendees counted in attendance but not recorded as male or female, which distorts women\'s participation figures.',
+      why: 'Sex was left blank when the participant profile was encoded in KCIS.',
+      steps: ['Complete the sex of each attendee in KCIS during post-assembly validation.'],
+      rows: function () { return []; }, places: one, cols: [],
+      text: function () { return []; }, detail: function () { return ''; }
+    }
+  ]);
+}
+
+/**
+ * Date, record, name, birthdate and timeliness checks (health.dqa). Places and
+ * counts only, never names: they go to every viewer. Not added on a snapshot
+ * saved before the checks existed, where they would read as "passed".
+ */
+function dhQualityChecks(dq, col, colMuni, colProv, colPlace, colAct, one) {
+  if (!dq) return [];
+  var rowsCol = col('Rows', function (r) { return '<strong>' + n(r.rows) + '</strong>'; }, function (r) { return r.rows; }, 'num');
+  var sumRows = function (rows) { return rows.reduce(function (s, r) { return s + (r.rows || 0); }, 0); };
+  var place = function (r) { return [r.province, r.municipality, r.barangay, hhActLabel(r.actCode)]; };
+
+  return [
+    {
+      id: 'late', dim: 'timeliness', name: 'Attendance not encoded within 7 days', icon: 'clock-alert', severity: 'critical',
+      unit: ['record', 'records'], total: dq.lateAttendance.length,
+      meaning: 'Activities encoded in KCIS whose attendance sheet is still not encoded 7 or more days after the activity.',
+      why: 'SM7 Annex F: data are to be collected and encoded into the MIS within seven days after the conclusion of each activity. ' +
+           'Counted from the activity date in KCIS to the KCIS pull date.',
+      steps: ['Get the signed attendance sheet for the activity from the barangay or the CEF.',
+              'Encode the attendees in KCIS under the activity record that is already there.',
+              'Re-export and re-import the participants file.'],
+      rows: function () { return dq.lateAttendance; }, places: one,
+      sub: function () { return dq.lateUndated ? n(dq.lateUndated) + ' more with no activity date, so they cannot be aged' : ''; },
+      cols: [colMuni, colProv, colPlace, colAct,
+             col('Activity date', function (r) { return esc(r.fieldDate || '—'); }, function (r) { return r.fieldDate; }),
+             col('Days since', function (r) { return '<strong>' + n(r.days) + '</strong>'; }, function (r) { return r.days; }, 'num')],
+      text: place,
+      detail: function (r) { return hhActLabel(r.actCode) + ': no attendees ' + r.days + ' days after ' + r.fieldDate; }
+    },
+    {
+      id: 'dates', dim: 'accuracy', name: 'Activity dates that cannot be right', icon: 'calendar-x', severity: 'verify',
+      unit: ['record', 'records'], total: dq.dateIssues.length,
+      meaning: 'Activity records whose Date Start or Date End is unreadable, reversed, before 2025, or after the KCIS pull date.',
+      why: 'The date was mistyped when the activity was set up in KCIS. Activity dates drive the 7-day clock and every trend, so a wrong date moves the record in or out of the backlog.',
+      steps: ['Check the activity date on the attendance sheet or the minutes.',
+              'Correct Date Start and Date End of the activity in KCIS.',
+              'Re-export and re-import the participants file.'],
+      rows: function () { return dq.dateIssues; }, places: one,
+      cols: [colMuni, colProv, colPlace, colAct,
+             col('Problem', function (r) { return esc(r.problems.join(' · ')); }, function (r) { return r.problems.join('; '); }),
+             col('Dates in KCIS', function (r) { return '<span class="tiny">' + esc((r.dateStart || '—') + ' to ' + (r.dateEnd || '—')) + '</span>'; }, function (r) { return (r.dateStart || '') + ' to ' + (r.dateEnd || ''); })],
+      text: function (r) { return place(r).concat(r.problems); },
+      detail: function (r) { return hhActLabel(r.actCode) + ': ' + r.problems.join(', '); }
+    },
+    {
+      id: 'twice', dim: 'integrity', name: 'Activity encoded as two KCIS records', icon: 'files', severity: 'verify',
+      unit: ['activity', 'activities'], total: dq.twiceEncoded.length,
+      meaning: 'One barangay activity (or one municipal activity) appears under more than one KCIS activity ID.',
+      why: 'The activity was set up twice in KCIS, often by two encoders or after an upload failed. Attendees can then be split across the records or counted twice.',
+      steps: ['Open each KCIS ID listed and compare it with the attendance sheet.',
+              'Keep one record with every attendee and remove the duplicate record in KCIS.',
+              'Re-export and re-import the participants file.'],
+      rows: function () { return dq.twiceEncoded; }, places: one,
+      cols: [colMuni, colProv, colPlace, colAct,
+             col('KCIS IDs', function (r) { return '<span class="tiny font-mono">#' + r.ids.map(esc).join(', #') + '</span>'; }, function (r) { return r.ids.join(' ; '); }),
+             col('Attendees', function (r) { return n(r.attendees); }, function (r) { return r.attendees; }, 'num')],
+      text: function (r) { return place(r).concat(r.ids); },
+      detail: function (r) { return hhActLabel(r.actCode) + ': KCIS IDs #' + r.ids.join(', #'); }
+    },
+    {
+      id: 'attdup', dim: 'integrity', name: 'Same attendee listed twice in one activity', icon: 'users', severity: 'verify',
+      unit: ['record', 'records'], total: dq.attendeeDuplicates.length,
+      meaning: 'The same first, middle and last name appears more than once in one activity\'s attendance.',
+      why: 'The attendance sheet was encoded twice, or one page was entered again. Each extra row adds one attendee to the counts.',
+      steps: ['Compare the attendee list in KCIS with the signed attendance sheet.',
+              'Delete the extra rows in KCIS. If two different people share a name, leave both and note it.',
+              'Re-export and re-import the participants file.'],
+      rows: function () { return dq.attendeeDuplicates; }, places: one,
+      sub: function (rows) { return dhUnit(sumRows(rows), 'extra row', 'extra rows'); },
+      cols: [colMuni, colProv, colPlace, colAct,
+             col('People listed twice', function (r) { return '<strong>' + n(r.people) + '</strong>'; }, function (r) { return r.people; }, 'num'),
+             col('Extra rows', function (r) { return n(r.rows); }, function (r) { return r.rows; }, 'num')],
+      text: place,
+      detail: function (r) { return hhActLabel(r.actCode) + ': ' + r.people + (r.people === 1 ? ' person' : ' people') + ' listed twice (' + r.rows + ' extra rows)'; }
+    },
+    {
+      id: 'names', dim: 'accuracy', name: 'Names that look mistyped', icon: 'spell-check', severity: 'verify',
+      unit: ['row', 'rows'], total: sumRows(dq.nameIssues), countOf: sumRows,
+      meaning: 'Attendee or household rows whose first or last name has a digit, is a single letter, or is a placeholder such as N/A or None.',
+      why: 'A name typed into the wrong field, an initial typed instead of the name, or a placeholder entered when the name was not known. These rows cannot be matched across the exports.',
+      steps: ['Find the row on the attendance sheet or the household roster.',
+              'Type the full name in KCIS as it is written on the form.',
+              'Re-export and re-import the file.'],
+      rows: function () { return dq.nameIssues; }, places: one,
+      cols: [colMuni, colProv, colPlace, colAct,
+             col('In', function (r) { return esc(r.source); }, function (r) { return r.source; }), rowsCol],
+      text: function (r) { return place(r).concat([r.source]); },
+      detail: function (r) { return r.rows + ' row' + (r.rows === 1 ? '' : 's') + ' in the ' + r.source.toLowerCase() + ' (' + hhActLabel(r.actCode) + ')'; }
+    },
+    {
+      id: 'bday', dim: 'accuracy', name: 'Birthdates that cannot be right', icon: 'cake', severity: 'verify',
+      unit: ['row', 'rows'], total: sumRows(dq.birthdateIssues), countOf: sumRows,
+      meaning: 'Household roster birthdates that are unreadable, after the KCIS pull date, older than 110, or a household head younger than 15.',
+      why: 'The year was mistyped, or the day and month were swapped. The birthdate is what tells two people with the same name apart, so a wrong one hides duplicates.',
+      steps: ['Check the birthdate on the household roster form.',
+              'Correct it in KCIS.',
+              'Re-export and re-import the household file.'],
+      rows: function () { return dq.birthdateIssues; }, places: one,
+      cols: [colMuni, colProv, colPlace, colAct,
+             col('Problem', function (r) { return esc(r.problem); }, function (r) { return r.problem; }), rowsCol],
+      text: function (r) { return place(r).concat([r.problem]); },
+      detail: function (r) { return r.rows + ' row' + (r.rows === 1 ? '' : 's') + ': ' + r.problem + ' (' + hhActLabel(r.actCode) + ')'; }
+    }
+  ];
+}
+
+/**
+ * 1st BA community volunteer checks (BResT, SFMSC). Only added once the
+ * volunteer list is imported: before that they would read as "passed".
+ * The lists hold places and counts, never names.
+ */
+function dhVolunteerChecks(o, col, colMuni, colProv, colBrgy, one) {
+  var iss = o.health && o.health.volunteerIssues;
+  if (!iss) return [];
+  var sumRows = function (rows) { return rows.reduce(function (s, r) { return s + (r.rows || 0); }, 0); };
+  var rowsCol = col('Volunteer rows', function (r) { return '<strong>' + n(r.rows) + '</strong>'; }, function (r) { return r.rows; }, 'num');
+  var tagging = iss.noCommittee.map(function (r) { return Object.assign({ problem: 'No committee', belongsTo: '' }, r); })
+    .concat(iss.otherBody.map(function (r) { return Object.assign({ problem: 'Tagged to ' + r.committee, belongsTo: r.belongsTo }, r); }));
+  var gaps = iss.noName.map(function (r) { return Object.assign({ problem: 'No name' }, r); })
+    .concat(iss.noSex.map(function (r) { return Object.assign({ problem: 'Sex not recorded' }, r); }))
+    .concat(iss.noPosition.map(function (r) { return Object.assign({ problem: 'No position (' + (r.body === 'SFMSC' ? 'SFMSC' : 'BResT') + ')' }, r); }))
+    .concat(iss.badTerm.map(function (r) { return Object.assign({ problem: 'Term start date not between 2025 and 2027' }, r); }));
+  var muniBrgy = function (r) { return [r.province, r.municipality, r.barangay]; };
+
+  return [
+    {
+      id: 'cv_missing', dim: 'completeness', name: '1st BA encoded, volunteers not encoded', icon: 'user-plus', severity: 'verify',
+      unit: ['barangay', 'barangays'], total: iss.missing.length,
+      meaning: 'The 1st BA is in KCIS but its BResT or SFMSC volunteers are not. Not encoded is not the same as not organized.',
+      why: 'The volunteers selected at the assembly have not been encoded in the KCIS Community Volunteer List yet.',
+      steps: ['Get the BDC/Sangguniang Barangay resolution and CV Profile Forms for the barangay.',
+              'Encode the BResT and SFMSC volunteers in KCIS under the 1st BA.',
+              'Re-export the Community Volunteer List and re-import it (Import & Setup › Step 3).'],
+      rows: function () { return iss.missing; }, places: one,
+      cols: [colMuni, colProv, colBrgy,
+             col('Not encoded', function (r) { return esc(r.missing.join(' and ')); }, function (r) { return r.missing.join(' and '); }),
+             col('1st BA', function (r) { return '<span class="tiny">' + esc(r.ba1Status === 'Complete' ? 'Complete' : 'No attendance sheet') + '</span>'; }, function (r) { return r.ba1Status; })],
+      text: function (r) { return muniBrgy(r).concat(r.missing); },
+      detail: function (r) { return r.missing.join(' and ') + ' not encoded'; }
+    },
+    {
+      id: 'cv_sfmsc', dim: 'accuracy', name: 'SFMSC needs fixing', icon: 'users-round', severity: 'verify',
+      unit: ['barangay', 'barangays'], total: iss.sfmscFix.length,
+      meaning: 'An SFMSC is encoded but does not have exactly one Chairperson and at least two Members.',
+      why: 'A Chairperson was not tagged, more than one volunteer was tagged Chairperson, or members are still to be encoded.',
+      steps: ['Check the SFMSC list in the barangay resolution.',
+              'In KCIS, tag exactly one Chairperson and encode the remaining Members.',
+              'Re-export and re-import the Community Volunteer List.'],
+      rows: function () { return iss.sfmscFix; }, places: one,
+      cols: [colMuni, colProv, colBrgy,
+             col('What to fix', function (r) { return esc(r.reasons.join(' · ')); }, function (r) { return r.reasons.join('; '); }),
+             col('Chairpersons', function (r) { return n(r.chairs); }, function (r) { return r.chairs; }, 'num'),
+             col('Members', function (r) { return n(r.members); }, function (r) { return r.members; }, 'num')],
+      text: function (r) { return muniBrgy(r).concat(r.reasons); },
+      detail: function (r) { return 'SFMSC: ' + r.reasons.join(', '); }
+    },
+    {
+      id: 'cv_tagging', dim: 'accuracy', name: 'Volunteers not tagged to a 1st BA body', icon: 'tag', severity: 'verify',
+      unit: ['volunteer row', 'volunteer rows'], total: sumRows(tagging), countOf: sumRows,
+      meaning: 'Named volunteers in the 1st BA list with no committee, or tagged to a committee of another activity, so they are not counted.',
+      why: 'The committee was left blank when the volunteer was encoded, or the volunteer belongs to the MResT / municipal SFMC (Seq 1) or the CSPMC and its sub-committees (2nd BA).',
+      steps: ['For a blank committee, tag the volunteer to the BResT or the SFMSC per the barangay resolution.',
+              'For a Seq 1 or 2nd BA committee, move the record to that activity in KCIS.',
+              'Re-export and re-import the Community Volunteer List.'],
+      rows: function () { return tagging; }, places: one,
+      cols: [colMuni, colProv, colBrgy,
+             col('Problem', function (r) { return esc(r.problem) + (r.belongsTo ? '<div class="tiny">belongs to ' + esc(r.belongsTo) + '</div>' : ''); }, function (r) { return r.problem + (r.belongsTo ? ' (belongs to ' + r.belongsTo + ')' : ''); }),
+             rowsCol],
+      text: function (r) { return muniBrgy(r).concat([r.problem, r.belongsTo]); },
+      detail: function (r) { return r.rows + ' volunteer row' + (r.rows === 1 ? '' : 's') + ': ' + r.problem; }
+    },
+    {
+      id: 'cv_gaps', dim: 'completeness', name: 'Volunteer record gaps', icon: 'clipboard-x', severity: 'verify',
+      unit: ['volunteer row', 'volunteer rows'], total: sumRows(gaps), countOf: sumRows,
+      meaning: 'Volunteer rows with no name, no sex, no position, or a term start date that cannot be right.',
+      why: 'Fields left blank or mistyped when the CV Profile Form was encoded. Sex feeds the SM1 para. 22 inclusion check.',
+      steps: ['Complete the missing fields in KCIS from the CV Profile Form.',
+              'Delete rows that are not real volunteers.',
+              'Re-export and re-import the Community Volunteer List.'],
+      rows: function () { return gaps; }, places: one,
+      cols: [colMuni, colProv, colBrgy, col('Problem', function (r) { return esc(r.problem); }, function (r) { return r.problem; }), rowsCol],
+      text: function (r) { return muniBrgy(r).concat([r.problem]); },
+      detail: function (r) { return r.rows + ' volunteer row' + (r.rows === 1 ? '' : 's') + ': ' + r.problem; }
+    }
+  ];
+}
+
+/**
+ * The numbers for one check in the current scope: count (null while the roster
+ * loads), the rows in scope, the rows matching the search, municipalities touched.
+ */
+function dhEval(c, q) {
+  var all = c.rows();
+  var scoped = !S.healthScope || c.regionLevel;
+  var ev = { check: c, pending: all === null, rows: [], shown: [], munis: 0, outOfScope: !!S.healthScope && c.regionLevel };
+  if (ev.pending) {
+    ev.count = (!S.healthScope && c.roster) ? c.total : null;
+    ev.sub = !S.healthScope ? c.subRegion || '' : '';
+  } else {
+    ev.rows = scoped ? all : all.filter(function (r) { return c.places(r).some(dhInScope); });
+    // Region-level lists are samples, so their count is the server total;
+    // every other list is complete and is its own count.
+    ev.count = c.regionLevel ? c.total : (c.countOf ? c.countOf(ev.rows) : ev.rows.length);
+    ev.sub = c.sub ? (scoped && c.subRegion ? c.subRegion : c.sub(ev.rows)) : '';
+    ev.shown = ev.rows.filter(function (r) { return dhMatches(q, c.text(r)); });
+    ev.munis = c.regionLevel ? 0 : dhDistinctMunis(ev.rows, c.places);
+  }
+  ev.status = ev.count === null ? 'pending' : (ev.count > 0 ? c.severity : 'passed');
+  return ev;
+}
+
+function dhEvaluateAll(o, q) {
+  return dhChecks(o).map(function (c) { return dhEval(c, q); });
+}
+
+// ---- page ------------------------------------------------------------
+
+function renderHealth() {
+  var o = S.overview;
+  if (!o) return;
+  var q = (S.healthSearch || '').trim();
+  var evs = dhEvaluateAll(o, q);
+
+  // Open the worst check on the first visit, so the page starts on the work.
+  if (S.healthOpen === null) {
+    S.healthOpen = {};
+    var first = evs.filter(function (e) { return e.status === 'critical'; })[0] || evs.filter(function (e) { return e.status === 'verify'; })[0];
+    if (first) S.healthOpen[first.check.id] = true;
+  }
+
+  var out = [dhHeader(o, evs), dhScopeBar(o, evs)];
+  out.push(S.healthView === 'muni' ? dhMuniView(o, evs)
+         : S.healthView === 'score' ? dhScoreView(o, evs)
+         : S.healthView === 'fix' ? dhFixView(o, evs)
+         : dhCheckList(evs, q));
+
+  var body = $('he-body');
+  body.className = 'dh-page';
+  body.innerHTML = out.join('');
+
+  var input = $('he-search');
+  if (input) {
+    input.addEventListener('input', function () {
+      S.healthSearch = this.value;
+      S.healthPage = {};
+      renderHealth();
+      var again = $('he-search');
+      if (again) { again.focus({ preventScroll: true }); again.setSelectionRange(again.value.length, again.value.length); }
+    });
+  }
+  refreshIcons();
+}
+
+function dhStatusCounts(evs) {
+  var c = { critical: 0, verify: 0, passed: 0, pending: 0 };
+  evs.forEach(function (e) { if (!e.outOfScope) c[e.status]++; });
+  return c;
+}
+
+function dhHeader(o, evs) {
+  var h = o.health, c = dhStatusCounts(evs);
+  var total = c.critical + c.verify + c.passed + c.pending || 1;
+  var state = c.critical ? { cls: 'bad', label: 'Needs attention' }
+            : c.verify ? { cls: 'warn', label: 'Items to verify' }
+            : c.pending ? { cls: '', label: 'Checking…' }
+            : { cls: 'good', label: 'All checks passed' };
+  // When these checks were computed. The header badge carries the export's "Data as of".
+  var asOfStr = o.generatedAt ? new Date(o.generatedAt).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' }) : '—';
+  var seg = function (k, cls) { return c[k] ? '<span class="dh-bar-seg ' + cls + '" style="width:' + (c[k] / total * 100) + '%" title="' + c[k] + ' ' + (DH_SEV[k] ? DH_SEV[k].label : 'loading') + '"></span>' : ''; };
+  var part = function (k, word) { return '<span class="dh-count ' + k + '"><strong>' + c[k] + '</strong> ' + word + '</span>'; };
+
+  return '<div class="dh-head">' +
+    '<div class="dh-head-main">' +
+      '<div class="dh-head-title">' +
+        '<h2>Data Health</h2>' +
+        '<span class="pill ' + state.cls + ' dh-state">' + esc(state.label) + '</span>' +
+      '</div>' +
+      '<div class="dh-counts">' +
+        part('critical', c.critical === 1 ? 'critical check' : 'critical checks') +
+        part('verify', 'to verify') +
+        part('passed', 'passed') +
+        (c.pending ? '<span class="dh-count"><strong>' + c.pending + '</strong> loading</span>' : '') +
+        '<span class="dh-scope-name">· ' + esc(dhScopeLabel()) + '</span>' +
+      '</div>' +
+      '<div class="dh-bar" role="img" aria-label="' + c.critical + ' critical, ' + c.verify + ' to verify, ' + c.passed + ' passed">' +
+        seg('critical', 'bad') + seg('verify', 'warn') + seg('passed', 'good') + seg('pending', 'idle') +
+      '</div>' +
+      '<p class="dh-meta">Checked ' + esc(asOfStr) + ' · ' + n(h.participantRows) + ' participant rows · ' + n(h.householdRows) + ' household rows · ' +
+        n(o.baseline.barangays) + ' barangays monitored' + (o.baseline.barangaysNotMonitored ? ' (' + n(o.baseline.barangaysNotMonitored) + ' switched off)' : '') + '</p>' +
+    '</div>' +
+    '<div class="dh-head-actions">' +
+      '<button class="btn primary dh-btn" onclick="openHealthMemoModal()"><i data-lucide="file-text" class="w-4 h-4"></i> Generate memo</button>' +
+      '<button class="btn ghost dh-btn" onclick="dhCsvAll()"><i data-lucide="download" class="w-4 h-4"></i> Download CSV</button>' +
+    '</div>' +
+  '</div>';
+}
+
+function dhScopeBar(o, evs) {
+  var provs = {};
+  (o.municipalities || []).forEach(function (m) { (provs[m.province] = provs[m.province] || []).push(m.municipality); });
+  var opts = ['<option value="">Whole region</option>'];
+  Object.keys(provs).sort().forEach(function (p) {
+    opts.push('<optgroup label="' + esc(p) + '">');
+    opts.push('<option value="p:' + esc(p) + '"' + (S.healthScope === 'p:' + p ? ' selected' : '') + '>All of ' + esc(p) + '</option>');
+    provs[p].slice().sort().forEach(function (m) {
+      var v = 'm:' + p + '|' + m;
+      opts.push('<option value="' + esc(v) + '"' + (S.healthScope === v ? ' selected' : '') + '>' + esc(m) + '</option>');
+    });
+    opts.push('</optgroup>');
+  });
+
+  var c = dhStatusCounts(evs);
+  var chips = [
+    { id: 'all', label: 'All checks', count: c.critical + c.verify + c.passed + c.pending, cls: '' },
+    { id: 'critical', label: 'Critical', count: c.critical, cls: 'chip-warn' },
+    { id: 'verify', label: 'To verify', count: c.verify, cls: 'chip-amber' },
+    { id: 'passed', label: 'Passed', count: c.passed, cls: 'chip-good' }
+  ].map(function (x) {
+    return '<button class="filter-chip' + (S.healthSeverity === x.id ? ' active ' + x.cls : '') + '" onclick="setHealthSeverity(\'' + x.id + '\')" aria-pressed="' + (S.healthSeverity === x.id) + '">' +
+      '<span>' + x.label + '</span><span class="chip-count">' + x.count + '</span></button>';
+  }).join('');
+
+  var seg = function (id, icon, label) {
+    return '<button class="dh-seg-btn' + (S.healthView === id ? ' on' : '') + '" onclick="setHealthView(\'' + id + '\')" aria-pressed="' + (S.healthView === id) + '">' +
+      '<i data-lucide="' + icon + '" class="w-3.5 h-3.5"></i> ' + label + '</button>';
+  };
+
+  return '<div class="dh-scope">' +
+    '<div class="dh-scope-row">' +
+      '<label class="dh-field"><span>Area</span><select onchange="setHealthScope(this.value)" aria-label="Province or municipality">' + opts.join('') + '</select></label>' +
+      '<label class="dh-field dh-search"><span>Search</span><input type="search" id="he-search" placeholder="Barangay, municipality or name" value="' + esc(S.healthSearch) + '"></label>' +
+      '<div class="dh-seg" role="group" aria-label="View">' + seg('check', 'list-checks', 'By check') + seg('muni', 'building-2', 'By municipality') +
+        seg('score', 'gauge', 'Scorecard') + seg('fix', 'list-todo', 'Fix list') + '</div>' +
+    '</div>' +
+    (S.healthView === 'check' ? '<div class="dh-chips">' + chips + '</div>' : '') +
+    (S.healthScope ? '<div class="dh-crumb"><i data-lucide="map-pin" class="w-3.5 h-3.5"></i> Showing <strong>' + esc(dhScopeLabel()) + '</strong>' +
+      ' <button class="link" onclick="setHealthScope(\'\')">Show whole region</button></div>' : '') +
+  '</div>';
+}
+
+// ---- by check ----------------------------------------------------------
+
+function dhCheckList(evs, q) {
+  var rank = { critical: 0, verify: 1, pending: 2, passed: 3 };
+  var inScope = evs.filter(function (e) { return !e.outOfScope; });
+  var region = evs.filter(function (e) { return e.outOfScope && e.count; });
+  var sev = S.healthSeverity;
+  // Within a severity the checks keep their dhChecks() order: counts are in
+  // different units (barangays, people, attendees), so sorting by them would
+  // put 18,000 attendees above 400 people for no good reason.
+  var order = {};
+  evs.forEach(function (e, i) { order[e.check.id] = i; });
+  var visible = inScope.filter(function (e) { return sev === 'all' || e.status === sev; })
+    .sort(function (a, b) { return rank[a.status] - rank[b.status] || order[a.check.id] - order[b.check.id]; });
+
+  var open = visible.filter(function (e) { return e.status !== 'passed'; });
+  var passed = visible.filter(function (e) { return e.status === 'passed'; });
+  var out = ['<div class="dh-list">'];
+  open.forEach(function (e) { out.push(dhCheckRow(e, q)); });
+
+  if (passed.length) {
+    var foldOpen = sev === 'passed' || S.healthShowPassed;
+    out.push('<div class="dh-passed">' +
+      '<button class="dh-passed-head" onclick="toggleHealthPassed()" aria-expanded="' + foldOpen + '">' +
+        '<i data-lucide="check-circle-2" class="w-4 h-4"></i> <strong>' + passed.length + (passed.length === 1 ? ' check' : ' checks') + ' passed</strong>' +
+        '<span class="tiny"> ' + esc(passed.map(function (e) { return e.check.name; }).join(' · ')) + '</span>' +
+        '<i data-lucide="chevron-down" class="w-4 h-4 dh-chev' + (foldOpen ? ' up' : '') + '"></i>' +
+      '</button>' +
+      (foldOpen ? passed.map(function (e) { return dhCheckRow(e, q); }).join('') : '') +
+    '</div>');
+  }
+  if (!open.length && !passed.length) {
+    out.push('<div class="dh-empty">No checks in this group.</div>');
+  }
+  out.push('</div>');
+
+  if (region.length) {
+    out.push('<div class="dh-region-note"><i data-lucide="info" class="w-4 h-4"></i> <div><strong>Not split by municipality:</strong> ' +
+      region.map(function (e) { return esc(e.check.name) + ' (' + dhUnit(e.count || 0, e.check.unit[0], e.check.unit[1]) + ' region-wide)'; }).join(' · ') +
+      '. <button class="link" onclick="setHealthScope(\'\')">See them for the whole region</button>.</div></div>');
+  }
+  return out.join('');
+}
+
+function dhCheckRow(e, q) {
+  var c = e.check, isOpen = !!(S.healthOpen && S.healthOpen[c.id]);
+  var sevKey = e.status === 'pending' ? c.severity : e.status;
+  var countHtml = e.count === null
+    ? '<span class="dh-skel dh-skel-num"></span>'
+    : '<strong>' + n(e.count) + '</strong> ' + esc(e.count === 1 ? c.unit[0] : c.unit[1]);
+  var bits = [];
+  if (e.sub) bits.push(esc(e.sub));
+  if (e.munis && S.healthScope.indexOf('m:') !== 0) bits.push('in ' + dhUnit(e.munis, 'municipality', 'municipalities'));
+  if (q && !e.pending && e.rows.length) bits.push('<strong>' + n(e.shown.length) + '</strong> match “' + esc(q) + '”');
+
+  return '<section class="dh-check sev-' + sevKey + (e.status === 'passed' ? ' is-passed' : '') + (isOpen ? ' is-open' : '') + '">' +
+    '<button class="dh-check-head" onclick="toggleHealthCheck(\'' + c.id + '\')" aria-expanded="' + isOpen + '">' +
+      '<span class="dh-icon"><i data-lucide="' + (e.status === 'passed' ? 'check' : c.icon) + '" class="w-4 h-4"></i></span>' +
+      '<span class="dh-check-main">' +
+        '<span class="dh-check-name">' + esc(c.name) + '</span>' +
+        '<span class="dh-check-meaning">' + esc(c.meaning) + '</span>' +
+      '</span>' +
+      '<span class="dh-check-count">' +
+        '<span class="dh-check-num">' + countHtml + '</span>' +
+        (bits.length ? '<span class="dh-check-sub">' + bits.join(' · ') + '</span>' : '') +
+      '</span>' +
+      '<span class="dh-check-side">' +
+        '<span class="pill ' + (e.status === 'pending' ? '' : DH_SEV[e.status].pill) + ' text-[10px] font-bold">' + (e.status === 'pending' ? 'Loading' : DH_SEV[e.status].label) + '</span>' +
+        '<span class="dh-review">' + (isOpen ? 'Close' : (e.status === 'passed' ? 'Details' : 'Review')) + ' <i data-lucide="chevron-down" class="w-4 h-4 dh-chev' + (isOpen ? ' up' : '') + '"></i></span>' +
+      '</span>' +
+    '</button>' +
+    (isOpen ? dhCheckDetail(e, q) : '') +
+  '</section>';
+}
+
+function dhCheckDetail(e, q) {
+  var c = e.check;
+  var guide = '<div class="dh-guide">' +
+    '<div><h4>What it means</h4><p>' + esc(c.why) + '</p></div>' +
+    '<div><h4>What to do</h4><ol>' + c.steps.map(function (s) { return '<li>' + esc(s) + '</li>'; }).join('') + '</ol></div>' +
+  '</div>';
+
+  var notes = [];
+  if (c.names && S.hhIssues && !S.hhIssues.editor) {
+    notes.push('<div class="dh-note"><i data-lucide="lock" class="w-4 h-4"></i> Names and birthdates are hidden in the public view. ' +
+      '<button class="btn ghost dh-btn-sm" onclick="openPasskeyModal()">Unlock Editor Mode</button></div>');
+  }
+  if (c.sample) notes.push('<div class="dh-note"><i data-lucide="info" class="w-4 h-4"></i> The export keeps up to 5 examples for this check; the count above is every row.</div>');
+  if (c.roster) notes.push('<div class="dh-note"><i data-lucide="info" class="w-4 h-4"></i> Flagged for checking only. These rows are still counted in K2 until the RPMO decides how to treat them.</div>');
+
+  if (e.pending) {
+    return '<div class="dh-detail">' + guide + notes.join('') + '<div class="dh-loading"><span class="spin"></span> Loading the list…</div></div>';
+  }
+  if (!c.cols.length) {
+    return '<div class="dh-detail">' + guide + notes.join('') + '<p class="dh-empty">This check has a count only; there is no list to show.</p></div>';
+  }
+  if (!e.rows.length) {
+    return '<div class="dh-detail">' + guide + '<p class="dh-empty"><i data-lucide="check-circle-2" class="w-4 h-4"></i> Nothing to fix in ' + esc(dhScopeLabel()) + '.</p></div>';
+  }
+
+  var tq = ((S.healthTableSearch && S.healthTableSearch[c.id]) || '').trim();
+  var limit = S.healthPage[c.id] || DH_PAGE;
+  var grouped = !S.healthGroup[c.id] && !c.regionLevel;
+  var rows = e.shown.filter(function (r) { return !tq || dhMatches(tq, c.text(r)); });
+  if (grouped) {
+    var key = function (r) { var p = c.places(r).filter(dhInScope)[0] || c.places(r)[0]; return p.province + '|' + p.municipality; };
+    rows.sort(function (a, b) { return key(a).localeCompare(key(b)); });
+  }
+  var page = rows.slice(0, limit);
+  var cols = c.cols.filter(function (x) { return x.cell; });
+
+  var body = [], lastGroup = null, groupCounts = {};
+  if (grouped) rows.forEach(function (r) { var p = c.places(r).filter(dhInScope)[0] || c.places(r)[0]; var k = p.province + '|' + p.municipality; groupCounts[k] = (groupCounts[k] || 0) + 1; });
+  page.forEach(function (r) {
+    if (grouped) {
+      var p = c.places(r).filter(dhInScope)[0] || c.places(r)[0];
+      var k = p.province + '|' + p.municipality;
+      if (k !== lastGroup) {
+        body.push('<tr class="dh-group"><td colspan="' + cols.length + '">' + dhMuniCell(p) + ' <span class="tiny">· ' + n(groupCounts[k]) + '</span></td></tr>');
+        lastGroup = k;
+      }
+    }
+    body.push('<tr>' + cols.map(function (x) {
+      // one wrapper per cell: on phones the cell is a two-column grid (label | value)
+      return '<td data-label="' + esc(x.label) + '" class="' + x.cls + '"><div>' + x.cell(r) + '</div></td>';
+    }).join('') + '</tr>');
+  });
+
+  var table = rows.length
+    ? '<div class="dh-table-wrap"><table class="dh-table"><thead><tr>' +
+        cols.map(function (x) { return '<th class="' + x.cls + '">' + esc(x.label) + '</th>'; }).join('') +
+      '</tr></thead><tbody>' + body.join('') + '</tbody></table></div>'
+    : '<p class="dh-empty"><i data-lucide="search" class="w-4 h-4"></i> No rows match ' + (tq ? '“' + esc(tq) + '”' : '“' + esc(q) + '”') + '.</p>';
+
+  var more = page.length < rows.length
+    ? '<button class="btn ghost dh-btn-sm" onclick="healthShowMore(\'' + c.id + '\')">Show ' + Math.min(DH_PAGE, rows.length - page.length) + ' more</button>' +
+      ' <button class="link" onclick="healthShowMore(\'' + c.id + '\', true)">Show all ' + n(rows.length) + '</button>'
+    : '';
+
+  var showingInfo = 'Showing ' + n(page.length) + ' of ' + n(rows.length);
+  if (tq || q) {
+    showingInfo += (rows.length !== e.rows.length ? ' matching (' + n(e.rows.length) + ' in ' + esc(dhScopeLabel()) + ')' : '');
+  }
+
+  var searchBox = '<div class="dh-tbl-search">' +
+    '<span class="dh-tbl-search-icon"><i data-lucide="search" class="w-3.5 h-3.5"></i></span>' +
+    '<input type="search" id="he-tbl-search-' + c.id + '" placeholder="Search table..." value="' + esc(tq) + '" ' +
+      'oninput="onHealthTableSearch(\'' + c.id + '\', this.value, this.selectionStart)" ' +
+      'onkeydown="if(event.key===\'Escape\'){clearHealthTableSearch(\'' + c.id + '\');event.preventDefault();}">' +
+    (tq ? '<button type="button" class="dh-tbl-search-clear" onclick="clearHealthTableSearch(\'' + c.id + '\')" title="Clear search"><i data-lucide="x" class="w-3 h-3"></i></button>' : '') +
+  '</div>';
+
+  return '<div class="dh-detail">' + guide + notes.join('') +
+    '<div class="dh-toolbar">' +
+      '<span class="tiny">' + showingInfo + '</span>' +
+      '<span class="dh-toolbar-actions">' +
+        searchBox +
+        (!c.regionLevel ? '<label class="dh-toggle"><input type="checkbox"' + (grouped ? ' checked' : '') + ' onchange="toggleHealthGroup(\'' + c.id + '\')"> Group by municipality</label>' : '') +
+        '<button class="btn ghost dh-btn-sm" onclick="dhCsvCheck(\'' + c.id + '\')"><i data-lucide="download" class="w-3.5 h-3.5"></i> CSV</button>' +
+      '</span>' +
+    '</div>' +
+    table +
+    (more ? '<div class="dh-more">' + more + '</div>' : '') +
+  '</div>';
+}
+
+// ---- by municipality ---------------------------------------------------
+
+/** Open items per monitored municipality, per check. A case that spans two municipalities counts in both. */
+function dhMuniTable(o, evs) {
+  var munis = (o.municipalities || []).filter(function (m) { return dhInScope(m); });
+  var checks = evs.filter(function (e) { return !e.check.regionLevel; });
+  var rows = munis.map(function (m) {
+    var key = m.province + '|' + m.municipality;
+    var r = { province: m.province, municipality: m.municipality, cells: {}, critical: 0, verify: 0, pending: false };
+    checks.forEach(function (e) {
+      if (e.pending) { r.cells[e.check.id] = null; r.pending = true; return; }
+      var mine = e.rows.filter(function (row) {
+        return e.check.places(row).some(function (p) { return p.province + '|' + p.municipality === key; });
+      });
+      var cnt = e.check.countOf ? e.check.countOf(mine) : mine.length;
+      r.cells[e.check.id] = cnt;
+      r[e.check.severity] += cnt;
+    });
+    r.total = r.critical + r.verify;
+    return r;
+  });
+  rows.sort(function (a, b) { return b.critical - a.critical || b.total - a.total || a.municipality.localeCompare(b.municipality); });
+  return { rows: rows, checks: checks };
+}
+
+function dhMuniView(o, evs) {
+  var t = dhMuniTable(o, evs);
+  var q = normSearch((S.healthSearch || '').trim());
+  var mq = normSearch(((S.healthTableSearch && S.healthTableSearch.muni) || '').trim());
+  var list = t.rows.filter(function (r) {
+    var str = normSearch(r.municipality + ' ' + r.province);
+    if (q && str.indexOf(q) === -1) return false;
+    if (mq && str.indexOf(mq) === -1) return false;
+    return true;
+  });
+  var withIssues = list.filter(function (r) { return r.total > 0 || r.pending; });
+  var clean = list.filter(function (r) { return !r.pending && r.total === 0; });
+  var show = withIssues.concat(S.healthShowClean ? clean : []);
+  var shortName = DH_SHORT;
+
+  var head = '<tr><th>Municipality</th><th class="num">Critical</th><th class="num">To verify</th>' +
+    t.checks.map(function (e) { return '<th class="num" title="' + esc(e.check.name) + '">' + esc(shortName[e.check.id] || e.check.name) + '</th>'; }).join('') + '</tr>';
+  var body = show.map(function (r) {
+    var cell = function (v, label, cls) {
+      return '<td data-label="' + esc(label) + '" class="num ' + (cls || '') + '"><div>' + (v === null ? '<span class="dh-skel dh-skel-num"></span>' : (v ? n(v) : '<span class="dh-zero">0</span>')) + '</div></td>';
+    };
+    return '<tr class="dh-muni-row" onclick="openHealthMuni(\'' + dhArg(r.province) + '\', \'' + dhArg(r.municipality) + '\')" tabindex="0" ' +
+      'onkeydown="if(event.key===\'Enter\')openHealthMuni(\'' + dhArg(r.province) + '\', \'' + dhArg(r.municipality) + '\')">' +
+      '<td data-label="Municipality"><div><strong>' + esc(r.municipality) + '</strong> <span class="tiny">' + esc(r.province) + '</span></div></td>' +
+      cell(r.critical, 'Critical', r.critical ? 'dh-n-bad' : '') + cell(r.pending && !r.verify ? null : r.verify, 'To verify', r.verify ? 'dh-n-warn' : '') +
+      t.checks.map(function (e) { return cell(r.cells[e.check.id], e.check.name); }).join('') +
+    '</tr>';
+  }).join('');
+
+  var region = evs.filter(function (e) { return e.check.regionLevel && e.check.total; });
+  var muniSearchVal = (S.healthTableSearch && S.healthTableSearch.muni) || '';
+
+  var muniToolbar = '<div class="dh-toolbar">' +
+    '<span class="tiny">Showing ' + n(show.length) + ' of ' + n(t.rows.length) + ' municipalities' +
+      (mq || q ? ' matching search' : (clean.length && !S.healthShowClean ? ' (' + n(clean.length) + ' with no open items hidden)' : '')) + '</span>' +
+    '<span class="dh-toolbar-actions">' +
+      '<div class="dh-tbl-search">' +
+        '<span class="dh-tbl-search-icon"><i data-lucide="search" class="w-3.5 h-3.5"></i></span>' +
+        '<input type="search" id="he-tbl-search-muni" placeholder="Search municipality or province..." value="' + esc(muniSearchVal) + '" ' +
+          'oninput="onHealthTableSearch(\'muni\', this.value, this.selectionStart)" ' +
+          'onkeydown="if(event.key===\'Escape\'){clearHealthTableSearch(\'muni\');event.preventDefault();}">' +
+        (muniSearchVal ? '<button type="button" class="dh-tbl-search-clear" onclick="clearHealthTableSearch(\'muni\')" title="Clear search"><i data-lucide="x" class="w-3 h-3"></i></button>' : '') +
+      '</div>' +
+    '</span>' +
+  '</div>';
+
+  return '<div class="dh-muni">' +
+    '<p class="dh-muni-intro">Open items per municipality. Click a municipality to see its worklist. ' +
+      'A household head listed in two municipalities is counted in both.</p>' +
+    muniToolbar +
+    (show.length
+      ? '<div class="dh-table-wrap"><table class="dh-table dh-muni-table"><thead>' + head + '</thead><tbody>' + body + '</tbody></table></div>'
+      : '<p class="dh-empty"><i data-lucide="search" class="w-4 h-4"></i> No municipalities match “' + esc(muniSearchVal || S.healthSearch) + '”.</p>') +
+    (clean.length ? '<div class="dh-more"><button class="link" onclick="toggleHealthClean()">' +
+      (S.healthShowClean ? 'Hide' : 'Show') + ' ' + dhUnit(clean.length, 'municipality', 'municipalities') + ' with no open items</button></div>' : '') +
+    (region.length ? '<div class="dh-region-note"><i data-lucide="info" class="w-4 h-4"></i> <div><strong>Not split by municipality:</strong> ' +
+      region.map(function (e) { return esc(e.check.name) + ' ' + dhUnit(e.check.total, e.check.unit[0], e.check.unit[1]); }).join(' · ') + '.</div></div>' : '') +
+  '</div>';
+}
+
+// ---- scorecard (SM7 Table 8 dimensions) -----------------------------------
+
+function openHealthCheck(id) {
+  S.healthView = 'check';
+  S.healthSeverity = 'all';
+  S.healthOpen = {};
+  S.healthOpen[id] = true;
+  renderHealth();
+}
+
+function openScoreMuni(prov, muni) {
+  S.healthScope = 'm:' + prov + '|' + muni;
+  S.healthPage = {};
+  renderHealth();
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+/** Status of a set of evaluated checks: 'none' (no check), 'pending', 'critical', 'verify' or 'passed'. */
+function dhDimStatus(list) {
+  if (!list.length) return 'none';
+  if (list.some(function (e) { return e.status === 'critical'; })) return 'critical';
+  if (list.some(function (e) { return e.status === 'verify'; })) return 'verify';
+  if (list.some(function (e) { return e.status === 'pending'; })) return 'pending';
+  return 'passed';
+}
+
+/** False when the export has no participant record for the municipality: its checks have nothing to test. */
+function dhHasRecords(o, prov, muni) {
+  var mr = o.health && o.health.dqa && o.health.dqa.muniRows;
+  return !mr || (mr[prov + '|' + muni] || 0) > 0;
+}
+
+var DH_DIM_PILL = { none: ['', 'Not assessed'], pending: ['', 'Loading'], critical: ['bad', 'Needs attention'],
+                    verify: ['warn', 'To verify'], passed: ['good', 'All passed'] };
+
+/**
+ * Precision comes from records checked by hand against the paper forms. A page
+ * that offers that (the desktop app's Verify page) defines dhPrecisionSummary
+ * and openVerify; without them the card reads "Not assessed".
+ */
+function dhPrecision(inScope) {
+  return typeof dhPrecisionSummary === 'function' ? dhPrecisionSummary(inScope) : null;
+}
+
+function dhPrecisionCard(d) {
+  var ps = dhPrecision(dhInScope);
+  if (!ps) return null;
+  var issues = ps.differs + ps.absent + ps.notEncoded;
+  var st = ps.checked ? (issues ? 'verify' : 'passed') : 'none';
+  var formName = function (f) { return typeof VF_FORMS !== 'undefined' && VF_FORMS[f] ? VF_FORMS[f].label : f; };
+  var lines = Object.keys(ps.byForm).map(function (f) {
+    var x = ps.byForm[f];
+    return '<li><button class="dh-dim-check' + (x.checked && !(x.differs + x.absent + x.notEncoded) ? ' ok' : (x.checked ? ' sev-verify' : '')) + '" onclick="openVerify()">' +
+      '<i data-lucide="' + (x.checked ? 'clipboard-check' : 'clipboard') + '" class="w-3.5 h-3.5"></i>' +
+      '<span>' + esc(formName(f)) + '</span><span class="dh-dim-n">' + n(x.verified) + ' of ' + n(x.records) + ' verified' +
+      (x.checked ? ' · ' + (Math.round(x.agreement * 1000) / 10).toFixed(1) + '% match' : '') + '</span></button></li>';
+  }).join('');
+  return '<section class="dh-dim st-' + st + '">' +
+    '<div class="dh-dim-head">' +
+      '<span class="dh-icon"><i data-lucide="' + d.icon + '" class="w-4 h-4"></i></span>' +
+      '<div class="dh-dim-title"><h3>' + esc(d.name) + '</h3><p>' + esc(d.sm7) + '</p></div>' +
+      '<span class="pill ' + DH_DIM_PILL[st][0] + ' text-[10px] font-bold">' + (st === 'none' ? 'Not assessed' : st === 'passed' ? 'All match' : 'To verify') + '</span>' +
+    '</div>' +
+    (ps.checked
+      ? '<div class="dh-dim-score"><strong>' + (Math.round(ps.agreement * 1000) / 10).toFixed(1) + '%</strong> of ' + n(ps.checked) + ' rows checked match the forms' +
+          (ps.factor !== null ? ' · on the form ÷ encoded <strong style="font-size:13px">' + ps.factor.toFixed(2) + '</strong>' : '') + '</div>'
+      : '<p class="dh-dim-none">Nothing checked against the paper forms yet in ' + esc(dhScopeLabel()) + '.</p>') +
+    (lines ? '<ul class="dh-dim-list">' + lines + '</ul>' : '') +
+    '<button class="btn ghost dh-btn-sm" onclick="openVerify()"><i data-lucide="clipboard-check" class="w-3.5 h-3.5"></i> Verify against the forms</button>' +
+  '</section>';
+}
+
+function dhScoreView(o, evs) {
+  var inScope = evs.filter(function (e) { return !e.outOfScope; });
+  var cards = DH_DIMS.map(function (d) {
+    if (d.id === 'precision') { var pc = dhPrecisionCard(d); if (pc) return pc; }
+    var list = inScope.filter(function (e) { return e.check.dim === d.id; });
+    var st = dhDimStatus(list);
+    var passed = list.filter(function (e) { return e.status === 'passed'; }).length;
+    var lines = list.map(function (e) {
+      var ok = e.status === 'passed';
+      var cnt = e.count === null ? '…' : (ok ? 'passed' : dhUnit(e.count, e.check.unit[0], e.check.unit[1]));
+      return '<li><button class="dh-dim-check' + (ok ? ' ok' : ' sev-' + e.status) + '" onclick="openHealthCheck(\'' + e.check.id + '\')">' +
+        '<i data-lucide="' + (ok ? 'check' : 'circle-alert') + '" class="w-3.5 h-3.5"></i>' +
+        '<span>' + esc(e.check.name) + '</span><span class="dh-dim-n">' + esc(cnt) + '</span></button></li>';
+    }).join('');
+    return '<section class="dh-dim st-' + st + '">' +
+      '<div class="dh-dim-head">' +
+        '<span class="dh-icon"><i data-lucide="' + d.icon + '" class="w-4 h-4"></i></span>' +
+        '<div class="dh-dim-title"><h3>' + esc(d.name) + '</h3><p>' + esc(d.sm7) + '</p></div>' +
+        '<span class="pill ' + DH_DIM_PILL[st][0] + ' text-[10px] font-bold">' + DH_DIM_PILL[st][1] + '</span>' +
+      '</div>' +
+      (list.length
+        ? '<div class="dh-dim-score"><strong>' + passed + '</strong> of ' + list.length + (list.length === 1 ? ' check passes' : ' checks pass') + '</div><ul class="dh-dim-list">' + lines + '</ul>'
+        : '<p class="dh-dim-none">' + esc(d.none || 'No check covers this dimension yet.') + '</p>') +
+    '</section>';
+  }).join('');
+
+  var region = evs.filter(function (e) { return e.outOfScope && e.count; });
+  var sc = S.healthScope.indexOf('m:') === 0 ? S.healthScope.slice(2).split('|') : null;
+  if (sc && !dhHasRecords(o, sc[0], sc[1])) {
+    return '<div class="dh-muni"><p class="dh-empty"><i data-lucide="info" class="w-4 h-4"></i> The export has no KCIS records for ' + esc(dhScopeLabel()) +
+      ', so there is nothing to assess yet. A passed check here would mean nothing was tested, not that the data is clean.</p></div>';
+  }
+  var out = ['<div class="dh-muni">',
+    '<p class="dh-muni-intro">SM7 Table 8 judges data quality on six dimensions. Each card counts the checks that pass in <strong>' + esc(dhScopeLabel()) +
+      '</strong>; a check passes only when nothing is open. Click a check to review it.</p>',
+    '<div class="dh-dims">' + cards + '</div>'];
+  if (region.length) {
+    out.push('<div class="dh-region-note"><i data-lucide="info" class="w-4 h-4"></i> <div><strong>Not split by municipality, so not in these cards:</strong> ' +
+      region.map(function (e) { return esc(e.check.name) + ' (' + dhUnit(e.count, e.check.unit[0], e.check.unit[1]) + ' region-wide)'; }).join(' · ') + '.</div></div>');
+  }
+  if (S.healthScope.indexOf('m:') !== 0) out.push(dhScoreMuniTable(o, evs));
+  out.push('</div>');
+  return out.join('');
+}
+
+/** Checks passed per dimension, one row per municipality in scope. */
+function dhScoreMuniTable(o, evs) {
+  var t = dhMuniTable(o, evs);
+  var dims = DH_DIMS.filter(function (d) { return t.checks.some(function (e) { return e.check.dim === d.id; }); });
+  var canVerify = typeof dhPrecisionSummary === 'function';
+  var head = '<tr><th>Municipality</th>' + dims.map(function (d) { return '<th class="num">' + esc(d.name) + '</th>'; }).join('') +
+    (canVerify ? '<th class="num" title="Rows matching the paper forms">Precision</th>' : '') +
+    '<th class="num">Checks passed</th></tr>';
+  var body = t.rows.map(function (r) {
+    var all = 0, ok = 0;
+    if (!dhHasRecords(o, r.province, r.municipality)) {
+      return '<tr><td data-label="Municipality"><div><strong>' + esc(r.municipality) + '</strong> <span class="tiny">' + esc(r.province) + '</span></div></td>' +
+        '<td colspan="' + (dims.length + 1 + (canVerify ? 1 : 0)) + '" data-label="Checks"><div><span class="tiny">No KCIS records in the export, so nothing to assess</span></div></td></tr>';
+    }
+    var cells = dims.map(function (d) {
+      var mine = t.checks.filter(function (e) { return e.check.dim === d.id; });
+      var pend = mine.some(function (e) { return r.cells[e.check.id] === null; });
+      var pass = mine.filter(function (e) { return r.cells[e.check.id] === 0; }).length;
+      var crit = mine.some(function (e) { return e.check.severity === 'critical' && r.cells[e.check.id] > 0; });
+      all += mine.length; ok += pass;
+      var cls = pend ? '' : (crit ? 'dh-n-bad' : (pass < mine.length ? 'dh-n-warn' : ''));
+      return '<td data-label="' + esc(d.name) + '" class="num ' + cls + '"><div>' +
+        (pend ? '<span class="dh-skel dh-skel-num"></span>' : pass + ' / ' + mine.length) + '</div></td>';
+    }).join('');
+    return '<tr class="dh-muni-row" tabindex="0" onclick="openScoreMuni(\'' + dhArg(r.province) + '\', \'' + dhArg(r.municipality) + '\')" ' +
+      'onkeydown="if(event.key===\'Enter\')openScoreMuni(\'' + dhArg(r.province) + '\', \'' + dhArg(r.municipality) + '\')">' +
+      '<td data-label="Municipality"><div><strong>' + esc(r.municipality) + '</strong> <span class="tiny">' + esc(r.province) + '</span></div></td>' +
+      cells + (canVerify ? (function () {
+        var ps = dhPrecision(function (p) { return p.province === r.province && p.municipality === r.municipality; });
+        var issues = ps ? ps.differs + ps.absent + ps.notEncoded : 0;
+        return '<td data-label="Precision" class="num ' + (issues ? 'dh-n-warn' : '') + '"><div>' +
+          (ps && ps.checked ? (Math.round(ps.agreement * 1000) / 10).toFixed(1) + '%' : '<span class="dh-zero">—</span>') + '</div></td>';
+      })() : '') +
+      '<td data-label="Checks passed" class="num"><div><strong>' + ok + '</strong> of ' + all + '</div></td></tr>';
+  }).join('');
+  return '<h3 class="dh-sub-h">By municipality</h3>' +
+    '<p class="dh-muni-intro">Checks passed per dimension. Red: a critical check is open. Amber: a check to verify is open. Click a municipality for its cards.</p>' +
+    '<div class="dh-table-wrap"><table class="dh-table dh-muni-table"><thead>' + head + '</thead><tbody>' + body + '</tbody></table></div>';
+}
+
+// ---- fix list (PEA / MDE follow-up, with status against the last pull) ------
+
+function setFixStatus(v) { S.fixStatus = v; renderHealth(); }
+
+function loadFixList() {
+  if (S.fixListLoading) return;
+  S.fixListLoading = true;
+  var key = (S.overview && S.overview.generatedAt) || '';
+  call('apiFixList').then(function (d) {
+    S.fixList = d;
+  }).catch(function (e) {
+    S.fixList = { error: e.message };
+  }).then(function () {
+    S.fixListFor = key;
+    S.fixListLoading = false;
+    renderHealth();
+  });
+}
+
+/** The fix list for the loaded snapshot, else null (and a load starts). */
+function dhFixData(o) {
+  if (S.fixListFor !== (o.generatedAt || '')) { loadFixList(); return null; }
+  return S.fixList;
+}
+
+function dhFixDate(iso) {
+  if (!iso || !/^\d{4}-\d{2}-\d{2}$/.test(iso)) return iso || '';
+  var p = iso.split('-');
+  return new Date(+p[0], +p[1] - 1, +p[2]).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+}
+
+function dhFixPill(it, prev) {
+  switch (it.status) {
+    case 'new': return '<span class="pill bad text-[10px] font-bold">New</span>';
+    case 'worse': return '<span class="pill bad text-[10px] font-bold">More (' + n(it.before) + ' → ' + n(it.count) + ')</span>';
+    case 'better': return '<span class="pill warn text-[10px] font-bold">Fewer (' + n(it.before) + ' → ' + n(it.count) + ')</span>';
+    case 'resolved': return '<span class="pill good text-[10px] font-bold">Resolved</span>';
+    default: return prev
+      ? '<span class="pill warn text-[10px] font-bold">Open since ' + esc(dhFixDate(it.since)) + '</span>'
+      : '<span class="pill text-[10px] font-bold">Open</span>';
+  }
+}
+
+/** One status group of the fix list: 'open' is everything still open; 'still' leaves out the new ones. */
+function dhFixInGroup(it, g) {
+  if (g === 'resolved') return it.status === 'resolved';
+  if (g === 'new') return it.status === 'new';
+  if (g === 'still') return it.status !== 'new' && it.status !== 'resolved';
+  return it.status !== 'resolved';
+}
+
+var DH_FIX_UNIT = { noname: ['row', 'rows'], dup: ['person', 'people'], cross: ['listing', 'listings'], twice: ['extra record', 'extra records'],
+                    attdup: ['extra row', 'extra rows'], names: ['row', 'rows'], bday: ['row', 'rows'], cv_tagging: ['row', 'rows'], cv_gaps: ['row', 'rows'] };
+
+function dhFixRowsInScope(fx) {
+  return (fx.items || []).concat(fx.resolved || []).filter(function (it) { return dhInScope(it); });
+}
+
+function dhFixView(o, evs) {
+  var fx = dhFixData(o);
+  var wrap = function (inner) { return '<div class="dh-muni">' + inner + '</div>'; };
+  if (!fx) return wrap('<div class="dh-loading"><span class="spin"></span> Loading the fix list…</div>');
+  if (fx.error) return wrap('<p class="dh-empty"><i data-lucide="circle-alert" class="w-4 h-4"></i> The fix list could not be loaded: ' + esc(fx.error) + '</p>');
+
+  var checks = {};
+  dhChecks(o).forEach(function (c) { checks[c.id] = c; });
+  var prev = fx.previous || '';
+  var all = dhFixRowsInScope(fx);
+  var cnt = { open: 0, 'new': 0, still: 0, resolved: 0 };
+  all.forEach(function (it) { ['open', 'new', 'still', 'resolved'].forEach(function (g) { if (dhFixInGroup(it, g)) cnt[g]++; }); });
+
+  var compare = prev
+    ? (fx.current ? 'Data as of <strong>' + esc(dhFixDate(fx.current)) + '</strong>, compared' : 'Compared') + ' with the pull of <strong>' + esc(dhFixDate(prev)) + '</strong>.'
+    : 'No earlier pull is recorded, so every item shows as Open. From the next import, the list marks what is new and what was resolved.';
+  var intro = '<p class="dh-muni-intro">Every open item in <strong>' + esc(dhScopeLabel()) + '</strong> that the MDE or PEA can fix in KCIS, one line per barangay, activity and problem. ' + compare + '</p>';
+
+  // A region or a province: one line per municipality, pick one to see its list.
+  if (S.healthScope.indexOf('m:') !== 0) {
+    var by = {};
+    all.forEach(function (it) {
+      var k = it.province + '|' + it.municipality;
+      var r = by[k] || (by[k] = { province: it.province, municipality: it.municipality, open: 0, 'new': 0, still: 0, resolved: 0 });
+      ['open', 'new', 'still', 'resolved'].forEach(function (g) { if (dhFixInGroup(it, g)) r[g]++; });
+    });
+    var rows = Object.keys(by).map(function (k) { return by[k]; })
+      .sort(function (a, b) { return b.open - a.open || a.municipality.localeCompare(b.municipality); });
+    var body = rows.map(function (r) {
+      var cell = function (v, label, cls) { return '<td data-label="' + label + '" class="num ' + (v ? cls : '') + '"><div>' + (v ? n(v) : '<span class="dh-zero">0</span>') + '</div></td>'; };
+      return '<tr class="dh-muni-row" tabindex="0" onclick="openScoreMuni(\'' + dhArg(r.province) + '\', \'' + dhArg(r.municipality) + '\')" ' +
+        'onkeydown="if(event.key===\'Enter\')openScoreMuni(\'' + dhArg(r.province) + '\', \'' + dhArg(r.municipality) + '\')">' +
+        '<td data-label="Municipality"><div><strong>' + esc(r.municipality) + '</strong> <span class="tiny">' + esc(r.province) + '</span></div></td>' +
+        cell(r.open, 'Open', 'dh-n-warn') + (prev ? cell(r['new'], 'New', 'dh-n-bad') + cell(r.resolved, 'Resolved', '') : '') + '</tr>';
+    }).join('');
+    return wrap(intro +
+      '<div class="dh-note"><i data-lucide="map-pin" class="w-4 h-4"></i> Choose a municipality in <strong>Area</strong>, or click one below, to get its fix list.</div>' +
+      (rows.length
+        ? '<div class="dh-table-wrap"><table class="dh-table dh-muni-table"><thead><tr><th>Municipality</th><th class="num">Open</th>' +
+            (prev ? '<th class="num">New</th><th class="num">Resolved</th>' : '') + '</tr></thead><tbody>' + body + '</tbody></table></div>'
+        : '<p class="dh-empty"><i data-lucide="check-circle-2" class="w-4 h-4"></i> Nothing to fix in ' + esc(dhScopeLabel()) + '.</p>'));
+  }
+
+  // One municipality: the list itself, by barangay.
+  var g = S.fixStatus;
+  if (!prev && (g === 'new' || g === 'resolved')) g = 'open';
+  var list = all.filter(function (it) { return dhFixInGroup(it, g); });
+  var sevRank = { critical: 0, verify: 1 };
+  list.sort(function (a, b) {
+    var ca = checks[a.check] || {}, cb = checks[b.check] || {};
+    return (a.barangay || '').localeCompare(b.barangay || '') || (sevRank[ca.severity] || 0) - (sevRank[cb.severity] || 0) ||
+      (ca.name || a.check).localeCompare(cb.name || b.check);
+  });
+
+  var chip = function (id, label) {
+    return '<button class="filter-chip' + (g === id ? ' active' : '') + '" onclick="setFixStatus(\'' + id + '\')" aria-pressed="' + (g === id) + '">' +
+      '<span>' + label + '</span><span class="chip-count">' + n(cnt[id]) + '</span></button>';
+  };
+  var chips = '<div class="dh-chips">' + chip('open', 'All open') +
+    (prev ? chip('new', 'New') + chip('still', 'Still open') + chip('resolved', 'Resolved since ' + esc(dhFixDate(prev))) : '') + '</div>';
+
+  var lastB = null, body2 = [], used = {};
+  list.forEach(function (it) {
+    var c = checks[it.check] || { name: DH_SHORT[it.check] || it.check, severity: 'verify' };
+    if (it.status !== 'resolved') used[it.check] = c;
+    var b = it.barangay || 'Municipal level';
+    if (b !== lastB) { body2.push('<tr class="dh-group"><td colspan="5"><strong>' + esc(b) + '</strong></td></tr>'); lastB = b; }
+    var unit = DH_FIX_UNIT[it.check];
+    var num = it.status === 'resolved' ? it.before : it.count;
+    body2.push('<tr>' +
+      '<td data-label="Problem"><div><strong>' + esc(c.name) + '</strong>' + (it.part ? '<div class="tiny">' + esc(it.part) + '</div>' : '') + '</div></td>' +
+      '<td data-label="Activity"><div><span class="tiny">' + esc(it.act ? hhActLabel(it.act) : '—') + '</span></div></td>' +
+      '<td data-label="Count" class="num"><div>' + (unit || num > 1 ? n(num) + (unit ? ' <span class="tiny">' + unit[num === 1 ? 0 : 1] + '</span>' : '') : '') + '</div></td>' +
+      '<td data-label="Severity"><div><span class="pill ' + (c.severity === 'critical' ? 'bad' : 'warn') + ' text-[10px] font-bold">' + DH_SEV[c.severity].label + '</span></div></td>' +
+      '<td data-label="Status"><div>' + dhFixPill(it, prev) + '</div></td></tr>');
+  });
+
+  var how = Object.keys(used).map(function (id) {
+    var c = used[id];
+    return c.steps ? '<div><h4>' + esc(c.name) + '</h4><ol>' + c.steps.map(function (s) { return '<li>' + esc(s) + '</li>'; }).join('') + '</ol></div>' : '';
+  }).join('');
+
+  return wrap(intro + chips +
+    '<div class="dh-toolbar"><span class="tiny">' + n(list.length) + (list.length === 1 ? ' item' : ' items') + '</span>' +
+      '<span class="dh-toolbar-actions"><button class="btn ghost dh-btn-sm" onclick="dhFixCsv()"><i data-lucide="download" class="w-3.5 h-3.5"></i> CSV for the MDE/PEA</button></span></div>' +
+    (list.length
+      ? '<div class="dh-table-wrap"><table class="dh-table dh-fix-table"><thead><tr><th>Problem</th><th>Activity</th><th class="num">Count</th><th>Severity</th><th>Status</th></tr></thead>' +
+          '<tbody>' + body2.join('') + '</tbody></table></div>' +
+        (how ? '<h3 class="dh-sub-h">How to fix each kind of item</h3><div class="dh-guide">' + how + '</div>' : '')
+      : '<p class="dh-empty"><i data-lucide="check-circle-2" class="w-4 h-4"></i> ' + (g === 'resolved' ? 'Nothing was resolved since the last pull.' : 'Nothing to fix in ' + esc(dhScopeLabel()) + '.') + '</p>'));
+}
+
+/** Every item in scope with its status, for the MDE/PEA to work through. */
+function dhFixCsv() {
+  var o = S.overview, fx = S.fixList;
+  if (!o || !fx || fx.error) return;
+  var checks = {};
+  dhChecks(o).forEach(function (c) { checks[c.id] = c; });
+  var label = { 'new': 'New', open: 'Open', better: 'Fewer', worse: 'More', resolved: 'Resolved' };
+  var lines = [['Province', 'Municipality', 'Barangay', 'Activity', 'Check', 'Problem', 'Count', 'Severity', 'Status',
+                'Open since', 'Count at ' + (fx.previous || 'previous pull'), 'What to do']];
+  dhFixRowsInScope(fx).forEach(function (it) {
+    var c = checks[it.check] || { name: DH_SHORT[it.check] || it.check, severity: 'verify', steps: [] };
+    lines.push([it.province, it.municipality, it.barangay || 'Municipal level', it.act ? hhActLabel(it.act) : '', c.name, it.part || '',
+      it.status === 'resolved' ? 0 : it.count, DH_SEV[c.severity].label, label[it.status] || it.status,
+      it.since || '', it.before === null || it.before === undefined ? '' : it.before, (c.steps || []).join(' ')]);
+  });
+  downloadCsv(dhCsvName('fix_list'), hhCsv(lines));
+}
+
+// ---- CSV and memo --------------------------------------------------------
+
+function hhCsv(rows) {
+  return rows.map(function (r) {
+    return r.map(function (v) {
+      var s = String(v === null || v === undefined ? '' : v);
+      return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+    }).join(',');
+  }).join('\n');
+}
+
+function dhCsvName(part) {
+  var scope = S.healthScope ? '_' + dhScopeLabel().replace(/[^A-Za-z0-9]+/g, '_').replace(/_+$/, '') : '';
+  return 'pcrp_data_health_' + part + scope + '_' + new Date().toISOString().slice(0, 10) + '.csv';
+}
+
+function dhFindEval(id) {
+  var evs = dhEvaluateAll(S.overview, '');
+  for (var i = 0; i < evs.length; i++) if (evs[i].check.id === id) return evs[i];
+  return null;
+}
+
+/** One check, every row in scope (the search box narrows what is on screen, not the file). */
+function dhCsvCheck(id) {
+  var e = dhFindEval(id);
+  if (!e || e.pending) return;
+  var c = e.check;
+  if (id === 'cross') {
+    // one line per listing, so the file sorts and filters cleanly in Excel
+    var ed = S.hhIssues && S.hhIssues.editor, lines = [];
+    e.rows.forEach(function (r, i) {
+      r.barangays.forEach(function (b) {
+        lines.push(['Case ' + (i + 1)].concat(ed ? [r.name, b.birthdate || r.birthdate] : [])
+          .concat([r.confidence, r.acrossMunicipalities ? 'Yes' : 'No', b.province, b.municipality, b.barangay, hhActLabel(b.actCode), b.present ? 'Yes' : 'No', b.times]));
+      });
+    });
+    downloadCsv(dhCsvName('household_head_in_two_barangays'), hhCsv([['Case'].concat(ed ? ['Household head', 'Birthdate'] : [])
+      .concat(['Match', 'Different municipalities', 'Province', 'Municipality', 'Barangay', 'Assembly', 'Marked present', 'Times listed'])].concat(lines)));
+    return;
+  }
+  var cols = c.cols.filter(function (x) { return x.csv && (!c.names || (S.hhIssues && S.hhIssues.editor) || ['Name', 'Birthdate', 'Household head'].indexOf(x.label) === -1); });
+  downloadCsv(dhCsvName(c.name.toLowerCase().replace(/[^a-z0-9]+/g, '_')),
+    hhCsv([cols.map(function (x) { return x.label; })].concat(e.rows.map(function (r) { return cols.map(function (x) { return x.csv(r); }); }))));
+}
+
+/** Every open item in scope, one line each, for the MDE/PEA follow-up sheet. */
+function dhCsvAll() {
+  var evs = dhEvaluateAll(S.overview, '');
+  var lines = [['Check', 'Severity', 'Province', 'Municipality', 'Barangay', 'Detail']];
+  evs.forEach(function (e) {
+    if (e.pending || e.outOfScope) return;
+    var c = e.check;
+    if (!e.rows.length && e.count) {
+      lines.push([c.name, DH_SEV[c.severity].label, '', '', '', dhUnit(e.count, c.unit[0], c.unit[1]) + ' (count only)']);
+      return;
+    }
+    e.rows.forEach(function (r) {
+      var p = c.places(r).filter(dhInScope)[0] || c.places(r)[0] || {};
+      lines.push([c.name, DH_SEV[c.severity].label, p.province || '', p.municipality || '', p.barangay || '', c.detail(r)]);
+    });
+  });
+  downloadCsv(dhCsvName('all_open_items'), hhCsv(lines));
+}
+
+/** The Field Audit Memo, for the current scope. Called by openHealthMemoModal (JS_Dashboard). */
+function dhMemoText() {
+  var o = S.overview;
+  if (!o) return 'No data loaded.';
+  var evs = dhEvaluateAll(o, '');
+  var c = dhStatusCounts(evs);
+  var dateStr = new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+  var L = [];
+  L.push('====================================================');
+  L.push('DSWD FIELD OFFICE CARAGA — KALAHI-CIDSS PCRP');
+  L.push('DATA HEALTH AUDIT MEMO — ' + dhScopeLabel().toUpperCase());
+  L.push('Date of audit: ' + dateStr);
+  L.push('====================================================\n');
+
+  L.push('I. SUMMARY');
+  L.push('• Status: ' + (c.critical ? 'Needs attention' : c.verify ? 'Items to verify' : 'All checks passed') +
+    ' (' + c.critical + ' critical, ' + c.verify + ' to verify, ' + c.passed + ' passed' + (c.pending ? ', ' + c.pending + ' still loading' : '') + ')');
+  evs.forEach(function (e) {
+    if (e.outOfScope) return;
+    L.push('• ' + e.check.name + ': ' + (e.count === null ? 'loading' : dhUnit(e.count, e.check.unit[0], e.check.unit[1])) +
+      (e.sub ? ' — ' + e.sub : '') + (e.check.regionLevel && !S.healthScope ? ' (region-wide)' : ''));
+  });
+
+  L.push('\nII. ACTION ITEMS');
+  var k = 0;
+  evs.forEach(function (e) {
+    if (e.outOfScope || !e.count) return;
+    var ch = e.check;
+    k++;
+    L.push('\n[' + k + '] ' + ch.name.toUpperCase() + ' — ' + dhUnit(e.count, ch.unit[0], ch.unit[1]) + ' (' + DH_SEV[ch.severity].label + ')');
+    L.push('What to do: ' + ch.steps.join(' '));
+    e.rows.slice(0, 5).forEach(function (r) {
+      var p = ch.places(r).filter(dhInScope)[0] || ch.places(r)[0] || {};
+      L.push('  - ' + (p.municipality || '—') + ' / ' + (p.barangay || '—') + ': ' + ch.detail(r));
+    });
+    if (e.rows.length > 5) L.push('  … and ' + n(e.rows.length - 5) + ' more (see the Data Health page or its CSV).');
+  });
+  if (!k) L.push('No open items.');
+
+  var region = evs.filter(function (e) { return e.outOfScope && e.count; });
+  if (region.length) {
+    L.push('\nNot split by municipality (region-wide): ' + region.map(function (e) { return e.check.name + ' ' + dhUnit(e.count, e.check.unit[0], e.check.unit[1]); }).join('; ') + '.');
+  }
+  L.push('\nHousehold roster items are flagged for verification; they remain counted in K2 until the RPMO decides how to treat them.');
+  L.push('\n====================================================');
+  L.push('Please coordinate with your Area Coordinators (ACs) and Municipal Financial & Encoding Monitors (MFAMs) to resolve these items.');
+  L.push('Generated via PCRP Encoding Monitor');
+  return L.join('\n');
+}
+</script>

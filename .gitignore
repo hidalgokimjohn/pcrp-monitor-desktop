@@ -1,0 +1,19 @@
+# KCIS exports and workbooks hold personal data (names, birthdates): never commit them.
+*.xlsx
+*.xls
+*.xlsm
+*.csv
+~$*
+
+# exports the app saves
+PCRP_*.txt
+
+node_modules/
+.DS_Store
+Thumbs.db
+
+# saved data files from the app hold names and birthdates
+*.pcrp
+
+# local knowledge-graph output
+graphify-out/

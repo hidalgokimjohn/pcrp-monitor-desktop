@@ -1,0 +1,1105 @@
+<script>
+// ===================================================================
+// REFERENCE
+// ===================================================================
+
+function renderAbout() {
+  var o = S.overview;
+  if (!o) return;
+  $('ab-acts').innerHTML = '<thead><tr><th class="num">Seq</th><th>Code</th>' +
+    '<th>Official Activity Name</th><th>Level</th><th>Households?</th></tr></thead><tbody>' +
+    o.activities.map(function (a) {
+      return '<tr><td class="num font-bold">' + esc(a.seq) + '</td><td class="tiny font-bold text-dswd-blue">' +
+        esc(a.code) + '</td><td class="font-semibold text-slate-900 dark:text-slate-100">' + esc(a.label) + '</td><td>' + esc(a.level) +
+        '</td><td>' + (a.code === 'BA1' ? '<span class="pill good text-[10px]">70% Target</span>' : 'No') + '</td></tr>';
+    }).join('') + '</tbody>';
+  refreshIcons();
+}
+
+// ===================================================================
+// CHANGELOG & RELEASE NOTES
+// ===================================================================
+
+// ===================================================================
+// CHANGELOG & RELEASE NOTES (UPGRADED UX & INTERACTIVITY)
+// ===================================================================
+
+S.changelogFilter = 'all';
+S.changelogSearch = '';
+
+var CHANGELOG_DATA = [
+  {
+    version: '2.12.0',
+    date: 'October 15, 2026',
+    tag: 'Latest Release',
+    tagColor: 'bg-emerald-100 text-emerald-900 border-emerald-300 dark:bg-emerald-950/60 dark:text-emerald-300 dark:border-emerald-700',
+    spotlight: true,
+    items: [
+      { type: 'feature', label: 'Community Volunteer Import', text: 'Import & Setup has a Step 3 for the KCIS Community Volunteer List. Its three "Name" columns are saved as Activity, Committee and Position.', page: 'admin', pageLabel: 'Import & Setup' },
+      { type: 'feature', label: '1st BA Volunteers: BResT and SFMSC', text: 'The 1st BA card, the Activity Matrix and the Worksheet show how many barangays have their BResT and SFMSC encoded. An SFMSC needs exactly one Chairperson and at least two Members.', page: 'dash', pageLabel: 'Dashboard' },
+      { type: 'feature', label: 'Volunteer Checks in Data Health', text: 'New checks: 1st BA encoded but volunteers not encoded, SFMSC to fix, volunteers not tagged to a 1st BA body (MResT and the municipal SFMC belong to Seq 1, CSPMC committees to the 2nd BA), and record gaps.', page: 'health', pageLabel: 'Data Health' },
+      { type: 'enhancement', label: 'Inclusion Check (Partial)', text: 'The barangay drawer shows the share of volunteers who are women, IP or PWD against the SM1 para. 22 30% rule, marked partial because age and sector are not in the export.', page: 'muni', pageLabel: 'Worksheet' },
+      { type: 'enhancement', label: 'Volunteers in Trends', text: 'Saved snapshots record BResT and SFMSC encoding, and Trends can show them; they are kept out of the "All activities" totals.', page: 'hist', pageLabel: 'Trends' }
+    ]
+  },
+  {
+    version: '2.11.1',
+    date: 'October 15, 2026',
+    tag: 'Previous Release',
+    tagColor: 'bg-slate-100 text-slate-800 border-slate-300 dark:bg-slate-900/60 dark:text-slate-300 dark:border-slate-700',
+    items: [
+      { type: 'feature', label: 'Per-Table Search in Data Health', text: 'Every detail table in Data Health now has an embedded real-time search input in its toolbar. Quickly search and filter rows inside any check table without losing typing focus.', page: 'health', pageLabel: 'Data Health' },
+      { type: 'feature', label: 'Municipality Table Search', text: 'The "By municipality" summary table now features its own dedicated municipality and province search bar with instant live filtering and clear button.', page: 'health', pageLabel: 'Data Health' },
+      { type: 'enhancement', label: 'Keyboard Shortcuts & Smooth Focus', text: 'Press Escape to quickly clear table searches. Input focus and cursor position are seamlessly preserved across keystrokes with no page jump.', page: 'health', pageLabel: 'Data Health' }
+    ]
+  },
+  {
+    version: '2.11.0',
+    date: 'October 15, 2026',
+    tag: 'Previous Release',
+    tagColor: 'bg-slate-100 text-slate-800 border-slate-300 dark:bg-slate-900/60 dark:text-slate-300 dark:border-slate-700',
+    items: [
+      { type: 'feature', label: 'Data Health Triage List', text: 'Data Health now starts with what needs fixing: every check is one row with its count and unit, critical first, then items to verify. Checks that passed fold into one line. "Review" opens what it means, what to do and the list.', page: 'health', pageLabel: 'Data Health' },
+      { type: 'feature', label: 'Worklist by Municipality', text: 'A "By municipality" view lists open items per LGU. Click a municipality, or pick it in the Area box, to see only its barangays in every check, the CSV and the memo.', page: 'health', pageLabel: 'Data Health' },
+      { type: 'enhancement', label: 'Status, Not a Score', text: 'The 99% "Grade A" score is replaced by the number of critical, to-verify and passed checks, so the page cannot look healthy while problems are open.', page: 'health', pageLabel: 'Data Health' },
+      { type: 'enhancement', label: 'Memo and CSV Follow the Area', text: 'The audit memo now covers the household roster checks and the selected area. "Download CSV" gives every open item in that area, one line each.', page: 'health', pageLabel: 'Data Health' },
+      { type: 'enhancement', label: 'Readable on Small Screens', text: 'On phones and narrow windows, tables become stacked cards so no text is cut off.', page: 'health', pageLabel: 'Data Health' }
+    ]
+  },
+  {
+    version: '2.10.0',
+    date: 'October 15, 2026',
+    tag: 'Previous Release',
+    tagColor: 'bg-slate-100 text-slate-800 border-slate-300 dark:bg-slate-900/60 dark:text-slate-300 dark:border-slate-700',
+    items: [
+      { type: 'feature', label: 'Household Roster Checks', text: 'Data Health flags household rows with no name, the same person listed twice in a barangay, and the same household head listed in two or more barangays. Names are shown in Editor Mode only.', page: 'health', pageLabel: 'Data Health' },
+      { type: 'fix', label: 'Province Totals Reconcile', text: 'With a province selected, prioritized-only steps (BDC Meeting, 2nd and 3rd BA, O&M Groups) now count only prioritized barangays, as the region total does.', page: 'muni', pageLabel: 'Worksheet' },
+      { type: 'fix', label: 'Backlog on the Pull Date', text: 'A snapshot saved for an earlier pull date now judges the 3-day attendance window on that date, not on the day it was saved.', page: 'hist', pageLabel: 'Trends' },
+      { type: 'fix', label: 'Loreto Kept Apart', text: 'Municipalities with the same name in two provinces are no longer added together, and Trends no longer mixes "Carmen" with "Del Carmen".', page: 'muni', pageLabel: 'Worksheet' }
+    ]
+  },
+  {
+    version: '2.9.0',
+    date: 'October 12, 2026',
+    tag: 'Previous Release',
+    tagColor: 'bg-slate-100 text-slate-800 border-slate-300 dark:bg-slate-900/60 dark:text-slate-300 dark:border-slate-700',
+    items: [
+      { type: 'feature', label: 'Deadlines per Stage', text: 'Management Target Deadlines are now a list, grouped by stage: add, change or remove field conduct and KCIS encoding deadlines for a whole stage or selected activities. Stage 2 deadlines can now be set.', page: 'admin', pageLabel: 'Import & Setup' },
+      { type: 'feature', label: 'Deadline Revisions Kept', text: 'Each deadline keeps its original date and who last changed it; M&E Analysis shows "Moved from …" when a date has been revised.', page: 'me', pageLabel: 'M&E Analysis' },
+      { type: 'enhancement', label: 'Checks Before Saving', text: 'An encoding deadline cannot fall before the field conduct deadline for the same activities; dates already past need confirmation.', page: 'admin', pageLabel: 'Import & Setup' },
+      { type: 'fix', label: 'No More False "Target Met"', text: 'Progress Trends showed "Target Met" once a deadline passed, even with records outstanding. It now uses the same Met / On track / At risk / Overdue rule as M&E Analysis.', page: 'hist', pageLabel: 'Trends' },
+      { type: 'fix', label: 'PRVA Deadline in Trends', text: 'Choosing a PRVA activity in Progress Trends now measures against the PRVA encoding deadline instead of the Stage 1 one.', page: 'hist', pageLabel: 'Trends' }
+    ]
+  },
+  {
+    version: '2.8.0',
+    date: 'October 12, 2026',
+    tag: 'Previous Release',
+    tagColor: 'bg-slate-100 text-slate-800 border-slate-300 dark:bg-slate-900/60 dark:text-slate-300 dark:border-slate-700',
+    items: [
+      { type: 'feature', label: 'Stage Bar with Progress', text: 'A dedicated stage row above the page tabs shows all four PCRP stages with each stage\'s share of records with an attendance sheet. Stages 3 and 4 appear locked until their activities are added.', page: 'dash', pageLabel: 'Dashboard' },
+      { type: 'feature', label: 'Shareable Links & Back Button', text: 'The address now carries the stage and page (e.g. #s2/matrix), so a refresh keeps your place, the browser Back button works, and a link opens the same view for a colleague.', page: 'matrix', pageLabel: 'Activity Matrix' },
+      { type: 'enhancement', label: 'Grouped Page Tabs', text: 'Tabs are grouped into Monitor, Drill down, Analyze and Act. Reference moved to the header; the header runway button is now "Present" (full screen).', page: 'dash', pageLabel: 'Dashboard' },
+      { type: 'enhancement', label: 'Stage Scope Note', text: 'Every page states which stage it is showing, or that it is not split by stage (Trends, Data Health, Import).', page: 'health', pageLabel: 'Data Health' },
+      { type: 'feature', label: 'Stage 2 Milestone Runway', text: 'The runway follows the stage bar. Stage 2 is laid out as Sequences 6 to 11 with out-of-sequence flags; Stage 1 keeps its Sequence 2 gate and PRVA steps.', page: 'runway', pageLabel: 'Runway' },
+      { type: 'feature', label: 'Stage 2 M&E Analysis', text: 'M&E figures, targets, funnel, ageing and scorecard follow the selected stage. In Stage 2, K2 is read from the 2nd or 3rd BA, picked with chips in the header.', page: 'me', pageLabel: 'M&E Analysis' },
+      { type: 'feature', label: 'Stage 2 Briefs', text: 'Reporting Center briefs follow the stage: subject, Sequence 6 to 11 breakdown, 2nd and 3rd BA household quorum, and a checklist of that stage\'s lacking records only.', page: 'reporting', pageLabel: 'Reporting' },
+      { type: 'fix', label: 'Stage-Correct Totals', text: 'M&E, Reporting and Leaderboards no longer mix Stage 1 and Stage 2 records; each counts only the selected stage. Stage 1 briefs now also list Sequence 5 (BDC Meeting).', page: 'leaderboards', pageLabel: 'Leaderboards' }
+    ]
+  },
+  {
+    version: '2.7.0',
+    date: 'October 12, 2026',
+    tag: 'Previous Release',
+    tagColor: 'bg-slate-100 text-slate-800 border-slate-300 dark:bg-slate-900/60 dark:text-slate-300 dark:border-slate-700',
+    items: [
+      { type: 'feature', label: 'Stage 2 Activities', text: 'Sequence 5 (BDC Meeting) and Stage 2 Sequences 6 to 11: 2nd BA, Training for CSPMC, Sub-Project Development Workshop, 3rd BA, MResT Technical Desk Review and Formation of O&M Groups.', page: 'matrix', pageLabel: 'Activity Matrix' },
+      { type: 'feature', label: 'Stage 2 Prioritized Barangays', text: 'Prioritized-only activities count only Stage 2 prioritized barangays; others show a dash and add no lacking records.', page: 'muni', pageLabel: 'Worksheet' },
+      { type: 'feature', label: 'Multi-Assembly Household Quorum', text: 'Independent 70% household quorum tracking for the 1st, 2nd and 3rd Barangay Assemblies.', page: 'dash', pageLabel: 'Dashboard' }
+    ]
+  },
+  {
+    version: '2.6.2',
+    date: 'October 8, 2026',
+    tag: 'Previous Release',
+    tagColor: 'bg-slate-100 text-slate-800 border-slate-300 dark:bg-slate-900/60 dark:text-slate-300 dark:border-slate-700',
+    items: [
+      { type: 'fix', label: 'Quick Triage Modal Record Retrieval', text: 'Resolved issue where clicking "⚠ X with no attendees" displayed 0 records on Dashboard, Regional Worksheet, and Multi-LGU views by enabling multi-source candidate collection, server-side cache busting, and isolated scope filters.', page: 'dash', pageLabel: 'Dashboard' },
+      { type: 'feature', label: 'Cross-View Scoping Architecture', text: 'Smart scoping accurately segregates Regional (All 72 LGUs), Provincial, and Single-LGU flagged activities without scope bleed.', page: 'muni', pageLabel: 'Worksheet' },
+      { type: 'enhancement', label: 'On-Demand Data Fetch Fallback', text: 'Automatic asynchronous recovery fetches fresh KCIS records if client-side memory cache is empty.', page: 'dash', pageLabel: 'Dashboard' }
+    ]
+  },
+  {
+    version: '2.6.0',
+    date: 'October 7, 2026',
+    tag: 'Previous Release',
+    tagColor: 'bg-slate-100 text-slate-800 border-slate-300 dark:bg-slate-900/60 dark:text-slate-300 dark:border-slate-700',
+    items: [
+      { type: 'security', label: 'In-App Passkey Unlock Modal', text: 'Dual authentication allowing co-workers to unlock data upload and editing capabilities via secret passkey without requiring a Google Account sign-in.', page: 'admin', pageLabel: 'Import & Setup' },
+      { type: 'feature', label: 'Public Viewer Mode', text: 'Zero login friction: anyone with the portal URL can view all executive dashboards, worksheets, and analytical reports in Read-Only mode.', page: 'dash', pageLabel: 'Dashboard' },
+      { type: 'feature', label: 'Separated Household & Quorum Compliance', text: 'Dedicated 1st BA Activity Encoding Status and Household Quorum & Threshold Compliance sub-tables in Municipal Worksheet.', page: 'muni', pageLabel: 'Worksheet' },
+      { type: 'feature', label: 'Masterlist Listed HH Threshold Tracking', text: '1st BA threshold (>30 Listed HH) now strictly evaluates Masterlist Listed Households rather than attendees, isolating the 70% Quorum KPI.', page: 'muni', pageLabel: 'Worksheet' },
+      { type: 'enhancement', label: 'PRVA Activity Title Alignment', text: 'Streamlined "PRVA Diagnostics & BRVA Suite" to "PRVA" across Stage 1 Roadmap, Municipal Worksheet, Reporting Center briefs, and Chat exports.', page: 'dash', pageLabel: 'Dashboard' },
+      { type: 'enhancement', label: 'Passkey Administration Section', text: 'Direct in-app passkey rotation and management card added to Import & Setup Section 5 with instant script property synchronization.', page: 'admin', pageLabel: 'Import & Setup' }
+    ]
+  },
+  {
+    version: '2.5.0',
+    date: 'September 29, 2026',
+    tag: 'Previous Release',
+    tagColor: 'bg-slate-100 text-slate-800 border-slate-300 dark:bg-slate-900/60 dark:text-slate-300 dark:border-slate-700',
+    items: [
+      { type: 'feature', label: 'Region-Wide Municipal Worksheet', text: 'Consolidated municipal-level summary of all 72 LGUs across Caraga when no specific LGU is selected.', page: 'muni', pageLabel: 'Worksheet' },
+      { type: 'feature', label: 'Municipal-Level Activity Columns', text: 'Full table tracking municipal progress across all Stage 1 activities (MREST, BA1, PSA, PRVA, MRP).', page: 'muni', pageLabel: 'Worksheet' },
+      { type: 'feature', label: 'Count Ratio Progress Pills', text: 'Exact completed-over-expected ratio status pills (e.g. ✓ 25/25, 24/25, 0/25) with dynamic status colors.', page: 'muni', pageLabel: 'Worksheet' },
+      { type: 'feature', label: '1-Click Municipal Drilldown', text: 'Clicking any municipality row directly opens its detailed barangay worklist, dossier, and field action brief.', page: 'muni', pageLabel: 'Worksheet' },
+      { type: 'enhancement', label: 'Synchronized Scope Filtering', text: 'Municipal table dynamically reacts to provincial filter pills (All, Agusan N/S, Surigao N/S, Dinagat).', page: 'muni', pageLabel: 'Worksheet' }
+    ]
+  },
+  {
+    version: '2.4.0',
+    date: 'August 28, 2026',
+    tag: 'Major Release',
+    tagColor: 'bg-indigo-100 text-indigo-900 border-indigo-300 dark:bg-indigo-950/60 dark:text-indigo-300 dark:border-indigo-700',
+    items: [
+      { type: 'feature', label: 'Reporting & Dispatch Center', text: 'Executive reporting hub generating structured coordination briefs for regional leadership and field coordinators.', page: 'reporting', pageLabel: 'Reporting' },
+      { type: 'feature', label: 'Direct Email Dispatch', text: 'Integrated memo dispatch via MailApp.sendEmail with recipient auto-suggestions and delivery confirmation toasts.', page: 'reporting', pageLabel: 'Reporting' },
+      { type: 'feature', label: 'Saved Recipient Directory', text: 'Persistent regional contact directory stored in script properties for instant memo recipient selection.', page: 'reporting', pageLabel: 'Reporting' },
+      { type: 'enhancement', label: 'Modular Client Architecture', text: 'Refactored front-end codebase into specialized modular script templates for zero-regression maintainability and fast load times.' }
+    ]
+  },
+  {
+    version: '2.3.0',
+    date: 'August 28, 2026',
+    tag: 'Feature Release',
+    tagColor: 'bg-sky-100 text-sky-900 border-sky-300',
+    items: [
+      { type: 'feature', label: 'Milestone Advancement Runway', text: 'Interactive standalone full-screen landing canvas and dedicated tab featuring real-time encoding frontier with 5-province swimming corridors.', page: 'runway', pageLabel: 'Milestone Runway' },
+      { type: 'feature', label: 'Strict PRVA Sub-Sequence Gating', text: 'Enforced 5-stage prerequisite gate progression (3.1 Profiling → 3.2 Walk → 3.3 Mapping → 3.4 FGD → 3.5 Workshop) with exact out-of-sequence blocker telemetry.', page: 'runway', pageLabel: 'Milestone Runway' },
+      { type: 'feature', label: 'Harmonious Light & Dark Theming', text: 'Seamless responsive canvas styling adapting naturally to both deep midnight obsidian and light paper themes with zero square box obstructions.', page: 'runway', pageLabel: 'Milestone Runway' },
+      { type: 'enhancement', label: 'Context-Aware Runway Header', text: 'Intelligently renders full title/subtitle in full-screen presentation mode while providing a clean, non-redundant toolbar inside executive portal tabs.', page: 'runway', pageLabel: 'Milestone Runway' },
+      { type: 'enhancement', label: 'Dashboard Tab Streamlining', text: 'Clean separation of concerns with milestone runway housed in its dedicated tab, keeping the Dashboard focused on KPIs, Pipeline cards, and breakdown tables.', page: 'dash', pageLabel: 'Dashboard' },
+      { type: 'fix', label: 'Non-Overlapping Boundary Anchoring', text: 'Applied margin-pinned positioning for Sequence 1 and 100% Finish labels, completely eliminating canvas edge clipping and overlaps.' }
+    ]
+  },
+  {
+    version: '2.2.0',
+    date: 'August 27, 2026',
+    tag: 'Feature Release',
+    tagColor: 'bg-blue-100 text-blue-900 border-blue-300',
+    items: [
+      { type: 'feature', label: 'Stage 1 Milestone Roadmap', text: 'Connected horizontal 4-station visual journey track with illuminated progress ribbon, station badges, and field telemetry.', page: 'dash', pageLabel: 'Dashboard' },
+      { type: 'feature', label: 'PRVA Assessment Suite', text: 'Integrated Station 3 clustering all 5 PRVA sub-milestones (Profiling, Walk-through, Mapping, FGD, BPRVA) with interactive sub-step mini-steppers.', page: 'dash', pageLabel: 'Dashboard' },
+      { type: 'feature', label: 'Interactive Table Filtering', text: 'Clicking any roadmap station or PRVA sub-step dynamically filters the Detailed Pipeline Breakdown Table with 1-click [Show All] reset.', page: 'dash', pageLabel: 'Dashboard' },
+      { type: 'enhancement', label: 'Dark Mode Roadmap Styling', text: 'Optimized high-contrast Midnight Navy theme styles for roadmap stations, sub-chips, and filter indicators.' }
+    ]
+  },
+  {
+    version: '2.1.0',
+    date: 'August 27, 2026',
+    tag: 'Feature Release',
+    tagColor: 'bg-indigo-100 text-indigo-900 border-indigo-300',
+    items: [
+      { type: 'feature', label: 'Multi-LGU Disambiguation', text: 'Full composite keying (Province + Municipality & PSGC City Code) completely isolating identical municipality names (e.g. Loreto ADS vs. Loreto PDI) across Matrix, Worksheets, and Leaderboards.', page: 'matrix', pageLabel: 'Matrix' },
+      { type: 'feature', label: 'Raw Households PSGCs', text: 'Integrated PSGC codes (lib_region, lib_province, lib_city, lib_brgy) into Raw Households for 100% deterministic K2 Quorum matching.', page: 'admin', pageLabel: 'Import & Setup' },
+      { type: 'enhancement', label: 'Data Health Deep-Links', text: '1-click [Inspect] buttons in Data Health directly open the target municipal worksheet with fuzzy and compound key matching.', page: 'health', pageLabel: 'Data Health' },
+      { type: 'enhancement', label: 'Out of Sequence Triage', text: 'Added live sample listing and direct inspection for barangays missing 1st Barangay Assembly while subsequent milestones are active.', page: 'health', pageLabel: 'Data Health' },
+      { type: 'fix', label: 'Whitespace Normalization', text: 'Added normAlpha() resolver supporting collapsed/concatenated province names (e.g. SurigaodelNorte, AgusandelSur) across worksheets and baseline.' },
+      { type: 'fix', label: 'Sheet Tab & Warning Resolver', text: 'Flexible sheet tab resolver (findSheetByName_) and resolved false participant export warning banner.' }
+    ]
+  },
+  {
+    version: '2.0.0',
+    date: 'August 27, 2026',
+    tag: 'Major Release',
+    tagColor: 'bg-emerald-100 text-emerald-900 border-emerald-300',
+    items: [
+      { type: 'feature', label: 'Extended KCIS Schema', text: 'Dynamic adaptive parser supporting PSGC standard geographic codes, Date Start, Date End, and Crip Mc09 Activity ID.' },
+      { type: 'feature', label: 'Physical Conduct Dates', text: 'Displays actual event start and end dates inside the Barangay Drawer and worksheet dossier.', page: 'muni', pageLabel: 'Worksheet' },
+      { type: 'feature', label: 'KCIS Activity ID & PSGC', text: 'Direct 1-click copyable KCIS Activity Primary Key ID for instantaneous field transaction verification.', page: 'muni', pageLabel: 'Worksheet' },
+      { type: 'enhancement', label: 'Flexible Header Ingestion', text: 'Dynamic column position resolver allowing seamless import regardless of column order.' }
+    ]
+  },
+  {
+    version: '1.9.0',
+    date: 'August 27, 2026',
+    items: [
+      { type: 'feature', label: 'Interactive Changelog', text: 'Live search, category filter chips (Features, Enhancements, Security), and 1-click feature jump buttons.' },
+      { type: 'feature', label: 'Copy Release Notes', text: '1-click exportable system release notes formatted for management reporting.' },
+      { type: 'enhancement', label: 'Executive Spotlight', text: 'Featured hero card showcasing latest system release highlights.' }
+    ]
+  },
+  {
+    version: '1.8.0',
+    date: 'August 27, 2026',
+    items: [
+      { type: 'feature', label: 'Multi-Metric Chart', text: 'Interactive SVG trend chart with 4 metric perspectives (Encoded, Lacking Burn-Down, Daily Velocity, Attendees).', page: 'hist', pageLabel: 'Progress Trends' },
+      { type: 'feature', label: 'Velocity Forecaster', text: 'Executive throughput tracker calculating daily encoding pace and projected 100% completion target date.', page: 'hist', pageLabel: 'Progress Trends' },
+      { type: 'feature', label: 'Stalled LGUs Triage', text: 'Dedicated triage cards highlighting municipalities with zero progress across 3 snapshot dates with 1-click inspection.', page: 'hist', pageLabel: 'Progress Trends' },
+      { type: 'feature', label: 'Movement Ledger', text: 'Filterable snapshot movement ledger with pace filters (High Pace, Normal, Corrections) and live search.', page: 'hist', pageLabel: 'Progress Trends' }
+    ]
+  },
+  {
+    version: '1.7.0',
+    date: 'August 27, 2026',
+    items: [
+      { type: 'feature', label: 'Wizard Health Chips', text: 'Live status indicators for participants, households, and snapshot datasets.', page: 'admin', pageLabel: 'Import & Setup' },
+      { type: 'feature', label: 'LGU Search & Batch Triage', text: 'Searchable municipalities manager with province filtering and bulk Enable/Disable actions.', page: 'admin', pageLabel: 'Import & Setup' },
+      { type: 'feature', label: 'Field Conduct Presets', text: '1-click batch presets (Mark All Completed / Mark All On-going) with color-coded badges.', page: 'admin', pageLabel: 'Import & Setup' },
+      { type: 'enhancement', label: 'Live CSV Validator', text: 'Real-time keystroke format & row count validation before loading baseline CSV.', page: 'admin', pageLabel: 'Import & Setup' },
+      { type: 'enhancement', label: 'Google Sheet Shortcut', text: 'Direct 1-click jump to active Google Sheet workbook for authorized editors.', page: 'admin', pageLabel: 'Import & Setup' }
+    ]
+  },
+  {
+    version: '1.6.0',
+    date: 'August 27, 2026',
+    items: [
+      { type: 'feature', label: 'Health Score', text: 'Executive Data Integrity Score & Letter Grade (Grade A, B, C, D) tracking clean vs flagged records.', page: 'health', pageLabel: 'Data Health' },
+      { type: 'feature', label: 'Audit Filters', text: 'Category filter chips (Critical, Sequence, Quorum, Demographics) with live search.', page: 'health', pageLabel: 'Data Health' },
+      { type: 'feature', label: 'Resolution Guides', text: 'Collapsible "How to Fix" field action guides with step-by-step resolution workflows.', page: 'health', pageLabel: 'Data Health' },
+      { type: 'feature', label: 'Field Audit Memo', text: '1-click exportable Regional Data Health & Anomaly Audit Memo formatted for group chats and email.', page: 'health', pageLabel: 'Data Health' }
+    ]
+  },
+  {
+    version: '1.5.0',
+    date: 'August 27, 2026',
+    items: [
+      { type: 'feature', label: 'Provincial Scope', text: 'Top scope filter bar to drill down into any province (All, Agusan N/S, Surigao N/S, Dinagat).', page: 'dash', pageLabel: 'Dashboard' },
+      { type: 'feature', label: 'Pulse Banner', text: 'Executive operational health summary highlighting completion %, finished LGUs, and bottleneck phases.', page: 'dash', pageLabel: 'Dashboard' },
+      { type: 'enhancement', label: 'Leaderboard Ranges', text: 'Dynamic range selector (Top 5, Top 10, All Ranked) with instant provincial filtering.', page: 'dash', pageLabel: 'Dashboard' }
+    ]
+  },
+  {
+    version: '1.4.0',
+    date: 'August 27, 2026',
+    items: [
+      { type: 'feature', label: 'View Modes', text: '4 instant Matrix perspectives: % Completion, Lacking Count, Ratio (X/Y), and Attendees.', page: 'matrix', pageLabel: 'Activity Matrix' },
+      { type: 'feature', label: 'Cell Triage Dialog', text: 'Interactive cell popovers displaying completion ratios, participant counts, and jump-to-worksheet shortcuts.', page: 'matrix', pageLabel: 'Activity Matrix' },
+      { type: 'feature', label: 'Activity Spotlight', text: 'Click any column header to view regional sequence rankings, provincial performance, and leaderboards.', page: 'matrix', pageLabel: 'Activity Matrix' },
+      { type: 'enhancement', label: 'Summary Row', text: 'Pinned Regional Milestone Total row computing average progress and total lacking counts for every activity.', page: 'matrix', pageLabel: 'Activity Matrix' },
+      { type: 'enhancement', label: 'Regional Chips', text: 'One-click filter chips (All, Critical >10 Lacking, Any Lacking, and 100% Fully Encoded).', page: 'matrix', pageLabel: 'Activity Matrix' },
+      { type: 'enhancement', label: 'Dual Freeze', text: 'Smooth bidirectional sticky scrolling for both table headers and municipality names.', page: 'matrix', pageLabel: 'Activity Matrix' }
+    ]
+  },
+  {
+    version: '1.3.0',
+    date: 'August 27, 2026',
+    items: [
+      { type: 'feature', label: 'Interactive Chips', text: 'One-click filter chips with live counts (All, Lacking, Missing BA1, Out of Sequence, Below 70% Target, and Completed).', page: 'muni', pageLabel: 'Municipality Worksheet' },
+      { type: 'feature', label: 'Barangay Drawer', text: 'Slide-over dossier with sex-disaggregated attendees, household quorum shortfall calculator, and action guides.', page: 'muni', pageLabel: 'Municipality Worksheet' },
+      { type: 'feature', label: 'Field Brief Generator', text: '1-click exportable action briefs formatted for Messenger/Viber, formal email memos, and print view.', page: 'muni', pageLabel: 'Municipality Worksheet' },
+      { type: 'enhancement', label: 'Interactive Sorting', text: 'Sortable table columns for Barangay name, Attendees, HH Listed, HH Present, K2 Rate, and Lacking count.', page: 'muni', pageLabel: 'Municipality Worksheet' },
+      { type: 'enhancement', label: 'Quick Navigation', text: 'Previous/Next arrow buttons to swiftly flip across municipalities.', page: 'muni', pageLabel: 'Municipality Worksheet' },
+      { type: 'enhancement', label: 'Executive Health Cards', text: 'Top summary cards for Stage 1 completion %, lacking urgency, and household quorum status.', page: 'muni', pageLabel: 'Municipality Worksheet' }
+    ]
+  },
+  {
+    version: '1.2.0',
+    date: 'August 27, 2026',
+    items: [
+      { type: 'feature', label: 'Feature', text: 'System Changelog & Release Notes modal added to executive header.' },
+      { type: 'enhancement', label: 'Design', text: 'Full Glassmorphism redesign with ambient animated color blobs, DSWD brand styling, and Lucide SVG icons.' },
+      { type: 'enhancement', label: 'Terminology', text: 'Harmonized terms: converted all "Owed" and "Backlog" references to "Lacking" and "Lacking Records".' },
+      { type: 'enhancement', label: 'Usability', text: 'Matrix & Worksheet headers now show Activity Code as title and Sequence as subtitle.' },
+      { type: 'security', label: 'Privacy', text: 'Role-based protection: Import & Setup settings are hidden for non-editor accounts.' }
+    ]
+  },
+  {
+    version: '1.1.0',
+    date: 'August 27, 2026',
+    items: [
+      { type: 'feature', label: 'Feature', text: 'Drag-and-Drop 3-Step Import Wizard with automated byte counter and format validation.' },
+      { type: 'enhancement', label: 'Matrix', text: 'Frozen sticky columns for municipalities and barangays on wide data tables.' },
+      { type: 'feature', label: 'Search', text: 'Instant live keystroke filtering across both Matrix and Municipality Worksheets.' },
+      { type: 'feature', label: 'Export', text: '1-Click CSV worksheet and matrix exports for offline analysis.' },
+      { type: 'fix', label: 'Fix', text: 'Resolved table layout alignment and cell distribution issues.' }
+    ]
+  },
+  {
+    version: '1.0.0',
+    date: 'August 27, 2026',
+    items: [
+      { type: 'feature', label: 'Core', text: 'Multi-tier Excel (.xlsx) fail-safe converter (Advanced Drive v2, Drive v3, & Multipart REST).' },
+      { type: 'feature', label: 'Analytics', text: 'Stage 1 Milestone Pipeline & Regional Progress computation engine.' },
+      { type: 'feature', label: 'Worksheet', text: 'Granular barangay-by-barangay tracking with 1-click clipboard worklists.' },
+      { type: 'security', label: 'Security', text: 'Script Properties whitelist authentication (EDITORS setting).' }
+    ]
+  }
+];
+
+function setChangelogFilter(filterKey) {
+  S.changelogFilter = filterKey;
+  var container = $('cl-chips');
+  if (container) {
+    container.querySelectorAll('.filter-chip').forEach(function (btn) {
+      btn.classList.remove('active');
+    });
+  }
+  renderChangelog();
+}
+
+function jumpToFeaturePage(pageId) {
+  closeChangelogModal();
+  show(pageId);
+  toast('Switched to ' + pageId.toUpperCase() + ' page.', 'ok');
+}
+
+function renderChangelog() {
+  var el = $('changelog-body');
+  if (!el) return;
+
+  var q = normSearch(S.changelogSearch || '');
+  var filter = S.changelogFilter || 'all';
+
+  var filteredData = CHANGELOG_DATA.map(function (rel) {
+    var items = rel.items.filter(function (item) {
+      if (filter !== 'all' && item.type !== filter) return false;
+      if (q) {
+        var txt = normSearch(item.text);
+        var lbl = normSearch(item.label);
+        var ver = normSearch(rel.version);
+        if (txt.indexOf(q) === -1 && lbl.indexOf(q) === -1 && ver.indexOf(q) === -1) return false;
+      }
+      return true;
+    });
+    return {
+      version: rel.version,
+      date: rel.date,
+      tag: rel.tag,
+      tagColor: rel.tagColor,
+      spotlight: rel.spotlight,
+      items: items
+    };
+  }).filter(function (rel) {
+    return rel.items.length > 0;
+  });
+
+  if (!filteredData.length) {
+    el.innerHTML = '<div class="empty text-xs text-slate-500 p-8 text-center bg-slate-50 rounded-2xl">' +
+      '<i data-lucide="search-x" class="w-8 h-8 text-slate-400 mx-auto mb-2"></i>' +
+      'No release updates match "' + esc(S.changelogSearch) + '".' +
+      '</div>';
+    refreshIcons();
+    return;
+  }
+
+  var html = filteredData.map(function (rel, idx) {
+    var isSpotlight = rel.spotlight && idx === 0 && !q && filter === 'all';
+    var tagHtml = rel.tag ? '<span class="text-[10px] font-bold px-2 py-0.5 rounded-full border ' + rel.tagColor + '">' + esc(rel.tag) + '</span>' : '';
+
+    var itemsHtml = rel.items.map(function (item) {
+      var tagCls = 'tag-' + (item.type || 'feature');
+      var jumpBtn = item.page
+        ? '<button class="btn ghost text-[10px] py-0.5 px-2 rounded-lg font-bold ml-auto shrink-0 flex items-center gap-1 text-dswd-blue hover:bg-blue-50 cursor-pointer" onclick="jumpToFeaturePage(\'' + item.page + '\')"><span>Try ' + esc(item.pageLabel || '') + '</span> <i data-lucide="arrow-right" class="w-3 h-3"></i></button>'
+        : '';
+
+      return '<li class="flex items-start justify-between gap-2.5 leading-relaxed p-2 rounded-xl hover:bg-slate-50 transition-all">' +
+        '<div class="flex items-start gap-2 flex-1">' +
+          '<span class="tag-badge ' + tagCls + ' shrink-0 mt-0.5">' + esc(item.label) + '</span>' +
+          '<span class="text-xs text-slate-700">' + esc(item.text) + '</span>' +
+        '</div>' +
+        jumpBtn +
+      '</li>';
+    }).join('');
+
+    if (isSpotlight) {
+      return '<div class="p-5 rounded-2xl bg-gradient-to-br from-indigo-50/90 via-blue-50/80 to-purple-50/90 border border-blue-200/90 shadow-sm">' +
+        '<div class="flex items-center justify-between gap-2 mb-3">' +
+          '<div class="flex items-center gap-2">' +
+            '<span class="w-2 h-2 rounded-full bg-emerald-500 animate-ping"></span>' +
+            '<span class="font-black text-slate-900 text-base tracking-tight">v' + esc(rel.version) + '</span>' +
+            tagHtml +
+          '</div>' +
+          '<span class="text-xs text-slate-500 font-bold">' + esc(rel.date) + '</span>' +
+        '</div>' +
+        '<ul class="space-y-1">' + itemsHtml + '</ul>' +
+      '</div>';
+    }
+
+    return '<div class="changelog-entry p-4 rounded-2xl border border-slate-200/80 bg-white/80 shadow-sm">' +
+      '<div class="flex items-center justify-between gap-2 mb-2 pb-2 border-b border-slate-100">' +
+        '<div class="flex items-center gap-2">' +
+          '<span class="font-black text-slate-900 text-sm tracking-tight">v' + esc(rel.version) + '</span>' +
+          tagHtml +
+        '</div>' +
+        '<span class="text-xs text-slate-400 font-medium">' + esc(rel.date) + '</span>' +
+      '</div>' +
+      '<ul class="space-y-1">' + itemsHtml + '</ul>' +
+    '</div>';
+  }).join('');
+
+  el.innerHTML = html;
+
+  var searchInput = $('cl-search');
+  if (searchInput) {
+    searchInput.oninput = function () {
+      S.changelogSearch = this.value;
+      renderChangelog();
+      var inp = $('cl-search');
+      if (inp) {
+        inp.focus();
+        inp.setSelectionRange(inp.value.length, inp.value.length);
+      }
+    };
+  }
+
+  refreshIcons();
+}
+
+function syncVersionBadges() {
+  var currentVer = (CHANGELOG_DATA[0] && CHANGELOG_DATA[0].version) ? CHANGELOG_DATA[0].version : '2.6.0';
+  var headerBadge = $('header-version-badge');
+  if (headerBadge) headerBadge.textContent = 'v' + currentVer;
+  var modalBadge = $('modal-version-badge');
+  if (modalBadge) modalBadge.textContent = 'v' + currentVer;
+}
+
+function openChangelogModal() {
+  syncVersionBadges();
+  renderChangelog();
+  var modal = $('modal-changelog');
+  if (modal) modal.classList.add('open');
+  refreshIcons();
+}
+
+function closeChangelogModal() {
+  var modal = $('modal-changelog');
+  if (modal) modal.classList.remove('open');
+}
+
+if ($('btn-changelog')) $('btn-changelog').addEventListener('click', openChangelogModal);
+if ($('btn-close-changelog')) $('btn-close-changelog').addEventListener('click', closeChangelogModal);
+if ($('btn-done-changelog')) $('btn-done-changelog').addEventListener('click', closeChangelogModal);
+
+var modalEl = $('modal-changelog');
+if (modalEl) {
+  modalEl.addEventListener('click', function (e) {
+    if (e.target === modalEl) closeChangelogModal();
+  });
+}
+
+if ($('btn-copy-changelog')) {
+  $('btn-copy-changelog').addEventListener('click', function () {
+    var lines = [];
+    var currentVer = (CHANGELOG_DATA[0] && CHANGELOG_DATA[0].version) ? CHANGELOG_DATA[0].version : '2.6.0';
+    lines.push('====================================================');
+    lines.push('DSWD FIELD OFFICE CARAGA — KALAHI-CIDSS PCRP');
+    lines.push('SYSTEM RELEASE NOTES & CHANGELOG (v' + currentVer + ')');
+    lines.push('====================================================\n');
+
+    CHANGELOG_DATA.forEach(function (rel) {
+      lines.push('## v' + rel.version + ' (' + rel.date + ')' + (rel.tag ? ' [' + rel.tag + ']' : ''));
+      rel.items.forEach(function (it) {
+        lines.push('  • [' + it.label + '] ' + it.text);
+      });
+      lines.push('');
+    });
+
+    var txt = lines.join('\n');
+    navigator.clipboard.writeText(txt).then(function () {
+      toast('Complete Changelog copied to clipboard!', 'ok');
+    }).catch(function () {
+      toast('Failed to copy to clipboard.', 'err');
+    });
+  });
+}
+
+// ===================================================================
+// QUICK TRIAGE: NO ATTENDEES MODAL
+// ===================================================================
+var _noAttRecords = [];
+var NO_ATT_PAGE = 500;          // rows drawn per page; the filter still runs over every record
+var _noAttShown = NO_ATT_PAGE;
+var _noAttTimer = null;
+
+/** Search box handler: debounced, and goes back to the first page. */
+function onNoAttSearchInput() {
+  clearTimeout(_noAttTimer);
+  _noAttTimer = setTimeout(function () {
+    _noAttShown = NO_ATT_PAGE;
+    renderNoAttendeesTable();
+  }, 200);
+}
+
+function showMoreNoAttendees() {
+  _noAttShown += NO_ATT_PAGE;
+  renderNoAttendeesTable();
+}
+
+function openNoAttendeesModal(actCode, scope) {
+  // 1. Open modal IMMEDIATELY upon user click (0ms latency, instant response)
+  var modal = $('modal-no-attendees');
+  if (modal) modal.classList.add('open');
+
+  // Update header text immediately
+  var titleEl = $('no-att-title');
+  if (titleEl) {
+    if (actCode && actCode !== 'ALL') {
+      var actMeta = (S.overview && S.overview.activities && S.overview.activities.find(function (a) { return a.code === actCode; })) || null;
+      var actName = actMeta ? actMeta.label : (actCode === 'prva' ? 'PRVA' : actCode);
+      titleEl.textContent = actName + ' · Conducted with No Attendees';
+    } else {
+      titleEl.textContent = 'Activities Conducted with No Attendees';
+    }
+  }
+  var searchInput = $('no-att-search');
+  if (searchInput) searchInput.value = '';
+
+  _noAttRecords = [];
+  _noAttShown = NO_ATT_PAGE;
+  clearTimeout(_noAttTimer);
+  var searchScope = scope || 'AUTO';
+  var candidates = [];
+
+  // Helper to deduplicate records. One normalised key per record into a hash
+  // set: O(1) per record. The previous version compared every record against
+  // every candidate with six normAlpha() calls per pair (O(n^2)), and was fed
+  // the same records again by each cached S.muni payload.
+  var seen = Object.create(null);
+  function addCandidate(rec) {
+    if (!rec || !rec.actCode) return;
+    var bgy = rec.barangay || (rec.level === 'Municipal' ? '— (Municipal Level)' : '—');
+    var key = normAlpha(rec.province || '') + '|' + normAlpha(rec.municipality || '') + '|' +
+              normAlpha(bgy) + '|' + String(rec.actCode).toLowerCase();
+    if (seen[key]) return;
+    seen[key] = true;
+    candidates.push(Object.assign({}, rec, { barangay: bgy }));
+  }
+
+  // 1. Primary Source: Pre-computed region-wide records from backend overview/snapshot.
+  //    This already holds every record, so the sources below are only fallbacks
+  //    for when it is empty — re-adding the same records from them is pure cost.
+  if (S.overview && S.overview.noAttendeesRecords && S.overview.noAttendeesRecords.length) {
+    S.overview.noAttendeesRecords.forEach(addCandidate);
+  }
+
+  // 2. Secondary Source: All loaded municipal/regional entries in S.muni cache
+  if (!candidates.length && S.muni) {
+    Object.keys(S.muni).forEach(function (mk) {
+      var item = S.muni[mk];
+      if (item && item.noAttendeesRecords && item.noAttendeesRecords.length) {
+        item.noAttendeesRecords.forEach(addCandidate);
+      }
+      if (item && item.barangays && item.barangays.length) {
+        item.barangays.forEach(function (b) {
+          Object.keys(b.activities || {}).forEach(function (k) {
+            var act = b.activities[k];
+            if (act && (act.status === 'No Attendees' || (act.attendees === 0 && (act.dateStart || act.fieldDate)))) {
+              var actMeta = (item.activities && item.activities.find(function (a) { return a.code === k; })) ||
+                            (S.overview && S.overview.activities && S.overview.activities.find(function (a) { return a.code === k; })) || null;
+              addCandidate({
+                province: b.province || item.province || '',
+                municipality: b.municipality || item.municipality || '',
+                barangay: b.barangay || '',
+                actCode: k,
+                actLabel: actMeta ? actMeta.label : k,
+                seq: actMeta ? actMeta.seq : '',
+                level: 'Barangay',
+                dateStart: act.dateStart || '',
+                dateEnd: act.dateEnd || '',
+                fieldDate: act.fieldDate || act.dateStart || ''
+              });
+            }
+          });
+        });
+      }
+    });
+  }
+
+  // 3. Fallback: Active worksheet precomputed noAttendeesRecords
+  var muniPick = $('mu-pick') ? $('mu-pick').value : '';
+  var curMuniKey = muniPick || 'REGION';
+  var d = S.muni[curMuniKey] || S.muni['REGION'] || S.muni['REGION_' + (S.muniProvFilter || 'ALL')] || (muniPick ? S.muni[muniPick.split('|')[1]] : null);
+  if (!candidates.length && d && d.noAttendeesRecords && d.noAttendeesRecords.length) {
+    d.noAttendeesRecords.forEach(addCandidate);
+  }
+
+  // 4. Fallback: Scan S.overview.barangayRows
+  if (!candidates.length && S.overview && S.overview.barangayRows && S.overview.barangayRows.length) {
+    S.overview.barangayRows.forEach(function (b) {
+      Object.keys(b.activities || {}).forEach(function (k) {
+        var act = b.activities[k];
+        if (act && (act.status === 'No Attendees' || (act.attendees === 0 && (act.dateStart || act.fieldDate)))) {
+          var actMeta = (S.overview.activities && S.overview.activities.find(function (a) { return a.code === k; })) || null;
+          addCandidate({
+            province: b.province || '',
+            municipality: b.municipality || '',
+            barangay: b.barangay || '',
+            actCode: k,
+            actLabel: actMeta ? actMeta.label : k,
+            seq: actMeta ? actMeta.seq : '',
+            level: 'Barangay',
+            dateStart: act.dateStart || '',
+            dateEnd: act.dateEnd || '',
+            fieldDate: act.fieldDate || act.dateStart || ''
+          });
+        }
+      });
+    });
+  }
+
+  // Scoping logic
+  var scoped = candidates;
+  if (searchScope === 'DASH') {
+    var dFilter = (S.dashScope && S.dashScope !== 'all' && S.dashScope !== 'ALL') ? S.dashScope : null;
+    if (dFilter) {
+      var dAlpha = normAlpha(dFilter);
+      var filtered = scoped.filter(function (r) {
+        return normAlpha(r.province) === dAlpha;
+      });
+      if (filtered.length) scoped = filtered;
+    }
+  } else if (searchScope === 'MUNI' || (searchScope === 'AUTO' && muniPick && muniPick !== 'REGION')) {
+    var selVal = muniPick || (d && !d.isRegion ? (d.province ? d.province + '|' + d.municipality : d.municipality) : '');
+    if (selVal) {
+      var parts = selVal.indexOf('|') !== -1 ? selVal.split('|') : [null, selVal];
+      var pTarget = parts[0] ? normAlpha(parts[0]) : '';
+      var mTarget = normAlpha(parts[1]);
+      var mFiltered = scoped.filter(function (r) {
+        var mMatch = normAlpha(r.municipality) === mTarget;
+        var pMatch = pTarget ? normAlpha(r.province) === pTarget : true;
+        return mMatch && pMatch;
+      });
+      if (mFiltered.length) scoped = mFiltered;
+    }
+  } else {
+    // REGION / Multi-LGU mode
+    var pFilter = (S.muniProvFilter && S.muniProvFilter !== 'ALL' && S.muniProvFilter !== 'REGION') ? S.muniProvFilter : null;
+    if (pFilter) {
+      var pAlpha = normAlpha(pFilter);
+      var regFiltered = scoped.filter(function (r) {
+        return normAlpha(r.province) === pAlpha;
+      });
+      if (regFiltered.length) scoped = regFiltered;
+    }
+  }
+
+  // Activity filtering
+  if (actCode && actCode !== 'ALL') {
+    var normAct = String(actCode).toLowerCase().replace(/^seq\s*/, '').trim();
+    var actFiltered = scoped.filter(function (r) {
+      var rCode = String(r.actCode || '').toLowerCase().trim();
+      var rSeq = String(r.seq || '').toLowerCase().replace(/^seq\s*/, '').trim();
+      var rLabel = String(r.actLabel || '').toLowerCase();
+
+      if (normAct === 'prva' || normAct === '3') {
+        return rCode === 'prva' || rSeq.indexOf('3.') === 0 || rSeq === '3' || rLabel.indexOf('prva') !== -1;
+      }
+      return rCode === normAct || rSeq === normAct || rLabel.indexOf(normAct) !== -1;
+    });
+
+    if (actFiltered.length) {
+      scoped = actFiltered;
+    } else {
+      // Graceful fallback: check all candidates for activity match
+      var fallbackAct = candidates.filter(function (r) {
+        var rCode = String(r.actCode || '').toLowerCase().trim();
+        var rSeq = String(r.seq || '').toLowerCase().replace(/^seq\s*/, '').trim();
+        var rLabel = String(r.actLabel || '').toLowerCase();
+        if (normAct === 'prva' || normAct === '3') {
+          return rCode === 'prva' || rSeq.indexOf('3.') === 0 || rSeq === '3' || rLabel.indexOf('prva') !== -1;
+        }
+        return rCode === normAct || rSeq === normAct || rLabel.indexOf(normAct) !== -1;
+      });
+      if (fallbackAct.length) scoped = fallbackAct;
+      else scoped = [];
+    }
+  }
+
+  _noAttRecords = scoped;
+  renderNoAttendeesTable();
+  if (modal) refreshIcons(modal);
+}
+
+function closeNoAttendeesModal() {
+  var modal = $('modal-no-attendees');
+  if (modal) modal.classList.remove('open');
+}
+
+function renderNoAttendeesTable() {
+  var el = $('no-att-body');
+  var badge = $('no-att-count-badge');
+  if (!el) return;
+
+  var q = normSearch(($('no-att-search') ? $('no-att-search').value : '') || '');
+  var list = _noAttRecords.filter(function (r) {
+    if (!q) return true;
+    // normalised once per record, not once per keystroke
+    if (r._s === undefined) {
+      r._s = normSearch(r.province + ' ' + r.municipality + ' ' + r.barangay + ' ' + r.actCode + ' ' + r.actLabel);
+    }
+    return r._s.indexOf(q) !== -1;
+  });
+  var total = list.length;
+  var page = total > _noAttShown ? list.slice(0, _noAttShown) : list;
+
+  if (badge) {
+    badge.textContent = total + (total === 1 ? ' Record' : ' Records');
+  }
+
+  if (!list.length) {
+    el.innerHTML = '<div class="p-8 text-center text-slate-400 dark:text-slate-500">' +
+      '<i data-lucide="check-circle" class="w-12 h-12 mx-auto mb-2 text-emerald-500/60"></i>' +
+      '<p class="text-sm font-semibold text-slate-600 dark:text-slate-300">No records found with missing attendance sheets.</p>' +
+      (q ? '<p class="text-xs text-slate-400 mt-1">Try clearing your search query "' + esc(q) + '".</p>' : '') +
+      '</div>';
+    refreshIcons(el);
+    return;
+  }
+
+  var html = '<div class="scroll"><table><thead><tr>' +
+    '<th>Province</th><th>Municipality</th><th>Barangay / Scope</th>' +
+    '<th>Activity</th><th>Conducted Date</th><th style="text-align:center">Action</th>' +
+    '</tr></thead><tbody>' +
+    page.map(function (r) {
+      var dateTxt = r.fieldDate || (r.dateStart ? r.dateStart + (r.dateEnd && r.dateEnd !== r.dateStart ? ' - ' + r.dateEnd : '') : '—');
+      var rProvSafe = esc(r.province).replace(/'/g, "\\'");
+      var rMuniSafe = esc(r.municipality).replace(/'/g, "\\'");
+      var rBrgySafe = esc(r.barangay).replace(/'/g, "\\'");
+      return '<tr>' +
+        '<td class="text-xs font-semibold text-slate-600 dark:text-slate-400">' + esc(r.province) + '</td>' +
+        '<td class="text-xs font-bold text-dswd-blue dark:text-sky-400">' + esc(r.municipality) + '</td>' +
+        '<td class="text-xs font-bold text-slate-800 dark:text-slate-100">' + esc(r.barangay) + '</td>' +
+        '<td><span class="inline-block text-[10px] font-bold px-2 py-0.5 rounded bg-amber-100 text-amber-900 border border-amber-300 dark:bg-amber-950/60 dark:text-amber-300 dark:border-amber-700 mr-1.5">' + esc(r.seq || r.actCode) + '</span><span class="text-xs font-medium">' + esc(r.actLabel) + '</span></td>' +
+        '<td class="text-xs text-slate-500 dark:text-slate-400">' + esc(dateTxt) + '</td>' +
+        '<td style="text-align:center">' +
+          '<button class="btn ghost p-1 px-2.5 rounded-lg text-xs font-bold text-dswd-blue border border-sky-200 dark:border-sky-800 hover:bg-sky-50 dark:hover:bg-sky-950/40 cursor-pointer" onclick="inspectNoAttRecord(\'' + rMuniSafe + '\', \'' + rProvSafe + '\', \'' + rBrgySafe + '\')">' +
+            'Inspect' +
+          '</button>' +
+        '</td>' +
+      '</tr>';
+    }).join('') +
+    '</tbody></table></div>';
+
+  if (total > page.length) {
+    html += '<div class="flex items-center justify-between gap-3 pt-3 text-xs text-slate-500 dark:text-slate-400">' +
+      '<span>Showing ' + page.length + ' of ' + total + ' records</span>' +
+      '<button type="button" class="btn ghost p-1 px-3 rounded-lg text-xs font-bold text-dswd-blue border border-sky-200 dark:border-sky-800 cursor-pointer" onclick="showMoreNoAttendees()">Show ' +
+      Math.min(NO_ATT_PAGE, total - page.length) + ' more</button></div>';
+  }
+
+  el.innerHTML = html;
+  refreshIcons(el);
+}
+
+function inspectNoAttRecord(municipality, province, barangay) {
+  closeNoAttendeesModal();
+  if (typeof openMuni === 'function') {
+    openMuni(municipality, province);
+  }
+  if (barangay && barangay.indexOf('Municipal') === -1) {
+    setTimeout(function () {
+      if (typeof openBarangayDrawer === 'function') {
+        openBarangayDrawer(barangay, municipality, province);
+      }
+    }, 350);
+  }
+}
+
+function copyNoAttendeesList() {
+  if (!_noAttRecords.length) {
+    toast('No records to copy.', 'warn');
+    return;
+  }
+  var lines = [];
+  lines.push('====================================================');
+  lines.push('DSWD KALAHI-CIDSS PCRP · CONDUCTED WITH NO ATTENDEES');
+  lines.push('As of: ' + new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }));
+  lines.push('Total Flagged Records: ' + _noAttRecords.length);
+  lines.push('====================================================\n');
+
+  _noAttRecords.forEach(function (r, i) {
+    var dateTxt = r.fieldDate || (r.dateStart ? r.dateStart : 'Date not recorded');
+    lines.push((i + 1) + '. ' + r.municipality + ' (' + r.province + ') · ' + r.barangay);
+    lines.push('   Activity: ' + (r.seq ? r.seq + ' ' : '') + r.actLabel + ' [' + r.actCode + ']');
+    lines.push('   Conducted: ' + dateTxt);
+    lines.push('   Status: Marked conducted in field, but 0 attendees encoded in KCIS.');
+    lines.push('');
+  });
+
+  lines.push('👉 Action Required: Upload participant attendance lists in KCIS to credit milestones.');
+  var txt = lines.join('\n');
+  navigator.clipboard.writeText(txt).then(function () {
+    toast('List of ' + _noAttRecords.length + ' records copied to clipboard!', 'ok');
+  }).catch(function () {
+    toast('Failed to copy to clipboard.', 'err');
+  });
+}
+
+// Close on backdrop click
+var noAttModalEl = $('modal-no-attendees');
+if (noAttModalEl) {
+  noAttModalEl.addEventListener('click', function (e) {
+    if (e.target === noAttModalEl) closeNoAttendeesModal();
+  });
+}
+
+// ===================================================================
+// RPMO APPRAISAL ROSTER MODAL
+// ===================================================================
+
+var _apprFilter = 'all';
+var _apprSearch = '';
+var _apprTimer = null;
+
+function openAppraisalRosterModal() {
+  var modal = $('modal-appraisal-roster');
+  if (modal) modal.classList.add('open');
+  if ($('appr-search')) $('appr-search').value = '';
+  _apprSearch = '';
+  _apprFilter = 'all';
+  renderAppraisalRosterTable();
+  if (modal) refreshIcons(modal);
+}
+
+function closeAppraisalRosterModal() {
+  var modal = $('modal-appraisal-roster');
+  if (modal) modal.classList.remove('open');
+}
+
+function setAppraisalModalFilter(flt) {
+  _apprFilter = flt;
+  renderAppraisalRosterTable();
+}
+
+function onAppraisalSearchInput() {
+  clearTimeout(_apprTimer);
+  _apprTimer = setTimeout(function () {
+    _apprSearch = ($('appr-search') ? $('appr-search').value : '').toLowerCase().trim();
+    renderAppraisalRosterTable();
+  }, 150);
+}
+
+function renderAppraisalRosterTable() {
+  var body = $('appr-roster-body');
+  if (!body) return;
+
+  var o = S.overview;
+  if (!o) {
+    body.innerHTML = '<div class="empty">No overview data loaded yet.</div>';
+    return;
+  }
+
+  var allMunis = (o.municipalities || []).slice();
+  var scopedMunis = allMunis.filter(function (m) {
+    return !S.dashScope || S.dashScope === 'all' || m.province === S.dashScope;
+  });
+
+  var saved = o.appraisal || [];
+  var statuses = o.appraisalStatuses || ['Not started', 'Endorsed to RPMO', 'Under appraisal', 'Cleared'];
+
+  function getRec(m) {
+    var p = normAlpha(m.province), mu = normAlpha(m.municipality);
+    return saved.find(function (x) {
+      return normAlpha(x.province) === p && normAlpha(x.municipality) === mu;
+    }) || { status: 'Not started', date: '' };
+  }
+
+  var counts = { all: scopedMunis.length, 'Cleared': 0, 'Under appraisal': 0, 'Endorsed to RPMO': 0, 'Not started': 0 };
+  scopedMunis.forEach(function (m) {
+    var r = getRec(m);
+    var st = counts[r.status] !== undefined ? r.status : 'Not started';
+    counts[st]++;
+  });
+
+  if ($('appr-roster-count-badge')) {
+    $('appr-roster-count-badge').textContent = counts['Cleared'] + ' of ' + counts.all + ' Cleared';
+  }
+
+  if ($('appr-chips-container')) {
+    var chips = [
+      { id: 'all', label: 'All', count: counts.all },
+      { id: 'Cleared', label: 'Cleared', count: counts['Cleared'], cls: 'good' },
+      { id: 'Under appraisal', label: 'Under appraisal', count: counts['Under appraisal'], cls: 'warn' },
+      { id: 'Endorsed to RPMO', label: 'Endorsed', count: counts['Endorsed to RPMO'], cls: 'warn' },
+      { id: 'Not started', label: 'Not started', count: counts['Not started'] }
+    ];
+    $('appr-chips-container').innerHTML = chips.map(function (c) {
+      var isAct = _apprFilter === c.id ? ' active' + (c.cls ? ' chip-' + c.cls : '') : '';
+      return '<button type="button" class="filter-chip text-xs' + isAct + '" onclick="setAppraisalModalFilter(\'' + esc(c.id) + '\')">' +
+        '<span>' + esc(c.label) + '</span>' +
+        '<span class="chip-count">' + c.count + '</span>' +
+      '</button>';
+    }).join('');
+  }
+
+  var filtered = scopedMunis.filter(function (m) {
+    var r = getRec(m);
+    var st = r.status || 'Not started';
+    if (_apprFilter !== 'all' && st !== _apprFilter) return false;
+    if (_apprSearch) {
+      var q = _apprSearch;
+      var text = (m.municipality + ' ' + m.province + ' ' + st + ' ' + (r.date || '')).toLowerCase();
+      if (text.indexOf(q) === -1) return false;
+    }
+    return true;
+  });
+
+  filtered.sort(function (a, b) {
+    var ra = getRec(a), rb = getRec(b);
+    var order = { 'Under appraisal': 1, 'Endorsed to RPMO': 2, 'Not started': 3, 'Cleared': 4 };
+    var diff = (order[ra.status] || 9) - (order[rb.status] || 9);
+    if (diff !== 0) return diff;
+    return a.municipality.localeCompare(b.municipality);
+  });
+
+  var isEditor = Boolean(o.editor || (typeof getEditorPasskey === 'function' && getEditorPasskey()));
+
+  if (!filtered.length) {
+    body.innerHTML = '<div class="empty py-10 text-center"><i data-lucide="check-circle" class="w-8 h-8 text-slate-300 mx-auto mb-2"></i>No municipalities match the selected filter.</div>';
+    refreshIcons(body);
+    return;
+  }
+
+  var html = '<div class="scroll rounded-2xl border border-slate-200 dark:border-slate-800">' +
+    '<table class="w-full text-left border-collapse">' +
+      '<thead>' +
+        '<tr class="bg-slate-50 dark:bg-slate-800 text-[11px] font-bold uppercase tracking-wider text-slate-500">' +
+          '<th class="p-3">Municipality</th>' +
+          '<th class="p-3">Province</th>' +
+          '<th class="p-3">RPMO Appraisal Status</th>' +
+          '<th class="p-3">Status Date</th>' +
+          '<th class="p-3">Stage 2 Readiness</th>' +
+        '</tr>' +
+      '</thead>' +
+      '<tbody class="divide-y divide-slate-100 dark:divide-slate-800 text-xs">';
+
+  filtered.forEach(function (m) {
+    var r = getRec(m);
+    var st = r.status || 'Not started';
+    var dt = r.date || '';
+
+    var pillCls = st === 'Cleared' ? 'good' : (st === 'Not started' ? 'idle' : 'warn');
+    var isEligible = st === 'Cleared';
+
+    var statusColHtml = '';
+    var dateColHtml = '';
+
+    if (isEditor) {
+      statusColHtml = '<select class="appr-modal-sel p-1.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs font-bold text-slate-800 dark:text-slate-100 focus:ring-1 focus:ring-emerald-500" data-prov="' + esc(m.province) + '" data-muni="' + esc(m.municipality) + '">' +
+        statuses.map(function (v) {
+          return '<option value="' + esc(v) + '"' + (v === st ? ' selected' : '') + '>' + esc(v) + '</option>';
+        }).join('') +
+      '</select>';
+
+      dateColHtml = '<input type="date" class="appr-modal-dt p-1.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs text-slate-800 dark:text-slate-100" data-prov="' + esc(m.province) + '" data-muni="' + esc(m.municipality) + '" value="' + esc(dt) + '">';
+    } else {
+      statusColHtml = '<span class="pill ' + pillCls + ' text-xs font-bold">' + esc(st) + '</span>';
+      dateColHtml = dt ? '<span class="font-medium text-slate-700 dark:text-slate-300">' + esc(dt) + '</span>' : '<span class="text-slate-400">—</span>';
+    }
+
+    var stage2ColHtml = isEligible
+      ? '<span class="inline-flex items-center gap-1.5 text-emerald-700 dark:text-emerald-400 font-bold"><i data-lucide="check-circle-2" class="w-4 h-4 text-emerald-600"></i> Cleared for Stage 2</span>'
+      : '<span class="inline-flex items-center gap-1.5 text-amber-700 dark:text-amber-400 font-semibold"><i data-lucide="clock" class="w-4 h-4 text-amber-500"></i> Pending Sign-Off</span>';
+
+    html += '<tr class="hover:bg-slate-50/70 dark:hover:bg-slate-800/50 transition-colors">' +
+      '<td class="p-3 font-bold text-slate-900 dark:text-slate-100">' +
+        esc(m.municipality) +
+        (m.batch ? ' <span class="text-[10px] text-slate-400 font-normal">(' + esc(m.batch) + ')</span>' : '') +
+      '</td>' +
+      '<td class="p-3 text-slate-600 dark:text-slate-400 font-medium">' + esc(m.province) + '</td>' +
+      '<td class="p-3">' + statusColHtml + '</td>' +
+      '<td class="p-3">' + dateColHtml + '</td>' +
+      '<td class="p-3">' + stage2ColHtml + '</td>' +
+    '</tr>';
+  });
+
+  html += '</tbody></table></div>';
+  body.innerHTML = html;
+
+  if (isEditor) {
+    Array.prototype.forEach.call(body.querySelectorAll('.appr-modal-sel, .appr-modal-dt'), function (inputEl) {
+      inputEl.addEventListener('change', function () {
+        var tr = this.closest('tr');
+        var sel = tr.querySelector('.appr-modal-sel');
+        var dt = tr.querySelector('.appr-modal-dt');
+        var prov = sel.getAttribute('data-prov');
+        var muni = sel.getAttribute('data-muni');
+        var newStatus = sel.value;
+        var newDate = dt.value;
+
+        sel.disabled = true;
+        dt.disabled = true;
+        toast('Saving ' + muni + ' appraisal status…', 'info');
+
+        call('apiSetAppraisal', prov, muni, newStatus, newDate, getEditorPasskey()).then(function (o2) {
+          S.overview = o2;
+          toast(muni + ' appraisal updated to ' + newStatus + (newDate ? ' (' + newDate + ')' : ''), 'ok');
+          renderAppraisalRosterTable();
+          if (typeof renderDash === 'function') renderDash();
+        }).catch(function (err) {
+          toast(err.message, 'err');
+          sel.disabled = false;
+          dt.disabled = false;
+        });
+      });
+    });
+  }
+
+  refreshIcons(body);
+}
+
+function copyAppraisalRosterText() {
+  var o = S.overview;
+  if (!o) return;
+
+  var allMunis = (o.municipalities || []).slice();
+  var scopedMunis = allMunis.filter(function (m) {
+    return !S.dashScope || S.dashScope === 'all' || m.province === S.dashScope;
+  });
+  var saved = o.appraisal || [];
+
+  function getRec(m) {
+    var p = normAlpha(m.province), mu = normAlpha(m.municipality);
+    return saved.find(function (x) {
+      return normAlpha(x.province) === p && normAlpha(x.municipality) === mu;
+    }) || { status: 'Not started', date: '' };
+  }
+
+  var scopeName = (!S.dashScope || S.dashScope === 'all') ? 'Caraga Region' : S.dashScope;
+  var counts = { Cleared: 0, 'Under appraisal': 0, 'Endorsed to RPMO': 0, 'Not started': 0 };
+  scopedMunis.forEach(function (m) {
+    var r = getRec(m);
+    var st = counts[r.status] !== undefined ? r.status : 'Not started';
+    counts[st]++;
+  });
+
+  var lines = [
+    '📍 DSWD KALAHI-CIDSS PCRP · RPMO TECHNICAL APPRAISAL ROSTER',
+    '🏛️ Scope: ' + scopeName + ' (' + scopedMunis.length + ' Monitored Municipalities)',
+    '📊 Status Overview: ' + counts.Cleared + '/' + scopedMunis.length + ' Cleared (' + (scopedMunis.length ? Math.round(counts.Cleared / scopedMunis.length * 100) : 0) + '%) · ' + counts['Under appraisal'] + ' Under Appraisal · ' + counts['Endorsed to RPMO'] + ' Endorsed · ' + counts['Not started'] + ' Not Started',
+    '',
+    'MUNICIPAL BREAKDOWN:'
+  ];
+
+  scopedMunis.forEach(function (m, idx) {
+    var r = getRec(m);
+    var dtStr = r.date ? ' (' + r.date + ')' : '';
+    lines.push((idx + 1) + '. ' + m.municipality + ' (' + m.province + '): ' + r.status + dtStr + (r.status === 'Cleared' ? ' [Stage 2 Eligible]' : ''));
+  });
+
+  lines.push('');
+  lines.push('Generated from PCRP Encoding Monitor');
+  copyTextToClipboard(lines.join('\n'), 'RPMO Appraisal roster copied to clipboard!');
+}
+
+var apprModalEl = $('modal-appraisal-roster');
+if (apprModalEl) {
+  apprModalEl.addEventListener('click', function (e) {
+    if (e.target === apprModalEl) closeAppraisalRosterModal();
+  });
+}
+
+try { syncVersionBadges(); } catch (e) {}
+
+// Global Application Startup Initialization
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', function () {
+    try { syncVersionBadges(); } catch (e) {}
+    boot();
+  });
+} else {
+  try { syncVersionBadges(); } catch (e) {}
+  boot();
+}
+</script>

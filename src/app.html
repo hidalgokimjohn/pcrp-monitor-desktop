@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PCRP Monitor Desktop</title>
+<style>
+/*@@APP_CSS@@*/
+/*@@DH_CSS@@*/
+</style>
+</head>
+<body>
+<header class="top">
+  <div class="brand">
+    <div class="brand-mark" aria-hidden="true">P</div>
+    <div>
+      <div class="brand-title">PCRP Monitor Desktop</div>
+      <div class="brand-sub">KALAHI-CIDSS PCRP · Encoding findings, offline · monitor v@@VERSION@@</div>
+    </div>
+  </div>
+  <div class="top-status" id="top-status"></div>
+  <button class="home-chip" id="home-chip" type="button" hidden></button>
+  <div class="top-actions">
+    <button class="btn ghost" id="btn-import-top" type="button">Import files</button>
+    <button class="btn primary" id="btn-export" type="button" disabled>Export to Excel</button>
+  </div>
+</header>
+
+<nav class="tabs" id="tabs" role="tablist" aria-label="Pages">
+  <button role="tab" data-page="import" class="on">Import</button>
+  <button role="tab" data-page="overview" disabled>Overview</button>
+  <button role="tab" data-page="munis" disabled>Municipalities</button>
+  <button role="tab" data-page="brgys" disabled>Barangays</button>
+  <button role="tab" data-page="people" disabled>People</button>
+  <button role="tab" data-page="verify" disabled>Verify</button>
+  <button role="tab" data-page="health" disabled>Data Health</button>
+  <button role="tab" data-page="settings">Settings</button>
+</nav>
+
+<main>
+  <section class="page on" id="page-import">
+    <div id="saved-bar"></div>
+    <div class="card" id="home-card"></div>
+    <div class="card" id="import-card">
+      <h2><span class="step-no">2</span> Import KCIS exports</h2>
+      <p class="muted">Drop the files here, all at once or one by one. The app recognises each file from its column headers. Files are read on this computer only; nothing is uploaded.</p>
+      <label class="drop" id="drop">
+        <input type="file" id="file-input" multiple accept=".xlsx,.csv,.pcrp" hidden>
+        <span class="drop-title">Drop .xlsx or .csv files here, or click to choose</span>
+        <span class="drop-sub">Participants export · Households export · Community Volunteer List · the whole monitor workbook · or a saved .pcrp file</span>
+      </label>
+      <div id="import-progress" class="progress-line" hidden></div>
+      <div id="import-list"></div>
+      <div class="row-actions">
+        <button class="btn primary" id="btn-compute" type="button" disabled>Show findings</button>
+        <button class="btn ghost" id="btn-clear" type="button">Clear loaded files</button>
+      </div>
+    </div>
+    <div class="card note-card">
+      <h3>How the findings are counted</h3>
+      <ul>
+        <li>The same rules as the web Encoding Monitor (v@@VERSION@@): figures match it for the same files.</li>
+        <li><strong>Not encoded is not "not conducted".</strong> A missing record means it is not in KCIS yet.</li>
+        <li>The barangay baseline is built in (516 monitored barangays); load a newer one in Settings.</li>
+        <li>Field conduct per activity and the pull date (for the 3-day attendance window) are set in Settings.</li>
+      </ul>
+    </div>
+  </section>
+
+  <section class="page" id="page-overview"><div id="ov-body"></div></section>
+  <section class="page" id="page-munis"><div id="mu-body"></div></section>
+  <section class="page" id="page-brgys"><div id="bg-body"></div></section>
+  <section class="page" id="page-people"><div id="pp-body"></div></section>
+  <section class="page" id="page-verify"><div id="vf-body"></div></section>
+  <section class="page" id="page-health"><div id="he-body" class="dh-page"></div></section>
+  <section class="page" id="page-settings"><div id="st-body"></div></section>
+</main>
+
+<dialog id="memo-dialog" class="memo">
+  <form method="dialog">
+    <h2>Data Health audit memo</h2>
+    <textarea id="memo-text" rows="22" readonly></textarea>
+    <div class="row-actions">
+      <button class="btn primary" type="button" id="memo-copy">Copy</button>
+      <button class="btn ghost" type="button" id="memo-save">Save as .txt</button>
+      <button class="btn ghost" value="close">Close</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="person-dialog" class="memo person">
+  <form method="dialog">
+    <div id="person-body" class="person-body"></div>
+    <div class="row-actions"><button class="btn ghost" value="close">Close</button></div>
+  </form>
+</dialog>
+
+<div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+
+<script>
+/*@@BUILT_IN@@*/
+var S = { overview: null, matrix: null, activeStage: 1 };
+function $(id) { return document.getElementById(id); }
+</script>
+<script>
+/*@@MONITOR@@*/
+</script>
+<script>
+/*@@CORE@@*/
+/*@@RUNTIME@@*/
+</script>
+<script>
+/*@@HEALTH@@*/
+</script>
+<script>
+/*@@SAVED@@*/
+/*@@VERIFY@@*/
+/*@@APP@@*/
+/*@@PEOPLE@@*/
+</script>
+</body>
+</html>

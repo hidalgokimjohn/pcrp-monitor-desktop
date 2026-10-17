@@ -1,0 +1,869 @@
+<script>
+/**
+ * JavaScript.html — the browser side.
+ *
+ * It renders; it does not decide. Every figure here comes from an object
+ * Core.gs computed server-side, so the web app and the Excel template it
+ * replaces can never quietly disagree.
+ */
+
+// ===================================================================
+// PLUMBING
+// ===================================================================
+
+/** google.script.run, as a promise. */
+function call(fn) {
+  var args = Array.prototype.slice.call(arguments, 1);
+  return new Promise(function (resolve, reject) {
+    google.script.run
+      .withSuccessHandler(resolve)
+      .withFailureHandler(function (e) { reject(new Error(e.message || String(e))); })
+      [fn].apply(null, args);
+  });
+}
+
+var S = {
+  overview: null, matrix: null, history: null,
+  muni: {},              // municipality -> payload
+  activeStage: 1,        // an id from STAGES below
+  dashScope: 'all',
+  pipelineFilter: 'all', // Roadmap filter: 'all', '1', '2', '3', '3.1'..'3.5', '4', '5'..
+  trackSearch: '',
+  trackComplianceFilter: 'all', // 'all', 'unlocked', 'blocked', 'done'
+  busy: false
+};
+
+function $(id) { return document.getElementById(id); }
+function esc(s) {
+  return String(s === null || s === undefined ? '' : s)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+function n(v) { return (v === null || v === undefined) ? '' : Number(v).toLocaleString(); }
+function pct(v, dp) {
+  if (v === null || v === undefined) return '—';
+  var val = Number(v) * 100;
+  if (isNaN(val)) return '—';
+  if (val <= 0) return '0.0%';
+  if (val >= 100) return '100.0%';
+  var places = (dp === undefined ? 1 : dp);
+  var factor = Math.pow(10, places);
+  var truncated = Math.floor(val * factor) / factor;
+  return truncated.toFixed(places) + '%';
+}
+function normSearch(s) {
+  if (!s) return '';
+  return String(s)
+    .toLowerCase()
+    .replace(/ñ/g, 'n')
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+}
+function toast(text, kind) {
+  if (!text) return;
+  var container = $('toast-container');
+  if (!container) return;
+  var el = document.createElement('div');
+  el.className = 'toast ' + (kind || 'info');
+  var iconSvg = kind === 'ok' 
+    ? '<svg style="width:18px;height:18px;flex-shrink:0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>'
+    : kind === 'err'
+    ? '<svg style="width:18px;height:18px;flex-shrink:0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>'
+    : '<svg style="width:18px;height:18px;flex-shrink:0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>';
+  
+  el.innerHTML = '<span class="toast-icon">' + iconSvg + '</span><span style="flex:1;line-height:1.4">' + esc(text) + '</span>';
+  container.appendChild(el);
+
+  setTimeout(function () {
+    el.classList.add('toast-hide');
+    setTimeout(function () {
+      if (el.parentNode) el.parentNode.removeChild(el);
+    }, 300);
+  }, 4500);
+}
+
+function banner(text, kind) {
+  var b = $('banner');
+  if (!b) return;
+  if (!text) { b.className = 'msg hide'; return; }
+  b.className = 'msg ' + (kind || 'err');
+  b.textContent = text;
+  if (kind === 'err' || kind === 'ok') toast(text, kind);
+}
+
+function adminMsg(text, kind) {
+  var m = $('ad-msg');
+  if (!m) return;
+  if (!text) { m.className = 'msg hide'; return; }
+  m.className = 'msg ' + (kind || 'info');
+  m.textContent = text;
+  toast(text, kind);
+}
+function spinner(el, text) {
+  el.className = 'loading';
+  el.innerHTML = '<span class="spin"></span> ' + esc(text || 'Working…');
+}
+
+function normKey(s) {
+  return String(s || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+}
+
+/** Status -> pill class. */
+function pillOf(status) {
+  if (status === 'Complete') return 'good';
+  if (status === 'No Attendees') return 'bad';
+  return 'idle';
+}
+function statusPill(status) {
+  return '<span class="pill ' + pillOf(status) + '">' + esc(status) + '</span>';
+}
+/**
+ * One municipality-by-activity cell that accounts for EVERY record, not only the
+ * compliant ones: with attendance sheet / recorded but no sheet / not encoded.
+ * "Complete / expected" alone makes eight recorded-but-sheetless assemblies look
+ * exactly like eight that were never encoded. Colour never carries the meaning
+ * alone: each state is also written out.
+ *
+ *   t:    { expected, complete, noAttendees }   (not encoded = the remainder)
+ *   opts: { field: 'Not started'|'On-going'|'Completed', label: activity name,
+ *           pct: true to lead with a percentage instead of complete/expected }
+ */
+function statusCellHtml(t, opts) {
+  opts = opts || {};
+  var exp = (t && t.expected) || 0;
+  if (!exp) return '<span class="tiny text-slate-400">—</span>';
+  var comp = t.complete || 0, noAtt = t.noAttendees || 0;
+  var notEnc = Math.max(0, exp - comp - noAtt);
+  var field = opts.field || '';
+  var tip = (opts.label ? opts.label + ': ' : '') +
+    comp + ' with attendance sheet · ' + noAtt + ' recorded, no attendance sheet · ' +
+    notEnc + ' not encoded (of ' + exp + ')' + (field ? ' · Field: ' + field : '');
+
+  // A single record (a municipal-level activity) reads better as one status than a bar.
+  if (exp === 1) {
+    var one = comp ? ['good', '✓ Done']
+            : noAtt ? ['warn', '⚠ No sheet']
+            : [field === 'Completed' ? 'bad' : 'idle', '○ Not encoded'];
+    return '<span class="pill ' + one[0] + '" style="font-weight:700;font-size:11px" title="' + esc(tip) + '">' + one[1] + '</span>';
+  }
+
+  function w(v) { return (v / exp * 100).toFixed(1); }
+  var main = opts.pct ? Math.round(comp / exp * 100) + '%' : comp + '/' + exp;
+  var done = comp === exp;
+  var bar = '<span class="sc-bar" role="img" aria-label="' + esc(tip) + '">' +
+    (comp ? '<i class="sc-seg ok" style="width:' + w(comp) + '%"></i>' : '') +
+    (noAtt ? '<i class="sc-seg warn" style="width:' + w(noAtt) + '%"></i>' : '') +
+    (notEnc ? '<i class="sc-seg none" style="width:' + w(notEnc) + '%"></i>' : '') +
+    '</span>';
+  var notes = '';
+  if (noAtt) notes += '<span class="sc-note warn">' + noAtt + ' no sheet</span>';
+  if (notEnc) {
+    // Unencoded work is only urgent once the field side says it is done.
+    notes += '<span class="sc-note ' + (field === 'Completed' ? 'bad' : 'muted') + '">' +
+      (notEnc === exp ? 'none encoded' : notEnc + ' not encoded') + '</span>';
+  }
+  return '<div class="sc" title="' + esc(tip) + '"><span class="sc-main' + (done ? ' done' : '') + '">' +
+    main + (done ? ' ✓' : '') + '</span>' + bar + notes + '</div>';
+}
+
+/**
+ * The segmented bar on its own (with attendance sheet / recorded without sheet /
+ * not encoded), for places that lay out their own text: t = { expected, complete, noAttendees }.
+ */
+function statusBarHtml(t, wide) {
+  var exp = (t && t.expected) || 0;
+  if (!exp) return '';
+  var comp = t.complete || 0, noAtt = t.noAttendees || 0;
+  var notEnc = Math.max(0, exp - comp - noAtt);
+  function w(v) { return (v / exp * 100).toFixed(1); }
+  var tip = comp + ' with attendance sheet, ' + noAtt + ' recorded without attendance sheet, ' + notEnc + ' not encoded (of ' + exp + ')';
+  return '<span class="sc-bar' + (wide ? ' wide' : '') + '" role="img" aria-label="' + esc(tip) + '">' +
+    (comp ? '<i class="sc-seg ok" style="width:' + w(comp) + '%"></i>' : '') +
+    (noAtt ? '<i class="sc-seg warn" style="width:' + w(noAtt) + '%"></i>' : '') +
+    (notEnc ? '<i class="sc-seg none" style="width:' + w(notEnc) + '%"></i>' : '') + '</span>';
+}
+
+/** Activity code -> the label the PEO reads, falling back to the code. */
+function labelFor(code) {
+  var o = S.overview, out = code;
+  if (o && o.activities && Array.isArray(o.activities)) {
+    o.activities.forEach(function (a) { if (a.code === code) out = a.label; });
+  }
+  if (o && o.volunteers && String(code).indexOf('CV_') === 0) {
+    (o.volunteers.bodies || []).forEach(function (b) { if ('CV_' + b.code === code) out = '1st BA volunteers · ' + b.short; });
+  }
+  return out;
+}
+function bar(v) {
+  var w = Math.round((v || 0) * 100);
+  return '<div class="bar" title="' + pct(v) + '"><i style="width:' + w + '%"></i></div>';
+}
+
+function dualBar(rosterPct, conductPct) {
+  var rW = Math.min(100, Math.floor((rosterPct || 0) * 1000) / 10);
+  var cW = Math.min(100, Math.floor((conductPct || 0) * 1000) / 10);
+  return '<div class="relative w-full rounded-full overflow-hidden" style="height:7px;background:#e2e8f0" title="Recorded in KCIS: ' + pct(conductPct) + ' | With Attendees: ' + pct(rosterPct) + '">' +
+    '<div class="absolute top-0 left-0 h-full rounded-full transition-all duration-300" style="width:' + cW + '%;background:#60a5fa" title="Recorded in KCIS: ' + pct(conductPct) + '"></div>' +
+    '<div class="absolute top-0 left-0 h-full rounded-full transition-all duration-300" style="width:' + rW + '%;background:linear-gradient(90deg, #059669 0%, #10b981 100%)" title="With Attendees: ' + pct(rosterPct) + '"></div>' +
+  '</div>';
+}
+
+function renderActivityProgress(p) {
+  var exp = p.expected || 0;
+  if (!exp) return '<span class="tiny text-slate-400">—</span>';
+  var comp = p.complete || 0;
+  var cond = p.conducted !== undefined ? p.conducted : (comp + (p.noAttendees || 0));
+  var rosterPct = exp ? comp / exp : 0;
+  var condPct = exp ? cond / exp : 0;
+  var rosterW = Math.min(100, Math.floor(rosterPct * 1000) / 10);
+  var condW = Math.min(100, Math.floor(condPct * 1000) / 10);
+
+  var title = 'Recorded in KCIS: ' + n(cond) + ' of ' + n(exp) + ' (' + pct(condPct) + ')' +
+              ' | With Attendees: ' + n(comp) + ' of ' + n(exp) + ' (' + pct(rosterPct) + ')';
+
+  return '<div class="flex flex-col gap-1 py-0.5" style="min-width:135px" title="' + esc(title) + '">' +
+    '<div class="flex items-center justify-between text-[11px] leading-tight">' +
+      '<span class="font-bold text-blue-700 dark:text-blue-400">' + pct(condPct) + ' recorded</span>' +
+      '<span class="font-semibold text-emerald-700 dark:text-emerald-400 text-[10px]">(' + pct(rosterPct) + ' with attendees)</span>' +
+    '</div>' +
+    '<div class="relative w-full rounded-full overflow-hidden" style="height:7px;background:#e2e8f0">' +
+      '<div class="absolute top-0 left-0 h-full rounded-full transition-all duration-300" style="width:' + condW + '%;background:#60a5fa" title="Recorded in KCIS: ' + pct(condPct) + '"></div>' +
+      '<div class="absolute top-0 left-0 h-full rounded-full transition-all duration-300" style="width:' + rosterW + '%;background:linear-gradient(90deg, #059669 0%, #10b981 100%)" title="With Attendees: ' + pct(rosterPct) + '"></div>' +
+    '</div>' +
+  '</div>';
+}
+
+// ===================================================================
+// TABS
+// ===================================================================
+
+/**
+ * The four PCRP stages (SM1). A stage unlocks in the switcher as soon as the
+ * activity catalog (Code.js) has an activity tagged with its id, so adding
+ * Stage 3 is a Code.js change only. `status` is the fallback before data loads.
+ */
+var STAGES = [
+  { id: 1, short: 'Assessment & Planning',   title: 'Participatory Risk and Vulnerability Assessment and Resilience Planning', status: 'active' },
+  { id: 2, short: 'Sub-Project Development', title: 'Community Resilience Sub-Project Development',                          status: 'active' },
+  { id: 3, short: 'Implementation',          title: 'Community-Managed Resilience Sub-Project Implementation',               status: 'upcoming' },
+  { id: 4, short: 'Monitoring & Review',     title: 'Community-based Monitoring and Review',                                status: 'upcoming' }
+];
+
+function stageById(id) {
+  for (var i = 0; i < STAGES.length; i++) if (STAGES[i].id === id) return STAGES[i];
+  return STAGES[0];
+}
+
+function stageActivities(id) {
+  var acts = (S.matrix && S.matrix.activities) || (S.overview && S.overview.activities) || [];
+  return acts.filter(function (a) { return (a.stage || 1) === id; });
+}
+
+function stageIsOpen(id) {
+  var acts = (S.matrix && S.matrix.activities) || (S.overview && S.overview.activities);
+  if (!acts) return stageById(id).status === 'active';
+  return stageActivities(id).length > 0;
+}
+
+/** Share of expected records with an attendance sheet, over one stage's activities. */
+function stageProgress(id) {
+  var rows = (S.matrix && S.matrix.rows) || [];
+  var acts = stageActivities(id);
+  var exp = 0, comp = 0;
+  rows.forEach(function (r) {
+    acts.forEach(function (a) {
+      var c = r.cells && r.cells[a.code];
+      if (c) { exp += c.expected || 0; comp += c.complete || 0; }
+    });
+  });
+  return { expected: exp, complete: comp, rate: exp ? comp / exp : null };
+}
+
+/**
+ * Every page, and how it relates to the stage switcher:
+ *   stage: 'follow'  re-renders for whichever stage is active
+ *   stage: [1]       only built for the listed stages; shows those whatever is active
+ *   stage: 'all'     not split by stage (data health, import, reference)
+ */
+var PAGES = {
+  runway:       { label: 'Milestone Runway',       stage: 'follow', load: function () { return loadMatrix(true).then(renderRunway); }, rerender: function () { renderRunway(); } },
+  dash:         { label: 'Dashboard',              stage: 'follow', load: function () { return renderDash(); },                       rerender: function () { renderDash(); } },
+  me:           { label: 'M&E Analysis',           stage: 'follow', load: function () { return loadME(); },                           rerender: function () { renderME(); } },
+  leaderboards: { label: 'Leaderboards',           stage: 'follow', load: function () { return loadMatrix(true).then(renderLeaderboards); }, rerender: function () { renderLeaderboards(); } },
+  matrix:       { label: 'Activity Matrix',        stage: 'follow', load: function () { return loadMatrix(); },                       rerender: function () { drawMatrix(); } },
+  muni:         { label: 'Municipality Worksheet', stage: 'follow', load: function () { return initMuni(); },
+                  rerender: function () { if (typeof redrawMuni === 'function') redrawMuni(); else initMuni(); } },
+  hist:         { label: 'Progress Trends',        stage: 'all',    load: function () { return loadHistory(); } },
+  health:       { label: 'Data Health',            stage: 'all',    load: function () { return renderHealth(); } },
+  reporting:    { label: 'Reporting Center',       stage: 'follow', load: function () { return initReportingCenter(); },
+                  rerender: function () { autoFillRecipientsForTarget(); updateReportPreview(); } },
+  admin:        { label: 'Import & Setup',         stage: 'all',    load: function () { return renderAdmin(); } },
+  about:        { label: 'Reference',              stage: 'all',    load: function () { return renderAbout(); } }
+};
+
+var LOADERS = {};
+Object.keys(PAGES).forEach(function (k) { LOADERS[k] = PAGES[k].load; });
+
+function updatePstClock() {
+  var el = $('livePstTime');
+  if (!el) return;
+  var now = new Date();
+  var options = { timeZone: 'Asia/Manila', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true };
+  el.textContent = now.toLocaleTimeString('en-US', options);
+}
+setInterval(updatePstClock, 1000);
+updatePstClock();
+
+function refreshIcons(rootEl) {
+  if (window.lucide && typeof window.lucide.createIcons === 'function') {
+    try {
+      if (rootEl && rootEl.nodeType === 1) {
+        window.lucide.createIcons({ root: rootEl });
+      } else {
+        window.lucide.createIcons();
+      }
+    } catch (e) {}
+  }
+}
+
+$('tabs').addEventListener('click', function (ev) {
+  var b = ev.target.closest('button[data-page]');
+  if (!b) return;
+  show(b.getAttribute('data-page'));
+});
+
+function currentPage() {
+  var onPage = document.querySelector('section.page.on');
+  return onPage ? onPage.id.replace('page-', '') : 'dash';
+}
+
+function show(page, opts) {
+  opts = opts || {};
+  if (!PAGES[page]) page = 'dash';
+  if (page === 'admin' && S.overview && !S.overview.editor) {
+    toast('Import & Setup settings are restricted to authorized editors only.', 'warn');
+    page = 'dash';
+  }
+  Array.prototype.forEach.call(document.querySelectorAll('.tabs button, nav.tabs button'),
+    function (b) { b.classList.toggle('on', b.getAttribute('data-page') === page); });
+  Array.prototype.forEach.call(document.querySelectorAll('section.page'),
+    function (s) { s.classList.toggle('on', s.id === 'page-' + page); });
+  renderPageScopeNote(page);
+  if (!opts.fromHistory) syncUrlState(page);
+  var fn = LOADERS[page];
+  if (fn) Promise.resolve(fn()).then(refreshIcons).catch(function (e) { banner(e.message); });
+  refreshIcons();
+}
+
+function setActiveStage(stage, opts) {
+  opts = opts || {};
+  var sNum = parseInt(stage, 10) || 1;
+  if (!stageIsOpen(sNum)) {
+    toast('Stage ' + sNum + ' (' + stageById(sNum).short + ') is not tracked yet.', 'info');
+    return;
+  }
+  var changed = S.activeStage !== sNum;
+  S.activeStage = sNum;
+  S.pipelineFilter = 'all';
+  try { localStorage.setItem('pcrp_stage', String(sNum)); } catch (e) {}
+
+  renderStageSwitcher();
+  var page = currentPage();
+  renderPageScopeNote(page);
+  if (!opts.fromHistory) syncUrlState(page);
+
+  var def = PAGES[page];
+  if (changed && def && def.stage === 'follow' && def.rerender) {
+    try { def.rerender(); } catch (e) { banner(e.message); }
+  }
+  refreshIcons();
+}
+
+// ---- stage switcher ----------------------------------------------------------
+
+function renderStageSwitcher() {
+  var host = $('stage-switcher');
+  if (!host) return;
+  host.innerHTML = STAGES.map(function (st) {
+    var open = stageIsOpen(st.id);
+    var on = open && st.id === S.activeStage;
+    var prog = open ? stageProgress(st.id) : null;
+    var pctTxt = prog && prog.rate !== null ? Math.floor(prog.rate * 100) + '%' : '';
+    var tip = 'Stage ' + st.id + ': ' + st.title +
+      (prog && prog.expected ? ' · ' + n(prog.complete) + ' of ' + n(prog.expected) + ' records with attendance sheet' : '') +
+      (open ? '' : ' · not tracked yet');
+    return '<button type="button" class="stage-chip' + (on ? ' on' : '') + (open ? '' : ' locked') + '" data-stage="' + st.id + '"' +
+      ' title="' + esc(tip) + '"' + (open ? '' : ' aria-disabled="true"') + (on ? ' aria-current="true"' : '') + '>' +
+      '<span class="stage-chip-num">S' + st.id + '</span>' +
+      '<span class="stage-chip-label">' + esc(st.short) + '</span>' +
+      (open
+        ? (pctTxt ? '<span class="stage-chip-pct">' + pctTxt + '</span>' : '')
+        : '<i data-lucide="lock" class="w-3 h-3"></i>') +
+      (prog && prog.rate !== null ? '<span class="stage-chip-bar"><i style="width:' + Math.min(100, prog.rate * 100).toFixed(1) + '%"></i></span>' : '') +
+    '</button>';
+  }).join('');
+  document.documentElement.setAttribute('data-stage', String(S.activeStage));
+  refreshIcons(host);
+}
+
+/** One line under the tabs that says which stage the open page is showing. */
+function renderPageScopeNote(page) {
+  var el = $('page-scope-note');
+  var def = PAGES[page];
+  if (!el || !def) return;
+  var st = stageById(S.activeStage);
+  var html, kind;
+  if (def.stage === 'follow') {
+    kind = 'follow';
+    html = '<strong>Stage ' + st.id + ' · ' + esc(st.short) + '</strong><span class="psn-sub">' + esc(def.label) + ' is showing this stage. Switch stage above.</span>';
+  } else if (def.stage === 'all') {
+    kind = 'all';
+    html = '<strong>All stages</strong><span class="psn-sub">' + esc(def.label) + ' is not split by stage.</span>';
+  } else if (def.stage.indexOf(S.activeStage) !== -1) {
+    kind = 'follow';
+    html = '<strong>Stage ' + st.id + ' · ' + esc(st.short) + '</strong><span class="psn-sub">' + esc(def.label) + ' covers Stage ' + def.stage.join(', ') + ' only.</span>';
+  } else {
+    kind = 'mismatch';
+    html = '<strong>Showing Stage ' + def.stage.join(', ') + '</strong><span class="psn-sub">' + esc(def.label) +
+      ' is not built for Stage ' + st.id + ' yet, so it still shows Stage ' + def.stage.join(', ') + ' figures.</span>';
+  }
+  el.className = 'page-scope-note psn-' + kind;
+  el.innerHTML = '<i data-lucide="' + (kind === 'mismatch' ? 'info' : (kind === 'all' ? 'layers' : 'git-branch')) + '" class="w-3.5 h-3.5"></i>' + html;
+  refreshIcons(el);
+}
+
+// ---- URL state: #s2/matrix, so links can be shared and Back works --------------
+
+function stateHash(page) { return 's' + S.activeStage + '/' + page; }
+
+function parseStateHash(h) {
+  var m = /^#?s(\d+)(?:\/([a-z]+))?/.exec(h || '');
+  if (!m) return null;
+  return { stage: parseInt(m[1], 10), page: m[2] && PAGES[m[2]] ? m[2] : null };
+}
+
+function syncUrlState(page) {
+  if (document.body.classList.contains('landing-mode')) return;
+  var h = stateHash(page);
+  if (S.lastHash === h) return;
+  S.lastHash = h;
+  try {
+    if (window.google && google.script && google.script.history) google.script.history.push(null, null, h);
+    else if (window.history && history.replaceState) history.replaceState(null, '', '#' + h);
+  } catch (e) {}
+}
+
+function readUrlState(cb) {
+  try {
+    if (window.google && google.script && google.script.url) {
+      google.script.url.getLocation(function (loc) { cb(parseStateHash(loc && loc.hash)); });
+      return;
+    }
+  } catch (e) {}
+  cb(parseStateHash(window.location.hash));
+}
+
+function applyUrlState(st) {
+  if (!st) return;
+  if (st.stage && st.stage !== S.activeStage && stageIsOpen(st.stage)) setActiveStage(st.stage, { fromHistory: true });
+  if (st.page) {
+    document.body.classList.remove('landing-mode');
+    S.lastHash = stateHash(st.page);
+    show(st.page, { fromHistory: true });
+  }
+}
+
+try {
+  if (window.google && google.script && google.script.history) {
+    google.script.history.setChangeHandler(function (e) {
+      var st = parseStateHash(e && e.location && e.location.hash);
+      if (st) { S.lastHash = null; applyUrlState(st); }
+    });
+  }
+} catch (e) {}
+
+$('stage-switcher') && $('stage-switcher').addEventListener('click', function (ev) {
+  var b = ev.target.closest('button[data-stage]');
+  if (b) setActiveStage(b.getAttribute('data-stage'));
+});
+
+// ===================================================================
+// BOOT
+// ===================================================================
+
+function updateDataAsOfBadge(o) {
+  var badgeText = $('data-import-text');
+  if (!badgeText) return;
+
+  var ts = (o && (o.lastImportAt || o.generatedAt)) ? (o.lastImportAt || o.generatedAt) : new Date().toISOString();
+  var dObj = new Date(ts);
+
+  var snapDate = (o && o.snapshots && o.snapshots.length) ? o.snapshots[o.snapshots.length - 1] : null;
+  
+  var dateStr = '';
+  if (snapDate && /^\d{4}-\d{2}-\d{2}$/.test(snapDate)) {
+    var parts = snapDate.split('-');
+    var d = new Date(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, parseInt(parts[2], 10));
+    dateStr = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  } else {
+    dateStr = dObj.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  }
+
+  var timeStr = dObj.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
+
+  badgeText.textContent = 'Data as of ' + dateStr + ', ' + timeStr;
+}
+
+function getEditorPasskey() {
+  try { return localStorage.getItem('pcrp_editor_passkey') || ''; } catch (e) { return ''; }
+}
+
+function getEditorName() {
+  try { return localStorage.getItem('pcrp_editor_name') || ''; } catch (e) { return ''; }
+}
+
+function updateWhoamiDisplay(o) {
+  var userDisplayEl = $('whoami');
+  if (!userDisplayEl) return;
+  var userLabel = getEditorName() || (o && o.user) || 'Viewer';
+  var isEd = o && o.editor;
+
+  if (isEd) {
+    userDisplayEl.innerHTML =
+      '<div class="flex items-center gap-2 bg-white/95 dark:bg-slate-800/95 border border-emerald-300 dark:border-emerald-700/80 px-3 py-1.5 rounded-xl text-xs font-semibold text-slate-800 dark:text-slate-100 shadow-sm">' +
+        '<span class="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse"></span>' +
+        '<span>' + esc(userLabel) + '</span>' +
+        '<span class="pill good text-[10px] font-bold py-0.5 px-2">Editor</span>' +
+        '<button onclick="lockEditorMode()" class="ml-1 text-slate-400 hover:text-rose-500 cursor-pointer p-0.5 rounded transition-colors" title="Lock Editor Mode (Switch to Read-Only)">' +
+          '<i data-lucide="lock" class="w-3.5 h-3.5"></i>' +
+        '</button>' +
+      '</div>';
+  } else {
+    userDisplayEl.innerHTML =
+      '<div class="flex items-center gap-2 bg-white/90 dark:bg-slate-800/90 border border-slate-200 dark:border-slate-700 px-3 py-1.5 rounded-xl text-xs font-semibold text-slate-700 dark:text-slate-300 shadow-sm">' +
+        '<span class="w-2 h-2 rounded-full bg-slate-400"></span>' +
+        '<span>Public Viewer</span>' +
+        '<span class="pill idle text-[10px] font-bold py-0.5 px-2">Read-Only</span>' +
+        '<button onclick="openPasskeyModal()" class="ml-1 flex items-center gap-1 text-[11px] font-bold text-sky-600 dark:text-sky-400 hover:text-sky-700 dark:hover:text-sky-300 bg-sky-50 dark:bg-sky-950/60 border border-sky-200 dark:border-sky-800 px-2.5 py-1 rounded-lg cursor-pointer transition-all shadow-xs" title="Unlock Editor Mode to upload KCIS data">' +
+          '<i data-lucide="key-round" class="w-3.5 h-3.5 text-amber-500"></i>' +
+          '<span>Unlock</span>' +
+        '</button>' +
+      '</div>';
+  }
+  refreshIcons(userDisplayEl);
+}
+
+function openPasskeyModal() {
+  var m = $('modal-passkey');
+  if (!m) return;
+  m.classList.add('open');
+  var inp = $('passkey-input');
+  if (inp) {
+    inp.value = '';
+    inp.type = 'password';
+    setTimeout(function () { inp.focus(); }, 150);
+  }
+  var eye = $('passkey-eye-icon');
+  if (eye) eye.setAttribute('data-lucide', 'eye');
+  var err = $('passkey-error');
+  if (err) err.innerHTML = '';
+  var nameInp = $('passkey-name');
+  if (nameInp && !nameInp.value) nameInp.value = getEditorName();
+  var btn = $('btn-submit-passkey');
+  if (btn) btn.disabled = false;
+  refreshIcons(m);
+}
+
+function closePasskeyModal() {
+  var m = $('modal-passkey');
+  if (m) m.classList.remove('open');
+}
+
+function togglePasskeyVisibility() {
+  var inp = $('passkey-input');
+  var eye = $('passkey-eye-icon');
+  if (!inp) return;
+  if (inp.type === 'password') {
+    inp.type = 'text';
+    if (eye) eye.setAttribute('data-lucide', 'eye-off');
+  } else {
+    inp.type = 'password';
+    if (eye) eye.setAttribute('data-lucide', 'eye');
+  }
+  refreshIcons();
+}
+
+function submitPasskeyUnlock() {
+  var passkey = ($('passkey-input') ? $('passkey-input').value : '').trim();
+  var name = ($('passkey-name') ? $('passkey-name').value : '').trim();
+  var errEl = $('passkey-error');
+  var btn = $('btn-submit-passkey');
+
+  if (!passkey) {
+    if (errEl) errEl.innerHTML = '<span class="text-rose-600">Please enter the editor passkey.</span>';
+    return;
+  }
+
+  if (btn) btn.disabled = true;
+  if (errEl) errEl.innerHTML = '<span class="text-sky-600 font-medium flex items-center gap-1.5"><span class="spin"></span> Verifying passkey…</span>';
+
+  call('apiVerifyPasskey', passkey, name)
+    .then(function (res) {
+      if (res && res.ok) {
+        try {
+          localStorage.setItem('pcrp_editor_passkey', passkey);
+          if (name) localStorage.setItem('pcrp_editor_name', name);
+        } catch (e) {}
+
+        closePasskeyModal();
+        toast('✓ Editor Mode unlocked successfully!', 'ok');
+
+        // Re-boot session with passkey
+        return call('apiInit', passkey).then(function (initData) {
+          S.overview = initData.overview;
+          S.matrix = initData.matrix;
+          S.runwayTrail = initData.runwayTrail;
+          updateWhoamiDisplay(S.overview);
+          if ($('tab-admin')) $('tab-admin').style.display = S.overview.editor ? 'inline-flex' : 'none';
+          renderStageSwitcher();
+          renderDash();
+          toast('Import & Setup tab is now available.', 'ok');
+        });
+      } else {
+        if (errEl) errEl.innerHTML = '<span class="text-rose-600">' + esc((res && res.error) || 'Incorrect passkey.') + '</span>';
+        if (btn) btn.disabled = false;
+      }
+    })
+    .catch(function (err) {
+      if (errEl) errEl.innerHTML = '<span class="text-rose-600">' + esc(err.message || 'Verification error.') + '</span>';
+      if (btn) btn.disabled = false;
+    });
+}
+
+function lockEditorMode() {
+  if (!confirm('Lock Editor Mode and switch back to Read-Only view?')) return;
+  try {
+    localStorage.removeItem('pcrp_editor_passkey');
+    localStorage.removeItem('pcrp_editor_name');
+  } catch (e) {}
+  toast('Editor Mode locked. Switched to Read-Only.', 'info');
+  boot();
+}
+
+/** Open a page's section without running its loader (used before the data has arrived). */
+function showShell(page) {
+  document.body.classList.remove('landing-mode');
+  Array.prototype.forEach.call(document.querySelectorAll('.tabs button, nav.tabs button'),
+    function (b) { b.classList.toggle('on', b.getAttribute('data-page') === page); });
+  Array.prototype.forEach.call(document.querySelectorAll('section.page'),
+    function (s) { s.classList.toggle('on', s.id === 'page-' + page); });
+  renderPageScopeNote(page);
+}
+
+function boot() {
+  initTheme();
+  banner('');
+  try {
+    var savedStage = parseInt(localStorage.getItem('pcrp_stage'), 10);
+    if (savedStage && stageById(savedStage).id === savedStage) S.activeStage = savedStage;
+  } catch (e) {}
+  renderStageSwitcher();
+
+  // A link such as #s2/matrix opens that page directly; otherwise start on the runway landing.
+  var urlState, urlRead = false, dataReady = false;
+  function applyBootUrl() {
+    if (!urlRead || !dataReady) return;
+    if (urlState && urlState.stage && stageIsOpen(urlState.stage)) S.activeStage = urlState.stage;
+    if (!stageIsOpen(S.activeStage)) S.activeStage = 1;
+    renderStageSwitcher();
+    if (urlState && urlState.page) {
+      S.lastHash = stateHash(urlState.page);
+      show(urlState.page, { fromHistory: true });
+    } else {
+      renderPageScopeNote(currentPage());
+    }
+  }
+  readUrlState(function (st) {
+    urlState = st; urlRead = true;
+    if (st && st.page) showShell(st.page);
+    else if (!dataReady) enterLandingMode();
+    applyBootUrl();
+  });
+
+  var passkey = getEditorPasskey();
+  call('apiInit', passkey).then(function (initData) {
+    var o = initData.overview;
+    S.overview = o;
+    S.matrix = initData.matrix;
+    S.runwayTrail = initData.runwayTrail;
+
+    updateWhoamiDisplay(o);
+    updateDataAsOfBadge(o);
+
+    // Toggle Import & Setup tab visibility based on editor permissions
+    if ($('tab-admin')) {
+      $('tab-admin').style.display = o.editor ? 'inline-flex' : 'none';
+    }
+
+    fillPickers();
+    if (!stageIsOpen(S.activeStage)) S.activeStage = 1;
+    renderStageSwitcher();
+    renderRunway();
+    renderDash();
+    dataReady = true;
+    applyBootUrl();
+    refreshIcons();
+
+    // Background pre-fetch for History Trends during idle time (0ms latency on tab click)
+    setTimeout(function () {
+      if (S.history === undefined || S.history === null) {
+        call('apiHistory').then(function (h) { S.history = h; }).catch(function () {});
+      }
+    }, 1200);
+
+  }).catch(function (e) {
+    $('dash-body').innerHTML = '<div class="msg err">' + esc(e.message) + '</div>';
+    toast(e.message, 'err');
+  });
+}
+
+function fillPickers() {
+  var o = S.overview;
+  var muniList = o.municipalities.slice().sort(function (a, b) {
+    var mDiff = (a.municipality || '').localeCompare(b.municipality || '', undefined, { sensitivity: 'base', numeric: true });
+    if (mDiff !== 0) return mDiff;
+    return (a.province || '').localeCompare(b.province || '', undefined, { sensitivity: 'base', numeric: true });
+  });
+
+  var sel = $('mu-pick');
+  sel.innerHTML = '<option value="">— Select Municipality —</option>' +
+    muniList.map(function (m) {
+      var key = m.province ? m.province + '|' + m.municipality : m.municipality;
+      return '<option value="' + esc(key) + '">' + esc(m.municipality) + ' (' + esc(m.province) + ')</option>';
+    }).join('');
+
+  $('hi-muni').innerHTML = '<option value="">All municipalities</option>' +
+    '<option value="REGION">Region total</option>' +
+    muniList.map(function (m) {
+      var key = m.province ? m.province + '|' + m.municipality : m.municipality;
+      return '<option value="' + esc(key) + '">' + esc(m.municipality) + ' (' + esc(m.province) + ')</option>';
+    }).join('');
+
+  $('hi-act').innerHTML = '<option value="">All activities</option>' +
+    o.activities.map(function (a) {
+      return '<option value="' + esc(a.code) + '">' + esc(a.seq + ' ' + a.label) +
+             '</option>';
+    }).join('') +
+    // 1st BA volunteers: barangays with the body encoded (kept out of "All activities")
+    (o.volunteers && o.volunteers.imported
+      ? '<optgroup label="1st BA community volunteers (barangays encoded)">' + (o.volunteers.bodies || []).map(function (b) {
+          return '<option value="CV_' + esc(b.code) + '">2 · ' + esc(b.label) + '</option>';
+        }).join('') + '</optgroup>'
+      : '');
+
+  var provs = {}, batches = {};
+  o.municipalities.forEach(function (m) { provs[m.province] = 1; batches[m.batch] = 1; });
+  $('mx-prov').innerHTML = '<option value="">All provinces</option>' +
+    Object.keys(provs).sort().map(function (p) { return '<option>' + esc(p) + '</option>'; }).join('');
+  $('mx-batch').innerHTML = '<option value="">All batches</option>' +
+    Object.keys(batches).sort().map(function (b) { return '<option>' + esc(b) + '</option>'; }).join('');
+
+  var d = $('snap-date');
+  if (!d.value) d.value = new Date().toISOString().slice(0, 10);
+}
+
+
+// ===================================================================
+// THEME MANAGER (DARK / LIGHT MODE)
+// ===================================================================
+function initTheme() {
+  var saved = null;
+  try { saved = localStorage.getItem('pcrp_theme'); } catch (e) {}
+  var isDark = saved === 'dark' || (!saved && window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches);
+  applyTheme(isDark ? 'dark' : 'light', false);
+
+  var btn = $('btn-theme-toggle');
+  if (btn) {
+    btn.onclick = toggleTheme;
+  }
+}
+
+function applyTheme(theme, notify) {
+  var isDark = theme === 'dark';
+  if (isDark) {
+    document.documentElement.classList.add('dark');
+  } else {
+    document.documentElement.classList.remove('dark');
+  }
+  try { localStorage.setItem('pcrp_theme', theme); } catch (e) {}
+
+  var icon = $('theme-icon');
+  var label = $('theme-label');
+  if (icon) {
+    icon.setAttribute('data-lucide', isDark ? 'sun' : 'moon');
+    icon.className = 'w-3.5 h-3.5 ' + (isDark ? 'text-amber-400' : 'text-indigo-500');
+  }
+  if (label) {
+    label.textContent = isDark ? 'Light' : 'Dark';
+  }
+  refreshIcons();
+
+  if (notify) {
+    toast((isDark ? '🌙 Dark Mode' : '☀️ Light Mode') + ' enabled.', 'ok');
+  }
+}
+
+function toggleTheme() {
+  var isDark = document.documentElement.classList.contains('dark');
+  applyTheme(isDark ? 'light' : 'dark', true);
+}
+
+document.addEventListener('keydown', function (e) {
+  if (e.key === 'Escape') {
+    if (typeof closeChangelogModal === 'function') closeChangelogModal();
+    if (typeof closePasskeyModal === 'function') closePasskeyModal();
+    if (typeof closeBarangayDrawer === 'function') closeBarangayDrawer();
+    if (typeof closeNoAttendeesModal === 'function') closeNoAttendeesModal();
+    if (typeof closeShareBriefModal === 'function') closeShareBriefModal();
+    if (typeof closeMatrixCellModal === 'function') closeMatrixCellModal();
+    if (typeof closeActivitySpotlight === 'function') closeActivitySpotlight();
+    return;
+  }
+
+  // Municipal worksheet: Left/Right step through municipalities (as the button
+  // tooltips promise). Never while typing, on a dropdown, or with a dialog open.
+  if ((e.key === 'ArrowLeft' || e.key === 'ArrowRight') &&
+      !e.altKey && !e.ctrlKey && !e.metaKey && !e.shiftKey) {
+    // With the barangay drawer open, the arrows walk through the listed barangays.
+    var drawer = $('modal-barangay-detail');
+    if (drawer && drawer.classList.contains('open') && typeof stepBarangayDrawer === 'function') {
+      e.preventDefault();
+      stepBarangayDrawer(e.key === 'ArrowLeft' ? -1 : 1);
+      return;
+    }
+    var pg = $('page-muni');
+    if (!pg || !pg.classList.contains('on')) return;
+    var t = e.target, tag = t && t.tagName;
+    if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || (t && t.isContentEditable)) return;
+    if (document.querySelector('[id^="modal-"].open')) return;
+    if (typeof navigateMuni === 'function') {
+      e.preventDefault();
+      navigateMuni(e.key === 'ArrowLeft' ? -1 : 1);
+    }
+  }
+});
+
+document.addEventListener('DOMContentLoaded', function () {
+  var pModal = $('modal-passkey');
+  if (pModal) {
+    pModal.addEventListener('click', function (e) {
+      if (e.target === pModal) closePasskeyModal();
+    });
+  }
+  var pInput = $('passkey-input');
+  if (pInput) {
+    pInput.addEventListener('keydown', function (e) {
+      if (e.key === 'Enter') submitPasskeyUnlock();
+    });
+  }
+});
+</script>
