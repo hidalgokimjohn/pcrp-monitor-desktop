@@ -37,7 +37,7 @@ S.fixStatus = 'open';        // 'open' | 'new' | 'still' | 'resolved'
 
 var DH_PAGE = 25;
 var DH_SHORT = { quorum: 'Quorum', sequence: 'Sequence', noname: 'No name', dup: 'Listed twice', cross: 'Other barangay',
-                 late: 'Late 7+ days', dates: 'Dates', twice: 'Two records', attdup: 'Attendee twice', names: 'Names', bday: 'Birthdates',
+                 late: 'Late 7+ days', dates: 'Dates', multidate: 'Several dates', attdup: 'Attendee twice', names: 'Names', bday: 'Birthdates',
                  cv_missing: 'Volunteers missing', cv_sfmsc: 'SFMSC to fix', cv_tagging: 'CV untagged', cv_gaps: 'CV gaps' };
 
 // SM7 Table 8, the six dimensions of data quality. Every check names one (dim).
@@ -389,25 +389,28 @@ function dhQualityChecks(dq, col, colMuni, colProv, colPlace, colAct, one) {
       detail: function (r) { return hhActLabel(r.actCode) + ': ' + r.problems.join(', '); }
     },
     {
-      id: 'twice', dim: 'integrity', name: 'Activity encoded as two KCIS records', icon: 'files', severity: 'verify',
-      unit: ['activity', 'activities'], total: dq.twiceEncoded.length,
-      meaning: 'One barangay activity (or one municipal activity) appears under more than one KCIS activity ID.',
-      why: 'The activity was set up twice in KCIS, often by two encoders or after an upload failed. Attendees can then be split across the records or counted twice.',
-      steps: ['Open each KCIS ID listed and compare it with the attendance sheet.',
-              'Keep one record with every attendee and remove the duplicate record in KCIS.',
-              'Re-export and re-import the participants file.'],
-      rows: function () { return dq.twiceEncoded; }, places: one,
+      id: 'multidate', dim: 'reliability', name: 'Activity encoded under more than one date', icon: 'calendar-range', severity: 'verify',
+      unit: ['activity', 'activities'], total: (dq.multiDate || []).length,
+      meaning: 'One barangay activity has attendance rows with two or more different Date Start / Date End pairs.',
+      why: 'The activity was held over several days or sittings (then this is fine), or it was encoded twice and one date is wrong, which splits or double-counts the attendance.',
+      steps: ['Check the dates on the attendance sheets and the minutes of the activity.',
+              'If it was one sitting, correct the wrong Date Start and Date End in KCIS so all its rows carry the same date.',
+              'If it really was held on several days, nothing needs fixing.'],
+      rows: function () { return dq.multiDate || []; }, places: one,
       cols: [colMuni, colProv, colPlace, colAct,
-             col('KCIS IDs', function (r) { return '<span class="tiny font-mono">#' + r.ids.map(esc).join(', #') + '</span>'; }, function (r) { return r.ids.join(' ; '); }),
-             col('Attendees', function (r) { return n(r.attendees); }, function (r) { return r.attendees; }, 'num')],
-      text: function (r) { return place(r).concat(r.ids); },
-      detail: function (r) { return hhActLabel(r.actCode) + ': KCIS IDs #' + r.ids.join(', #'); }
+             col('Dates in KCIS', function (r) {
+               return r.sittings.map(function (x) {
+                 return '<div class="tiny">' + esc((x.start || '—') + (x.end && x.end !== x.start ? ' to ' + x.end : '')) + ' · ' + n(x.rows) + (x.rows === 1 ? ' row' : ' rows') + '</div>';
+               }).join('');
+             }, function (r) { return r.sittings.map(function (x) { return (x.start || '') + ' to ' + (x.end || '') + ' (' + x.rows + ' rows)'; }).join(' ; '); })],
+      text: function (r) { return place(r).concat(r.sittings.map(function (x) { return x.start || ''; })); },
+      detail: function (r) { return hhActLabel(r.actCode) + ': ' + r.sittings.length + ' dates (' + r.sittings.map(function (x) { return x.start; }).join(', ') + ')'; }
     },
     {
       id: 'attdup', dim: 'integrity', name: 'Same attendee listed twice in one activity', icon: 'users', severity: 'verify',
       unit: ['record', 'records'], total: dq.attendeeDuplicates.length,
-      meaning: 'The same first, middle and last name appears more than once in one activity\'s attendance.',
-      why: 'The attendance sheet was encoded twice, or one page was entered again. Each extra row adds one attendee to the counts.',
+      meaning: 'The same first, middle and last name appears more than once in one activity\'s attendance on the same date.',
+      why: 'The attendance sheet was encoded twice, or one page was entered again. Each extra row adds one attendee to the counts. Only rows with the same date count: the same person on another date is another sitting.',
       steps: ['Compare the attendee list in KCIS with the signed attendance sheet.',
               'Delete the extra rows in KCIS. If two different people share a name, leave both and note it.',
               'Re-export and re-import the participants file.'],
@@ -1143,7 +1146,7 @@ function dhFixInGroup(it, g) {
   return it.status !== 'resolved';
 }
 
-var DH_FIX_UNIT = { noname: ['row', 'rows'], dup: ['person', 'people'], cross: ['listing', 'listings'], twice: ['extra record', 'extra records'],
+var DH_FIX_UNIT = { noname: ['row', 'rows'], dup: ['person', 'people'], cross: ['listing', 'listings'], multidate: ['date', 'dates'],
                     attdup: ['extra row', 'extra rows'], names: ['row', 'rows'], bday: ['row', 'rows'], cv_tagging: ['row', 'rows'], cv_gaps: ['row', 'rows'] };
 
 function dhFixRowsInScope(fx) {

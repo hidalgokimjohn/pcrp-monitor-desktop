@@ -110,7 +110,7 @@ function savedUnavailable(e) {
 /** The verification tags, saved on their own: they outlive any one pull. */
 function savedPutTags() {
   if (!SAVED.available) return Promise.resolve();
-  return savedPut('tags', VERIFY.tags).catch(savedUnavailable);
+  return savedPut('tags', VERIFY.tags).then(renderSavedBar).catch(savedUnavailable);
 }
 
 /** At start: bring back the last data saved in this browser, if any. */

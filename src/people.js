@@ -102,7 +102,7 @@ function buildPeopleIndex() {
     r.type = 'household'; r.act = code; r.actLabel = actByCode[code].label;
     r.name = personName(first, middle, last); r.key = personKey(first, middle, last); r.loose = looseKey(first, last);
     r.sex = normText(row[CH.sex]).toLowerCase();
-    r.birthdate = CH.birthdate !== undefined ? dateOf(row[CH.birthdate]) : '';
+    r.birthdate = CH.birthdate !== undefined && hasValue(row[CH.birthdate]) ? (birthdateIso(row[CH.birthdate]) || normText(row[CH.birthdate])) : '';   // day numbers before 1954 too
     r.head = CH.isHead !== undefined && isTrue(row[CH.isHead]);
     r.present = isTrue(row[CH.present]);
     out.households.push(r);

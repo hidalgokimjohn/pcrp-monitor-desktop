@@ -879,4 +879,7 @@ loadReferenceTables();
 applyHomeScope();
 renderImport();
 renderStatus();
-savedRestore().then(function (restored) { if (restored) toast('Opened the data saved on this PC: as of ' + SAVED.current.pullDate + '.'); });
+// after the computation's own 'Findings ready' message, so this one is the one left on screen
+savedRestore().then(function (restored) {
+  if (restored) setTimeout(function () { toast('Opened the data saved on this PC: as of ' + SAVED.current.pullDate + '. Drop newer exports to replace it.'); }, 800);
+});

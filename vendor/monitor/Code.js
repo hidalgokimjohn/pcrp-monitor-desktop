@@ -1329,6 +1329,19 @@ function dqaPlace_(base, prov, muni, brgy) {
   };
 }
 
+/**
+ * A birthdate cell as YYYY-MM-DD. An .xlsx export stores dates as day
+ * numbers; formatDateVal reads those only from 1954 (20000), which leaves out
+ * anyone born earlier, so any number here is read as a day number.
+ */
+function birthdateIso(v) {
+  if (typeof v === 'number' && isFinite(v)) {
+    var d = new Date(-2209161600000 + Math.round(v) * 86400000);   // 1899-12-30, the spreadsheet epoch
+    return isNaN(d.getTime()) ? null : d.toISOString().slice(0, 10);
+  }
+  return formatDateVal(v);
+}
+
 /** Whole years between two YYYY-MM-DD dates, NaN if either is not one. */
 function ageOn_(birthIso, onIso) {
   var b = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(birthIso || ''));
@@ -1372,7 +1385,7 @@ function dqaFindings(health, hh) {
   (hh.duplicates || []).forEach(function (r) { addAgg('dup', r, r.actCode); });
   (hh.crossBarangay || []).forEach(function (c) { (c.barangays || []).forEach(function (b) { addAgg('cross', b, b.actCode); }); });
   (dq.dateIssues || []).forEach(function (r) { add('dates', r, r.actCode, r.problems.join('; '), 1); });
-  (dq.twiceEncoded || []).forEach(function (r) { add('twice', r, r.actCode, '', r.ids.length - 1); });
+  (dq.multiDate || []).forEach(function (r) { add('multidate', r, r.actCode, '', r.sittings.length); });
   (dq.attendeeDuplicates || []).forEach(function (r) { add('attdup', r, r.actCode, '', r.rows); });
   (dq.nameIssues || []).forEach(function (r) { add('names', r, r.actCode, r.source, r.rows); });
   (dq.birthdateIssues || []).forEach(function (r) { add('bday', r, r.actCode, r.problem, r.rows); });
@@ -1457,7 +1470,7 @@ function computeSnapshot(participants, households, baselineRows, monitored,
         rows: 0, att: 0, m: 0, f: 0, u: 0,
         dateStart: null, dateEnd: null, activityIds: {}, psgcBrgy: null,
         // data quality flags (Data Health only)
-        people: {}, dupRows: 0, dupPeople: 0, oddNames: 0, badDate: false, endBeforeStart: false
+        people: {}, dupRows: 0, dupPeople: 0, oddNames: 0, badDate: false, endBeforeStart: false, sittings: {}
       };
     }
     return rec[key];
@@ -1557,22 +1570,8 @@ function computeSnapshot(participants, households, baselineRows, monitored,
     var slotKey = finalProv + '|' + finalMuni + '|' + (municipal ? '' : finalBrgy) + '|' + code;
     var s = slot(slotKey);
     s.rows++;
-    if (hasValue(row[colP.first]) || hasValue(row[colP.last])) {
-      s.att++;
-      var sex = normKey(row[colP.sex]);
-      if (sex === 'male') s.m++;
-      else if (sex === 'female') s.f++;
-      else s.u++;
-
-      // ---- data quality, for Data Health. Flags only: the tallies above are unchanged.
-      var pf = normAlpha(row[colP.first]), pl = normAlpha(row[colP.last]);
-      if (isOddName_(pf, pl)) s.oddNames++;
-      var who = pf + ' ' + normAlpha(row[colP.middle]) + ' ' + pl;
-      s.people[who] = (s.people[who] || 0) + 1;
-      if (s.people[who] > 1) { s.dupRows++; if (s.people[who] === 2) s.dupPeople++; }
-    }
-
-    // Extended fields (Date Start, Date End, Crip Mc09 Activity Id, PSGC code)
+    // Date Start / Date End of this row. One barangay activity can carry rows
+    // with different dates (several sittings, or one encoded twice): a "sitting".
     var ds = null, de = null;
     if (colP.dateStart !== undefined && hasValue(row[colP.dateStart])) {
       ds = formatDateVal(row[colP.dateStart]);
@@ -1585,6 +1584,26 @@ function computeSnapshot(participants, households, baselineRows, monitored,
       if (!de || isNaN(isoDayNumber(de))) s.badDate = true;
     }
     if (ds && de && de < ds) s.endBeforeStart = true;
+    var sitting = (ds || '') + '>' + (de || '');
+    var sit = s.sittings[sitting] || (s.sittings[sitting] = { start: ds, end: de, rows: 0 });
+    sit.rows++;
+
+    if (hasValue(row[colP.first]) || hasValue(row[colP.last])) {
+      s.att++;
+      var sex = normKey(row[colP.sex]);
+      if (sex === 'male') s.m++;
+      else if (sex === 'female') s.f++;
+      else s.u++;
+
+      // ---- data quality, for Data Health. Flags only: the tallies above are unchanged.
+      var pf = normAlpha(row[colP.first]), pl = normAlpha(row[colP.last]);
+      if (isOddName_(pf, pl)) s.oddNames++;
+      var who = pf + ' ' + normAlpha(row[colP.middle]) + ' ' + pl + '|' + sitting;   // the same name on another date is another sitting, not a duplicate
+      s.people[who] = (s.people[who] || 0) + 1;
+      if (s.people[who] > 1) { s.dupRows++; if (s.people[who] === 2) s.dupPeople++; }
+    }
+
+    // Extended fields (Crip Mc09 Activity Id, PSGC code)
     if (colP.activityId !== undefined && hasValue(row[colP.activityId])) {
       var actId = String(row[colP.activityId]).trim();
       if (actId) s.activityIds[actId] = true;
@@ -1678,7 +1697,7 @@ function computeSnapshot(participants, households, baselineRows, monitored,
     if (hasValue(rawBday)) {
       // ~100k rows; formatDateVal goes through Utilities.formatDate, so memoise.
       var bdKey = typeof rawBday + ':' + String(rawBday);
-      if (bdayMemo[bdKey] === undefined) bdayMemo[bdKey] = formatDateVal(rawBday) || normText(rawBday);
+      if (bdayMemo[bdKey] === undefined) bdayMemo[bdKey] = birthdateIso(rawBday) || normText(rawBday);
       bday = bdayMemo[bdKey];
     }
     var entry = {
@@ -2021,7 +2040,7 @@ function computeSnapshot(participants, households, baselineRows, monitored,
   });
 
   // ---- data quality lists, for Data Health (places and counts, never names) --
-  var dqa = { dateIssues: [], twiceEncoded: [], attendeeDuplicates: [], nameIssues: [], birthdateIssues: [], lateAttendance: [] };
+  var dqa = { dateIssues: [], multiDate: [], attendeeDuplicates: [], nameIssues: [], birthdateIssues: [], lateAttendance: [] };
   var muniRows = {};            // "Province|Municipality" -> participant rows: a municipality with none has nothing to test
   Object.keys(rec).forEach(function (key) {
     var s = rec[key], parts = key.split('|'), code = parts[3];
@@ -2035,8 +2054,11 @@ function computeSnapshot(participants, households, baselineRows, monitored,
     if (isDay(s.dateStart) && s.dateStart < DQA_EARLIEST) probs.push('Dated before 2025');
     if ((isDay(s.dateStart) && s.dateStart > evalDate) || (isDay(s.dateEnd) && s.dateEnd > evalDate)) probs.push('Dated after the KCIS pull date');   // no date in the label: the Fix list keys on it from pull to pull
     if (probs.length) dqa.dateIssues.push(at({ problems: probs, dateStart: s.dateStart, dateEnd: s.dateEnd }));
-    var ids = Object.keys(s.activityIds);
-    if (ids.length > 1) dqa.twiceEncoded.push(at({ ids: ids.sort(), attendees: s.att }));
+    var sits = Object.keys(s.sittings).map(function (k) { return s.sittings[k]; });
+    if (sits.length > 1) {
+      sits.sort(function (a, b) { return String(a.start).localeCompare(String(b.start)); });
+      dqa.multiDate.push(at({ sittings: sits }));
+    }
     if (s.dupRows) dqa.attendeeDuplicates.push(at({ people: s.dupPeople, rows: s.dupRows }));
     if (s.oddNames) dqa.nameIssues.push(at({ source: 'Attendance', rows: s.oddNames }));
   });
