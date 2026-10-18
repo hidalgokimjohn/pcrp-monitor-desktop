@@ -1,4 +1,4 @@
-// Builds "PCRP Monitor Desktop.html": one offline file that runs the Encoding
+// Builds "PCRP Encoding and Data Quality Assessment Tool.html": one offline file that runs the Encoding
 // Monitor's own computation (Code.js, Store.js, WebApp.js) and Data Health page
 // (JS_Health.html) in the browser, on KCIS exports the user drops in.
 //
@@ -24,7 +24,8 @@ const MONITOR_SRC = process.env.PCRP_MONITOR_SRC || path.join(HERE, '..', 'PCRP-
 const VENDOR = path.join(HERE, 'vendor', 'monitor');
 const REFERENCE = path.join(HERE, 'data', 'reference.json');
 const WORKBOOK = process.argv[2] || path.join(MONITOR_SRC, '_PCRP Encoding Monitor.xlsx');
-const OUT = path.join(HERE, 'dist', 'PCRP Monitor Desktop.html');
+const OUT = path.join(HERE, 'dist', 'PCRP Encoding and Data Quality Assessment Tool.html');
+const OUT_LEGACY = path.join(HERE, 'dist', 'PCRP Monitor Desktop.html');
 const MONITOR_FILES = ['Code.js', 'Store.js', 'WebApp.js', 'JS_Health.html', 'JS_Core.html', 'JS_Modals.html', 'Styles.html'];
 
 // Secrets of the web app that the desktop app does not need: the default editor
@@ -165,6 +166,10 @@ const html = tpl
   .replace('/*@@APP@@*/', () => safe(fs.readFileSync(path.join(HERE, 'src', 'app.js'), 'utf8')))
   .replace('/*@@PEOPLE@@*/', () => safe(fs.readFileSync(path.join(HERE, 'src', 'people.js'), 'utf8')))
   .replace('/*@@VERIFY@@*/', () => safe(fs.readFileSync(path.join(HERE, 'src', 'verify.js'), 'utf8')))
+  .replace('/*@@GSAP@@*/', () => {
+    const gsapPath = path.join(HERE, 'vendor', 'gsap.min.js');
+    return fs.existsSync(gsapPath) ? safe(fs.readFileSync(gsapPath, 'utf8')) : '';
+  })
   .replace('/*@@SAVED@@*/', () => safe(fs.readFileSync(path.join(HERE, 'src', 'saved.js'), 'utf8')))
   .replace(/@@VERSION@@/g, version);
 
@@ -173,5 +178,6 @@ if (leaked.length) throw new Error('Build stopped: a web app secret is still in 
 
 fs.mkdirSync(path.dirname(OUT), { recursive: true });
 fs.writeFileSync(OUT, html);
+fs.writeFileSync(OUT_LEGACY, html);
 console.log('Built', OUT, '(' + Math.round(html.length / 1024) + ' KB) · monitor v' + version +
   ' · baseline ' + ref.Baseline.rows.length + ' rows · activities ' + ref.Activities.rows.length + ' · secrets removed');

@@ -6,8 +6,147 @@
 var PREFS_KEY = 'pcrp-desktop:v1';
 var LOADED = {};          // kind -> { file, sheet, rows }
 var IMPORT_ERRORS = [];   // { file, error }
-var STATE = { page: 'import', stage: 1, prov: '', muniSearch: '', muni: '', brgySearch: '', brgyFilter: 'all', computed: false, computedAt: null, ms: 0 };
+var STATE = { page: 'import', stage: 1, prov: '', muniSearch: '', muniSort: { col: 'muni', dir: 'asc' }, muni: '', brgySearch: '', brgyFilter: 'all', brgySort: { col: 'brgy', dir: 'asc' }, ovSearch: '', ovSort: { col: 'seq', dir: 'asc' }, settingsSearch: '', settingsSort: { col: 'seq', dir: 'asc' }, computed: false, computedAt: null, ms: 0 };
 var FIELD_VALUES = ['Not started', 'On-going', 'Completed'];
+
+var APP_VERSION = '@@VERSION@@';
+var DEFAULT_UPDATE_URL = 'https://raw.githubusercontent.com/hidalgokimjohn/pcrp-monitor-desktop/main/version.json';
+var UPDATE_STATE = {
+  checking: false,
+  downloading: false,
+  downloadProgress: '',
+  result: null,
+  error: null,
+  lastChecked: null
+};
+
+function compareVersions(v1, v2) {
+  if (!v1 || !v2) return 0;
+  var parse = function (v) {
+    return String(v).replace(/^v/i, '').split('.').map(function (x) { return parseInt(x, 10) || 0; });
+  };
+  var a = parse(v1), b = parse(v2);
+  var len = Math.max(a.length, b.length);
+  for (var i = 0; i < len; i++) {
+    var p1 = a[i] || 0, p2 = b[i] || 0;
+    if (p1 > p2) return 1;
+    if (p1 < p2) return -1;
+  }
+  return 0;
+}
+
+function checkForUpdates(manual) {
+  if (UPDATE_STATE.checking) return;
+
+  var p = prefs();
+  var feedUrl = (p.updateUrl || DEFAULT_UPDATE_URL).trim();
+
+  if (!navigator.onLine) {
+    UPDATE_STATE.checking = false;
+    UPDATE_STATE.error = 'You are currently offline. Connect to Wi-Fi or mobile data to check for updates.';
+    if (manual) toast(UPDATE_STATE.error);
+    renderSettings();
+    return;
+  }
+
+  UPDATE_STATE.checking = true;
+  UPDATE_STATE.error = null;
+  renderSettings();
+
+  var controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
+  var timer = controller ? setTimeout(function () { controller.abort(); }, 8000) : null;
+  var opts = { cache: 'no-store' };
+  if (controller) opts.signal = controller.signal;
+
+  fetch(feedUrl, opts)
+    .then(function (res) {
+      if (timer) clearTimeout(timer);
+      if (!res.ok) {
+        if (res.status === 404) {
+          throw new Error('Update feed (version.json) was not found on GitHub (HTTP 404). It has not been committed & pushed to the main branch yet.');
+        }
+        throw new Error('Server returned HTTP ' + res.status);
+      }
+      return res.json();
+    })
+    .then(function (data) {
+      UPDATE_STATE.checking = false;
+      var now = new Date();
+      UPDATE_STATE.lastChecked = now;
+      p.lastUpdateCheck = now.toISOString();
+      savePrefs(p);
+
+      if (!data || !data.version) {
+        throw new Error('Invalid update feed format (missing version).');
+      }
+
+      var isNewer = compareVersions(data.version, APP_VERSION) > 0;
+      UPDATE_STATE.result = {
+        updateAvailable: isNewer,
+        remote: data
+      };
+
+      if (isNewer) {
+        if (manual) toast('Update available: v' + data.version + '!');
+      } else {
+        if (manual) toast('You are on the latest version (v' + APP_VERSION + ').');
+      }
+      renderSettings();
+      updateTabBadges();
+      renderStatus();
+    })
+    .catch(function (err) {
+      if (timer) clearTimeout(timer);
+      UPDATE_STATE.checking = false;
+      var msg = err.name === 'AbortError'
+        ? 'Connection timed out. Please check your internet connection.'
+        : ('Could not check for updates: ' + (err.message || 'Network error'));
+      UPDATE_STATE.error = msg;
+      if (manual) toast(msg);
+      renderSettings();
+    });
+}
+
+function downloadAppUpdate() {
+  if (!UPDATE_STATE.result || !UPDATE_STATE.result.remote) return;
+  var remote = UPDATE_STATE.result.remote;
+  var url = remote.downloadUrl;
+  if (!url) {
+    if (remote.releaseUrl) window.open(remote.releaseUrl, '_blank');
+    return;
+  }
+
+  if (UPDATE_STATE.downloading) return;
+  UPDATE_STATE.downloading = true;
+  UPDATE_STATE.downloadProgress = 'Downloading v' + remote.version + '…';
+  renderSettings();
+  toast('Starting download of v' + remote.version + '…');
+
+  fetch(url)
+    .then(function (res) {
+      if (!res.ok) throw new Error('HTTP ' + res.status + ' downloading update');
+      return res.blob();
+    })
+    .then(function (blob) {
+      UPDATE_STATE.downloading = false;
+      UPDATE_STATE.downloadProgress = '';
+      var filename = 'PCRP_Encoding_and_Data_Quality_Assessment_Tool_v' + remote.version + '.html';
+      saveBlob(blob, filename);
+      toast('Update downloaded! Open the new file from your Downloads folder.');
+      renderSettings();
+    })
+    .catch(function (err) {
+      UPDATE_STATE.downloading = false;
+      UPDATE_STATE.downloadProgress = '';
+      toast('Direct download failed: ' + err.message + '. Opening download page…');
+      if (remote.releaseUrl) {
+        window.open(remote.releaseUrl, '_blank');
+      } else {
+        window.open(url, '_blank');
+      }
+      renderSettings();
+    });
+}
 
 // ---- small helpers ---------------------------------------------------------
 
@@ -35,37 +174,315 @@ function pctOf(a, b) { return b ? a / b : null; }
 function pctText(v) { return v === null || v === undefined ? '—' : (Math.round(v * 1000) / 10).toFixed(1) + '%'; }
 function today() { return new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 10); }
 
-var toastTimer = null;
-function toast(msg) {
-  var t = $('toast'); t.textContent = msg; t.hidden = false;
-  clearTimeout(toastTimer); toastTimer = setTimeout(function () { t.hidden = true; }, 4200);
+function bindSearch(id, fn) {
+  var el = $(id);
+  if (!el) return;
+  el.addEventListener('input', function () {
+    var v = el.value, pos = el.selectionStart;
+    fn(v);
+    var again = $(id);
+    if (again) { again.focus({ preventScroll: true }); try { again.setSelectionRange(pos, pos); } catch (e) {} }
+  });
 }
 
-// Lucide icons are not available offline; the pages' <i data-lucide> become small glyphs.
+function cmpValues(a, b) {
+  if (a === b) return 0;
+  var aEmpty = a === null || a === undefined || a === '' || a === '—';
+  var bEmpty = b === null || b === undefined || b === '' || b === '—';
+  if (aEmpty && bEmpty) return 0;
+  if (aEmpty) return 1;
+  if (bEmpty) return -1;
+  if (typeof a === 'number' && typeof b === 'number') {
+    if (isNaN(a)) return 1;
+    if (isNaN(b)) return -1;
+    return a - b;
+  }
+  var na = Number(a), nb = Number(b);
+  if (!isNaN(na) && !isNaN(nb) && typeof a !== 'boolean' && typeof b !== 'boolean') {
+    return na - nb;
+  }
+  return String(a).localeCompare(String(b), undefined, { numeric: true, sensitivity: 'base' });
+}
+
+function tblSort(list, col, dir, extractors) {
+  var ext = (extractors && extractors[col]) || (typeof col === 'function' ? col : function (r) { return r ? r[col] : undefined; });
+  var mult = dir === 'desc' ? -1 : 1;
+  return list.slice().sort(function (a, b) {
+    var va = ext(a), vb = ext(b);
+    var aEmpty = va === null || va === undefined || va === '' || va === '—';
+    var bEmpty = vb === null || vb === undefined || vb === '' || vb === '—';
+    if (aEmpty && bEmpty) return 0;
+    if (aEmpty) return 1;
+    if (bEmpty) return -1;
+    return cmpValues(va, vb) * mult;
+  });
+}
+
+function sortTh(opts) {
+  var isSorted = opts.curCol === opts.col;
+  var ariaSort = isSorted ? (opts.dir === 'asc' ? 'ascending' : 'descending') : 'none';
+  var cls = ['sortable'];
+  if (opts.num) cls.push('num');
+  if (opts.sticky) cls.push('sticky');
+  if (isSorted) cls.push(opts.dir === 'asc' ? 'sorted-asc' : 'sorted-desc');
+  var icoName = isSorted ? (opts.dir === 'asc' ? 'arrow-up' : 'arrow-down') : 'chevrons-up-down';
+  return '<th class="' + cls.join(' ') + '" data-act="' + attr(opts.act) + '" data-col="' + attr(opts.col) + '"' +
+    ' tabindex="0" role="button" aria-sort="' + ariaSort + '"' +
+    (opts.title ? ' title="' + attr(opts.title) + '"' : '') + '>' +
+    '<div class="th-content">' +
+      '<span class="th-label">' + opts.label + (opts.sub ? '<div class="tiny" style="text-transform:none">' + opts.sub + '</div>' : '') + '</span>' +
+      '<span class="sort-ico">' + icon(icoName) + '</span>' +
+    '</div></th>';
+}
+
+// ---- GSAP Motion Engine -----------------------------------------------------
+var prefersReducedMotion = false;
+if (window.matchMedia) {
+  var _mql = window.matchMedia('(prefers-reduced-motion: reduce)');
+  prefersReducedMotion = _mql.matches;
+  if (_mql.addEventListener) {
+    _mql.addEventListener('change', function (e) { prefersReducedMotion = e.matches; });
+  }
+}
+
+function hasGsap() {
+  return typeof gsap !== 'undefined' && !prefersReducedMotion;
+}
+
+var toastTimer = null;
+function toast(msg) {
+  var t = $('toast');
+  if (!t) return;
+  t.textContent = msg;
+  t.hidden = false;
+  if (hasGsap()) {
+    gsap.killTweensOf(t);
+    gsap.fromTo(t,
+      { autoAlpha: 0, y: 22, scale: 0.94 },
+      { autoAlpha: 1, y: 0, scale: 1, duration: 0.28, ease: 'back.out(1.6)', clearProps: 'transform' }
+    );
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(function () {
+      gsap.to(t, {
+        autoAlpha: 0,
+        y: -10,
+        duration: 0.22,
+        ease: 'power2.in',
+        onComplete: function () {
+          t.hidden = true;
+          gsap.set(t, { clearProps: 'all' });
+        }
+      });
+    }, 4000);
+  } else {
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(function () { t.hidden = true; }, 4200);
+  }
+}
+
+function animatePageIn(pageEl) {
+  if (!pageEl || !hasGsap()) return;
+  gsap.killTweensOf(pageEl);
+  gsap.fromTo(pageEl,
+    { autoAlpha: 0, y: 10 },
+    { autoAlpha: 1, y: 0, duration: 0.28, ease: 'power2.out', clearProps: 'transform,opacity,visibility' }
+  );
+
+  var cards = pageEl.querySelectorAll('.kpi, .role-card, .brest-card, .mrest-hero, .step-card');
+  if (cards.length && cards.length <= 24) {
+    gsap.from(cards, {
+      autoAlpha: 0,
+      y: 12,
+      duration: 0.32,
+      stagger: 0.035,
+      ease: 'power1.out',
+      clearProps: 'transform,opacity,visibility'
+    });
+  }
+
+  animateCounters(pageEl);
+}
+
+function animateCounters(container) {
+  if (!hasGsap()) return;
+  var els = (container || document).querySelectorAll('.kpi-num, .kpi-value, .stat-tile .num, .mrest-val');
+  Array.prototype.forEach.call(els, function (el) {
+    if (el.getAttribute('data-animated')) return;
+    var rawText = (el.innerText || '').trim();
+    if (!rawText || rawText === '—' || rawText === 'None') return;
+    var isPct = rawText.indexOf('%') !== -1;
+    var isFraction = rawText.indexOf('/') !== -1;
+    if (isFraction) {
+      var parts = rawText.split('/');
+      var n1 = parseFloat(parts[0].replace(/[^0-9.-]/g, ''));
+      var n2 = parseFloat(parts[1].replace(/[^0-9.-]/g, ''));
+      if (!isNaN(n1) && !isNaN(n2)) {
+        el.setAttribute('data-animated', 'true');
+        var obj = { v: 0 };
+        gsap.to(obj, {
+          v: n1,
+          duration: 0.5,
+          ease: 'power2.out',
+          onUpdate: function () {
+            el.innerHTML = Math.round(obj.v) + ' <span class="tiny">/ ' + n2 + '</span>';
+          }
+        });
+      }
+      return;
+    }
+    var num = parseFloat(rawText.replace(/,/g, '').replace(/%/g, ''));
+    if (isNaN(num) || num === 0) return;
+    el.setAttribute('data-animated', 'true');
+    var o = { v: 0 };
+    gsap.to(o, {
+      v: num,
+      duration: 0.5,
+      ease: 'power2.out',
+      onUpdate: function () {
+        if (isPct) {
+          el.innerText = o.v.toFixed(0) + '%';
+        } else if (num % 1 === 0) {
+          el.innerText = Math.round(o.v).toLocaleString();
+        } else {
+          el.innerText = o.v.toFixed(1);
+        }
+      }
+    });
+  });
+}
+
+function openModalAnimated(dlg) {
+  if (!dlg) return;
+  dlg.showModal();
+  refreshIcons(dlg);
+  if (hasGsap()) {
+    gsap.killTweensOf(dlg);
+    gsap.fromTo(dlg,
+      { autoAlpha: 0, scale: 0.94, y: 14 },
+      { autoAlpha: 1, scale: 1, y: 0, duration: 0.26, ease: 'power3.out', clearProps: 'transform,opacity,visibility' }
+    );
+  }
+}
+
+// Crisp offline SVG icon paths matching Lucide icon names used across Data Health and the app shell.
+var ICON_SVG = {
+  'check': '<path d="M20 6 9 17l-5-5"/>',
+  'check-circle-2': '<circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/>',
+  'chevron-down': '<path d="m6 9 6 6 6-6"/>',
+  'download': '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/>',
+  'upload-cloud': '<path d="M4 14.899A7 7 0 1 1 15.71 8h1.79a4.5 4.5 0 0 1 2.5 8.242"/><path d="M12 12v9"/><path d="m16 16-4-4-4 4"/>',
+  'file-text': '<path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="M10 9H8"/><path d="M16 13H8"/><path d="M16 17H8"/>',
+  'lock': '<rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>',
+  'info': '<circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/>',
+  'map-pin': '<path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/>',
+  'map-pin-off': '<path d="M5.43 5.43A8.06 8.06 0 0 0 4 10c0 6 8 12 8 12a29.94 29.94 0 0 0 5-5"/><path d="M19.18 13.52A8.66 8.66 0 0 0 20 10a8 8 0 0 0-8-8 7.88 7.88 0 0 0-3.52.82"/><path d="M9.13 9.13A2.99 2.99 0 0 0 9 10a3 3 0 0 0 3 3c.3 0 .59-.04.87-.13"/><line x1="2" x2="22" y1="2" y2="22"/>',
+  'list-checks': '<path d="m3 17 2 2 4-4"/><path d="m3 7 2 2 4-4"/><path d="M13 6h8"/><path d="M13 12h8"/><path d="M13 18h8"/>',
+  'building-2': '<path d="M6 22V4a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v18Z"/><path d="M6 12H4a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h2"/><path d="M18 9h2a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-2"/><path d="M10 6h4"/><path d="M10 10h4"/><path d="M10 14h4"/><path d="M10 18h4"/>',
+  'help-circle': '<circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><path d="M12 17h.01"/>',
+  'scale': '<path d="m16 16 3-8 3 8c-.87.65-1.92 1-3 1s-2.13-.35-3-1Z"/><path d="m2 16 3-8 3 8c-.87.65-1.92 1-3 1s-2.13-.35-3-1Z"/><path d="M7 21h10"/><path d="M12 3v18"/><path d="M3 7h2c2 0 5-1 7-2 2 1 5 2 7 2h2"/>',
+  'git-merge': '<circle cx="18" cy="18" r="3"/><circle cx="6" cy="6" r="3"/><path d="M6 21V9a9 9 0 0 0 9 9"/>',
+  'user-round-x': '<path d="M2 21a8 8 0 0 1 11.873-7"/><circle cx="10" cy="8" r="5"/><path d="m17 17 5 5"/><path d="m22 17-5 5"/>',
+  'user-x': '<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><line x1="17" x2="22" y1="8" y2="13"/><line x1="22" x2="17" y1="8" y2="13"/>',
+  'copy': '<rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/>',
+  'git-compare': '<circle cx="18" cy="18" r="3"/><circle cx="6" cy="6" r="3"/><path d="M13 6h3a2 2 0 0 1 2 2v7"/><path d="M11 18H8a2 2 0 0 1-2-2V9"/>',
+  'user-plus': '<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><line x1="19" x2="19" y1="8" y2="14"/><line x1="22" x2="16" y1="11" y2="11"/>',
+  'users-round': '<path d="M18 21a8 8 0 0 0-16 0"/><circle cx="10" cy="8" r="5"/><path d="M22 20c0-3.37-2-6.5-4-8a5 5 0 0 0-.45-8.3"/>',
+  'users': '<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>',
+  'tag': '<path d="M12.586 2.586A2 2 0 0 0 11.172 2H4a2 2 0 0 0-2 2v7.172a2 2 0 0 0 .586 1.414l8.704 8.704a2.426 2.426 0 0 0 3.42 0l6.58-6.58a2.426 2.426 0 0 0 0-3.42z"/><circle cx="7.5" cy="7.5" r=".5" fill="currentColor"/>',
+  'clipboard-x': '<rect width="8" height="4" x="8" y="2" rx="1" ry="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><path d="m15 11-6 6"/><path d="m9 11 6 6"/>',
+  'clipboard-check': '<rect width="8" height="4" x="8" y="2" rx="1" ry="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><path d="m9 14 2 2 4-4"/>',
+  'clipboard': '<rect width="8" height="4" x="8" y="2" rx="1" ry="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/>',
+  'search': '<circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/>',
+  'x': '<path d="M18 6 6 18"/><path d="m6 6 12 12"/>',
+  'alert-triangle': '<path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><path d="M12 9v4"/><path d="M12 17h.01"/>',
+  'external-link': '<path d="M15 3h6v6"/><path d="M10 14 21 3"/><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>',
+  'clock-alert': '<path d="M12 6v6l4 2"/><path d="M16 21.16a10 10 0 1 1 5-8.66"/><path d="M20 15v4"/><path d="M20 21h.01"/>',
+  'clock': '<circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>',
+  'calendar-x': '<path d="M8 2v4"/><path d="M16 2v4"/><rect width="18" height="18" x="3" y="4" rx="2"/><path d="M3 10h18"/><path d="m14 14-4 4"/><path d="m10 14 4 4"/>',
+  'calendar-range': '<rect width="18" height="18" x="3" y="4" rx="2"/><path d="M16 2v4"/><path d="M8 2v4"/><path d="M3 10h18"/><path d="M17 14h-6"/><path d="M13 18H7"/>',
+  'files': '<path d="M20 7h-3a2 2 0 0 1-2-2V2"/><path d="M9 18a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h7l4 4v10a2 2 0 0 1-2 2Z"/><path d="M3 7.6v12.8A1.6 1.6 0 0 0 4.6 22h9.8"/>',
+  'spell-check': '<path d="m6 16 6-12 6 12"/><path d="M8 12h8"/><path d="m16 20 2 2 4-4"/>',
+  'cake': '<path d="M20 21v-8a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8"/><path d="M4 16s.5-1 2-1 2.5 2 4 2 2.5-2 4-2 2.5 2 4 2 2-1 2-1"/><path d="M2 21h20"/><path d="M7 8v3"/><path d="M12 8v3"/><path d="M17 8v3"/>',
+  'gauge': '<path d="m12 14 4-4"/><path d="M3.34 19a10 10 0 1 1 17.32 0"/>',
+  'list-todo': '<rect x="3" y="5" width="6" height="6" rx="1"/><path d="m3 17 2 2 4-4"/><path d="M13 6h8"/><path d="M13 12h8"/><path d="M13 18h8"/>',
+  'target': '<circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/>',
+  'repeat': '<path d="m17 2 4 4-4 4"/><path d="M3 11v-1a4 4 0 0 1 4-4h14"/><path d="m7 22-4-4 4-4"/><path d="M21 13v1a4 4 0 0 1-4 4H3"/>',
+  'crosshair': '<circle cx="12" cy="12" r="10"/><line x1="22" x2="18" y1="12" y2="12"/><line x1="6" x2="2" y1="12" y2="12"/><line x1="12" x2="12" y1="6" y2="2"/><line x1="12" x2="12" y1="22" y2="18"/>',
+  'shield-check': '<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/>',
+  'circle-alert': '<circle cx="12" cy="12" r="10"/><line x1="12" x2="12" y1="8" y2="12"/><line x1="12" x2="12.01" y1="16" y2="16"/>',
+  'layout-dashboard': '<rect width="7" height="9" x="3" y="3" rx="1"/><rect width="7" height="5" x="14" y="3" rx="1"/><rect width="7" height="9" x="14" y="12" rx="1"/><rect width="7" height="5" x="3" y="16" rx="1"/>',
+  'settings': '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/>',
+  'sun': '<circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/>',
+  'moon': '<path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/>',
+  'trash-2': '<path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/><line x1="10" x2="10" y1="11" y2="17"/><line x1="14" x2="14" y1="11" y2="17"/>',
+  'database': '<ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5V19A9 3 0 0 0 21 19V5"/><path d="M3 12A9 3 0 0 0 21 12"/>',
+  'arrow-left': '<path d="m12 19-7-7 7-7"/><path d="M19 12H5"/>',
+  'arrow-up': '<path d="m5 12 7-7 7 7"/><path d="M12 19V5"/>',
+  'arrow-down': '<path d="M12 5v14"/><path d="m19 12-7 7-7-7"/>',
+  'chevrons-up-down': '<path d="m7 15 5 5 5-5"/><path d="m7 9 5-5 5 5"/>',
+  'rotate-ccw': '<path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/>',
+  'calendar-check': '<rect width="18" height="18" x="3" y="4" rx="2"/><path d="M16 2v4"/><path d="M8 2v4"/><path d="M3 10h18"/><path d="m9 16 2 2 4-4"/>',
+  'home': '<path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/>',
+  'shield': '<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>',
+  'award': '<circle cx="12" cy="8" r="6"/><path d="M15.477 12.89 17 22l-5-3-5 3 1.523-9.11"/>',
+  'user-check': '<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><polyline points="16 11 18 13 22 9"/>'
+};
+
 var ICON_GLYPH = {
   'check': '✓', 'check-circle-2': '✓', 'chevron-down': '⌄', 'download': '⤓', 'file-text': '▤', 'lock': '🔒', 'info': 'ⓘ',
   'map-pin': '⌖', 'map-pin-off': '⌖', 'list-checks': '☰', 'building-2': '▦', 'help-circle': '?', 'scale': '⚖', 'git-merge': '⇵',
   'user-round-x': '✕', 'user-x': '✕', 'copy': '⧉', 'git-compare': '⇆', 'user-plus': '+', 'users-round': '☷', 'tag': '#',
   'clipboard-x': '✕', 'search': '⌕', 'x': '✕', 'alert-triangle': '⚠', 'external-link': '↗',
-  // Data quality checks, Scorecard and Fix list
   'clock-alert': '⏱', 'calendar-x': '✕', 'files': '⧉', 'users': '☷', 'spell-check': 'Aa', 'cake': '✱', 'gauge': '◔',
-  'list-todo': '☑', 'target': '◎', 'repeat': '↻', 'crosshair': '⌖', 'clock': '⏱', 'shield-check': '✓', 'circle-alert': '!', 'clipboard-check': '☑', 'clipboard': '☐'
+  'list-todo': '☑', 'target': '◎', 'repeat': '↻', 'crosshair': '⌖', 'clock': '⏱', 'shield-check': '✓', 'circle-alert': '!', 'clipboard-check': '☑', 'clipboard': '☐',
+  'arrow-up': '▲', 'arrow-down': '▼', 'chevrons-up-down': '↕', 'calendar-check': '☑', 'home': '⌂', 'shield': '⛊', 'award': '★', 'user-check': '✓'
 };
+
+function icon(name, extraClass) {
+  var body = ICON_SVG[name] || ICON_SVG['info'];
+  return '<span class="ico' + (extraClass ? ' ' + extraClass : '') + '" aria-hidden="true"><svg viewBox="0 0 24 24">' + body + '</svg></span>';
+}
+
 function refreshIcons(root) {
   Array.prototype.forEach.call((root && root.querySelectorAll ? root : document).querySelectorAll('i[data-lucide]'), function (el) {
+    var name = el.getAttribute('data-lucide');
+    var cls = el.getAttribute('class') || '';
     var s = document.createElement('span');
-    s.className = 'ico'; s.setAttribute('aria-hidden', 'true');
-    s.textContent = ICON_GLYPH[el.getAttribute('data-lucide')] || '•';
+    s.className = ('ico ' + cls).trim();
+    s.setAttribute('aria-hidden', 'true');
+    if (ICON_SVG[name]) {
+      s.innerHTML = '<svg viewBox="0 0 24 24">' + ICON_SVG[name] + '</svg>';
+    } else {
+      s.textContent = ICON_GLYPH[name] || '•';
+    }
     el.replaceWith(s);
   });
 }
 
-// Follow the system light / dark theme (the dh- styles key off html.dark).
+// Theme management: supports explicit user choice ('light' | 'dark') or system default
+function applyTheme() {
+  var p = prefs();
+  var mq = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)');
+  var isDark = p.theme ? p.theme === 'dark' : !!(mq && mq.matches);
+  document.documentElement.classList.toggle('dark', isDark);
+  var btn = $('btn-theme');
+  if (btn) {
+    btn.innerHTML = icon(isDark ? 'sun' : 'moon');
+    btn.title = isDark ? 'Switch to light mode' : 'Switch to dark mode';
+  }
+}
+function toggleTheme() {
+  var isDark = document.documentElement.classList.contains('dark');
+  var p = prefs();
+  p.theme = isDark ? 'light' : 'dark';
+  savePrefs(p);
+  applyTheme();
+  toast((p.theme === 'dark' ? 'Dark' : 'Light') + ' theme active.');
+}
 (function () {
   var mq = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)');
-  function apply() { document.documentElement.classList.toggle('dark', !!(mq && mq.matches)); }
-  apply();
-  if (mq && mq.addEventListener) mq.addEventListener('change', apply);
+  applyTheme();
+  if (mq && mq.addEventListener) mq.addEventListener('change', applyTheme);
 })();
 
 // ---- reference tables (baseline, activities) -------------------------------
@@ -104,10 +521,39 @@ function baselineSummary() {
 // before import, and every page, the memo and the export open on it. RPMO
 // staff can choose "All municipalities" for the regional view.
 
+// ---- role & municipality scoping ------------------------------------------------
+// PEA and MDM work strictly on their assigned municipality. When PEA/MDM mode is
+// active, all data, dropdowns, barangay lists, and exports from other municipalities
+// are removed from their view. Regional Project Evaluation Officers (RPMO) retain
+// full region-wide oversight, cross-municipality comparison, and provincial filters.
+
+/** User role: 'pea_mdm' (Municipal Field Staff) or 'rpmo' (Regional Project Evaluation Officer). */
+function userRole() {
+  var p = prefs();
+  if (p.role) return p.role;
+  return (p.home && p.home.region) ? 'rpmo' : 'pea_mdm';
+}
+function isRegionalUser() {
+  return userRole() === 'rpmo';
+}
+function isMunicipalUser() {
+  return !isRegionalUser();
+}
+
 /** { province, municipality } | { region: true } | null when not chosen yet. */
 function home() { return prefs().home || null; }
 function homeKey() { var h = home(); return h && !h.region ? h.province + '|' + h.municipality : ''; }
-function homeLabel() { var h = home(); return !h ? '' : h.region ? 'All municipalities' : h.municipality + ' (' + h.province + ')'; }
+function homeLabel() {
+  var h = home();
+  if (!h) return '';
+  if (isRegionalUser()) return 'RPMO Regional View (All Municipalities)';
+  return h.municipality + ' (' + h.province + ')';
+}
+function homeRoleBadge() {
+  return isRegionalUser()
+    ? '<span class="role-badge region">RPMO Regional</span>'
+    : '<span class="role-badge field">PEA / MDM</span>';
+}
 
 /** Monitored municipalities from the baseline loaded now, by province. */
 function baselineMunis() {
@@ -124,23 +570,49 @@ function baselineMunis() {
 function renderHome() {
   var h = home(), card = $('home-card');
   if (h && !STATE.editHome) {
-    card.innerHTML = '<div class="home-set"><div><div class="tiny"><span class="step-no">1</span>Your municipality</div>' +
-      '<div class="home-name">' + esc(homeLabel()) + '</div>' +
-      '<div class="muted">' + (h.region ? 'Regional view: every monitored municipality.' : 'The findings, memo and export open on this municipality. Other municipalities stay available on the Municipalities page.') + '</div></div>' +
-      '<button class="btn ghost" data-act="home-edit">Change</button></div>';
+    var list = baselineMunis();
+    var mInfo = !h.region ? list.filter(function (m) { return m.province === h.province && m.municipality === h.municipality; })[0] : null;
+    card.innerHTML = '<div class="home-set"><div>' +
+      '<div class="tiny"><span class="step-no done">✓</span> Step 1 · Role &amp; Workspace Scope</div>' +
+      '<div class="home-name" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:4px 0">' +
+        homeRoleBadge() + ' <span>' + esc(homeLabel()) + '</span>' +
+        (mInfo ? ' <span class="pill idle">' + n(mInfo.barangays) + ' monitored barangays</span>' : ' <span class="pill good">516 monitored barangays</span>') +
+      '</div>' +
+      '<div class="muted">' + (isRegionalUser()
+        ? 'Regional RPMO oversight: full access to every monitored municipality, cross-LGU comparisons, and provincial filters.'
+        : 'Dedicated PEA / MDM workspace: scoped strictly to <strong>' + esc(h.municipality) + '</strong>. All other municipalities are excluded from your view.') + '</div>' +
+      '</div>' +
+      '<div class="row-actions" style="margin:0"><button class="btn ghost" data-act="home-edit">' + icon('map-pin') + ' <span>Switch Role / Municipality</span></button></div></div>';
   } else {
-    var list = baselineMunis(), opts = '<option value="">Choose your municipality…</option>', prov = '';
-    list.forEach(function (m) {
+    var curRole = STATE.pendingRole || userRole() || 'pea_mdm';
+    var curKey = STATE.pendingMuni !== undefined ? STATE.pendingMuni : homeKey();
+    var list2 = baselineMunis(), opts = '<option value="">Select your assigned municipality…</option>', prov = '';
+    list2.forEach(function (m) {
       if (m.province !== prov) { opts += (prov ? '</optgroup>' : '') + '<optgroup label="' + attr(m.province) + '">'; prov = m.province; }
       var v = m.province + '|' + m.municipality;
-      opts += '<option value="' + attr(v) + '"' + (homeKey() === v ? ' selected' : '') + '>' + esc(m.municipality) + ' · ' + m.barangays + ' barangays</option>';
+      opts += '<option value="' + attr(v) + '"' + (curKey === v ? ' selected' : '') + '>' + esc(m.municipality) + ' (' + m.barangays + ' barangays)</option>';
     });
-    opts += (prov ? '</optgroup>' : '') + '<option value="REGION"' + (h && h.region ? ' selected' : '') + '>All municipalities (RPMO regional view)</option>';
-    card.innerHTML = '<h2><span class="step-no">1</span> Your municipality</h2>' +
-      '<p class="muted">Choose the municipality you monitor as MDM or PEA. It is remembered on this computer, and you can change it at any time.</p>' +
-      '<div class="filters"><label class="field"><span>Municipality</span><select id="home-select">' + opts + '</select></label>' +
-        '<button class="btn primary" data-act="home-save">Save</button>' +
-        (h ? '<button class="btn ghost" data-act="home-cancel">Cancel</button>' : '') + '</div>';
+    opts += (prov ? '</optgroup>' : '');
+
+    card.innerHTML = '<h2><span class="step-no">1</span> Select your Role &amp; Municipality</h2>' +
+      '<p class="muted">Tailors the dashboard and data access to your assigned duties. PEA &amp; MDM staff work exclusively in their assigned municipality; RPMO officers have region-wide access.</p>' +
+      '<div class="role-grid">' +
+        '<div class="role-card' + (curRole === 'pea_mdm' ? ' active' : '') + '" data-act="role-pick" data-v="pea_mdm" role="button" tabindex="0">' +
+          '<div class="role-card-head"><span class="role-card-title">' + icon('map-pin') + ' PEA / MDM Workspace</span><span class="role-badge field">Municipal Field</span></div>' +
+          '<div class="role-card-desc">For Project Evaluation Assistants &amp; Municipal Data Monitors. Scopes the entire tool strictly to your municipality; removes all other LGUs from your view.</div>' +
+        '</div>' +
+        '<div class="role-card' + (curRole === 'rpmo' ? ' active' : '') + '" data-act="role-pick" data-v="rpmo" role="button" tabindex="0">' +
+          '<div class="role-card-head"><span class="role-card-title">' + icon('building-2') + ' Regional RPMO</span><span class="role-badge region">Regional Oversight</span></div>' +
+          '<div class="role-card-desc">For Regional Monitoring &amp; Evaluation Officers. Full region-wide access, cross-municipality comparison matrix, and provincial filters.</div>' +
+        '</div>' +
+      '</div>' +
+      (curRole === 'pea_mdm' ?
+        '<div class="filters" style="margin-bottom:12px"><label class="field" style="min-width:320px;flex:1"><span>Your Municipality</span><select id="home-select">' + opts + '</select></label></div>'
+        : '<div class="msg ok" style="margin-bottom:12px">' + icon('check-circle-2') + ' <div><strong>Regional RPMO mode selected</strong>: All 516 monitored barangays across Caraga Region will be visible with full comparison analytics.</div></div>') +
+      '<div class="row-actions" style="margin:0">' +
+        '<button class="btn primary" data-act="home-save">' + icon('check') + ' <span>Save Workspace &amp; Proceed</span></button>' +
+        (h ? '<button class="btn ghost" data-act="home-cancel">Cancel</button>' : '') +
+      '</div>';
   }
   var locked = !h || STATE.editHome;
   $('import-card').classList.toggle('locked', locked);
@@ -148,23 +620,96 @@ function renderHome() {
   $('file-input').disabled = locked;
   var chip = $('home-chip');
   chip.hidden = !h;
-  chip.textContent = h ? '⌖ ' + homeLabel() : '';
+  if (h) {
+    chip.innerHTML = (isRegionalUser() ? icon('building-2') : icon('map-pin')) + ' ' + homeRoleBadge() + ' <span>' + esc(homeLabel()) + '</span>';
+    chip.title = 'Click to switch role or change municipality scope';
+  }
 }
 
-function saveHome(v) {
-  if (!v) { toast('Choose your municipality first.'); return; }
+function openScopeDialog() {
+  var dlg = $('scope-dialog'), body = $('scope-dialog-body');
+  if (!dlg || !body) return;
+  var curRole = userRole(), curKey = homeKey();
+  var list = baselineMunis(), opts = '<option value="">Select your assigned municipality…</option>', prov = '';
+  list.forEach(function (m) {
+    if (m.province !== prov) { opts += (prov ? '</optgroup>' : '') + '<optgroup label="' + attr(m.province) + '">'; prov = m.province; }
+    var v = m.province + '|' + m.municipality;
+    opts += '<option value="' + attr(v) + '"' + (curKey === v ? ' selected' : '') + '>' + esc(m.municipality) + ' (' + m.barangays + ' barangays)</option>';
+  });
+  opts += (prov ? '</optgroup>' : '');
+
+  body.innerHTML = '<div class="role-grid">' +
+      '<div class="role-card' + (curRole === 'pea_mdm' ? ' active' : '') + '" data-act="dlg-role-pick" data-v="pea_mdm" role="button" tabindex="0">' +
+        '<div class="role-card-head"><span class="role-card-title">' + icon('map-pin') + ' PEA / MDM</span><span class="role-badge field">Municipal</span></div>' +
+        '<div class="role-card-desc">Restricted view: assigned municipality only.</div>' +
+      '</div>' +
+      '<div class="role-card' + (curRole === 'rpmo' ? ' active' : '') + '" data-act="dlg-role-pick" data-v="rpmo" role="button" tabindex="0">' +
+        '<div class="role-card-head"><span class="role-card-title">' + icon('building-2') + ' Regional RPMO</span><span class="role-badge region">Regional</span></div>' +
+        '<div class="role-card-desc">Full region view &amp; comparison matrix.</div>' +
+      '</div>' +
+    '</div>' +
+    '<div id="dlg-muni-wrap" style="' + (curRole === 'pea_mdm' ? '' : 'display:none;') + 'margin-bottom:14px">' +
+      '<label class="field" style="width:100%"><span>Municipality</span><select id="dlg-home-select">' + opts + '</select></label>' +
+    '</div>' +
+    '<div class="row-actions dialog-foot">' +
+      '<button class="btn primary" type="button" id="dlg-scope-save">' + icon('check') + ' <span>Apply Workspace Scope</span></button>' +
+      '<button class="btn ghost" type="button" value="close" onclick="$(\'scope-dialog\').close()">Cancel</button>' +
+    '</div>';
+
+  openModalAnimated(dlg);
+
+  var cards = dlg.querySelectorAll('.role-card');
+  Array.prototype.forEach.call(cards, function (c) {
+    c.addEventListener('click', function () {
+      var r = c.getAttribute('data-v');
+      Array.prototype.forEach.call(cards, function (x) { x.classList.toggle('active', x === c); });
+      if (hasGsap()) gsap.fromTo(c, { scale: 0.97 }, { scale: 1, duration: 0.22, ease: 'back.out(2)', clearProps: 'transform' });
+      $('dlg-muni-wrap').style.display = r === 'pea_mdm' ? '' : 'none';
+    });
+  });
+
+  $('dlg-scope-save').onclick = function () {
+    var activeCard = dlg.querySelector('.role-card.active');
+    var selectedRole = activeCard ? activeCard.getAttribute('data-v') : 'pea_mdm';
+    if (selectedRole === 'pea_mdm') {
+      var selVal = $('dlg-home-select').value;
+      if (!selVal) { toast('Please choose your assigned municipality.'); return; }
+      saveHome(selVal, 'pea_mdm');
+    } else {
+      saveHome('REGION', 'rpmo');
+    }
+    dlg.close();
+  };
+}
+
+function saveHome(v, forceRole) {
   var p = prefs();
-  if (v === 'REGION') p.home = { region: true };
-  else { var parts = v.split('|'); p.home = { province: parts[0], municipality: parts[1] }; }
+  var role = forceRole || STATE.pendingRole || userRole() || 'pea_mdm';
+  if (role === 'pea_mdm') {
+    if (!v) { toast('Choose your municipality first.'); return; }
+    var parts = v.split('|');
+    p.role = 'pea_mdm';
+    p.home = { province: parts[0], municipality: parts[1] };
+  } else {
+    p.role = 'rpmo';
+    p.home = { region: true };
+  }
   savePrefs(p);
   STATE.editHome = false;
+  STATE.pendingRole = null;
+  STATE.pendingMuni = null;
   applyHomeScope();
   renderHome();
-  if (STATE.computed) { renderPage(); renderStatus(); }
-  toast('Municipality set: ' + homeLabel() + '.');
+  if (STATE.computed) {
+    if (isMunicipalUser() && STATE.page === 'munis') STATE.page = 'overview';
+    renderPage();
+    renderStatus();
+    updateTabBadges();
+  }
+  toast(isRegionalUser() ? 'Role set to Regional RPMO oversight.' : 'Municipality set: ' + homeLabel() + ' (PEA/MDM view).');
 }
 
-/** Point every page at the chosen municipality. */
+/** Point every page at the chosen municipality or regional scope. */
 function applyHomeScope() {
   var h = home(), key = homeKey();
   STATE.muni = key || STATE.muni;
@@ -188,28 +733,148 @@ function coverageBanner() {
   var c = homeCoverage();
   if (!c) return '';
   if (!c.encoded) {
-    return '<div class="msg warn">⚠ The participants export has <strong>no records for ' + esc(homeLabel()) + '</strong>. Check that it is the right export, or that your municipality is set correctly (Import › Change).</div>';
+    return '<div class="msg warn">' + icon('alert-triangle') + ' <div>The participants export has <strong>no records for ' + esc(homeLabel()) + '</strong>. Check that it is the right export, or that your municipality is set correctly (<button class="link" data-act="home-edit">Import › Change</button>).</div></div>';
   }
   return '';
 }
 
-// ---- navigation --------------------------------------------------------------
+// ---- navigation & live tab badges --------------------------------------------
+
+function updateTabBadges() {
+  var setBadge = function (id, text, cls) {
+    var el = $('badge-' + id);
+    if (!el) return;
+    if (!text && text !== 0) { el.hidden = true; el.textContent = ''; el.className = 'tab-badge'; return; }
+    el.hidden = false;
+    el.textContent = text;
+    el.className = 'tab-badge' + (cls ? ' ' + cls : '');
+  };
+  var loadedCount = ['participants', 'households', 'volunteers'].filter(function (k) { return !!LOADED[k]; }).length;
+  setBadge('import', loadedCount ? loadedCount + '/3' : '', loadedCount === 3 ? 'good' : '');
+
+  var tabMunis = $('tab-munis');
+  if (tabMunis) tabMunis.style.display = isMunicipalUser() ? 'none' : '';
+
+  if (!STATE.computed || !S.overview || !SNAP) {
+    ['munis', 'brgys', 'attendees', 'households', 'volunteers', 'brest', 'mrest', 'people', 'verify', 'health', 'group-attendance', 'group-volunteers'].forEach(function (id) { setBadge(id, ''); });
+    return;
+  }
+  var key = homeKey();
+  if (!isMunicipalUser()) {
+    setBadge('munis', n((S.matrix && S.matrix.rows ? S.matrix.rows : []).filter(function (r) { return !STATE.prov || r.province === STATE.prov; }).length));
+  }
+  var brgysInScope = (SNAP.barangayRows || []).filter(function (b) { return !key || (b.province + '|' + b.municipality === key); });
+  var lackingBrgys = brgysInScope.filter(function (b) { return (b.owed || 0) > 0; }).length;
+  setBadge('brgys', lackingBrgys ? lackingBrgys + ' lacking' : n(brgysInScope.length), lackingBrgys ? 'bad' : 'good');
+
+  try {
+    var P = people(), inScope = pScopeTest();
+    var attCount = P.attendees.filter(inScope).length;
+    setBadge('attendees', attCount ? n(attCount) : '', 'good');
+
+    var k2 = scopedK2();
+    if (k2.rate !== null) {
+      setBadge('households', pctText(k2.rate), k2.rate >= 0.7 ? 'good' : 'warn');
+      setBadge('group-attendance', pctText(k2.rate), k2.rate >= 0.7 ? 'good' : 'warn');
+    } else {
+      setBadge('households', '');
+      setBadge('group-attendance', attCount ? n(attCount) : '', 'good');
+    }
+
+    var volCount = P.volunteers.filter(inScope).length;
+    setBadge('volunteers', volCount ? n(volCount) : '');
+
+    var brestEncoded = brgysInScope.filter(function (b) { return b.volunteers && b.volunteers.BREST && b.volunteers.BREST.status === 'Encoded'; }).length;
+    var brestIssues = brgysInScope.filter(function (b) { return b.volunteers && b.volunteers.BREST && b.volunteers.BREST.status === 'Needs fixing'; }).length;
+    setBadge('brest', brestIssues ? brestIssues + ' to fix' : (brestEncoded ? brestEncoded + '/' + brgysInScope.length : ''), brestIssues ? 'warn' : 'good');
+
+    if (brestIssues) {
+      setBadge('group-volunteers', brestIssues + ' to fix', 'warn');
+    } else if (volCount) {
+      setBadge('group-volunteers', n(volCount), '');
+    } else {
+      setBadge('group-volunteers', '');
+    }
+
+    var mrestRows = P.mrest || [];
+    var mrestInScope = mrestRows.filter(inScope);
+    setBadge('mrest', mrestInScope.length ? '✓ ' + mrestInScope.length : '○');
+  } catch (e) {}
+
+  if (typeof VERIFY !== 'undefined' && VERIFY.tags && VERIFY.tags.records) {
+    var vCnt = Object.keys(VERIFY.tags.records).length;
+    setBadge('verify', vCnt ? n(vCnt) : '', vCnt ? 'good' : '');
+  }
+  try {
+    var kpiPipe = scopedPipeline();
+    var kpiTot = kpiPipe.reduce(function (acc, p) { acc.c += p.complete || 0; acc.e += p.expected || 0; return acc; }, { c: 0, e: 0 });
+    var kpiPct = kpiTot.e > 0 ? Math.round((kpiTot.c / kpiTot.e) * 100) + '%' : '';
+    setBadge('kpisummary', kpiPct, kpiTot.e > 0 && (kpiTot.c / kpiTot.e) >= 0.8 ? 'good' : (kpiTot.c > 0 ? 'warn' : ''));
+  } catch (e) {}
+  try {
+    var keep = S.healthScope;
+    S.healthScope = key ? 'm:' + key : (STATE.prov ? 'p:' + STATE.prov : '');
+    var evs = dhEvaluateAll(S.overview, '').filter(function (e) { return !e.outOfScope; });
+    S.healthScope = keep;
+    var crit = evs.filter(function (e) { return e.status === 'critical'; }).length;
+    var ver = evs.filter(function (e) { return e.status === 'verify'; }).length;
+    var openTot = crit + ver;
+    setBadge('health', openTot ? n(openTot) : '✓', crit ? 'bad' : (ver ? 'warn' : 'good'));
+  } catch (e) {}
+
+  if (UPDATE_STATE.result && UPDATE_STATE.result.updateAvailable) {
+    setBadge('settings', 'Update', 'good');
+  } else {
+    setBadge('settings', '');
+  }
+}
 
 function go(page) {
+  if (isMunicipalUser() && page === 'munis') page = 'overview';
+  if (page === 'people') page = 'attendees';
   STATE.page = page;
   Array.prototype.forEach.call(document.querySelectorAll('#tabs button'), function (b) {
     var on = b.getAttribute('data-page') === page;
     b.classList.toggle('on', on); b.setAttribute('aria-selected', on);
+    if (on && hasGsap()) {
+      gsap.fromTo(b, { scale: 0.94 }, { scale: 1, duration: 0.22, ease: 'back.out(2)', clearProps: 'transform' });
+    }
   });
+
+  // Highlight parent group triggers if active page is inside group
+  var isAttendanceGroup = (page === 'attendees' || page === 'households');
+  var isVolunteersGroup = (page === 'volunteers' || page === 'brest');
+  var grpAtt = $('tab-group-attendance');
+  if (grpAtt) grpAtt.classList.toggle('on', isAttendanceGroup);
+  var grpVol = $('tab-group-volunteers');
+  if (grpVol) grpVol.classList.toggle('on', isVolunteersGroup);
+
+  // Close open dropdowns & status menu
+  Array.prototype.forEach.call(document.querySelectorAll('.nav-tab-group.open'), function (g) {
+    g.classList.remove('open');
+  });
+  var sMenu = $('top-status-menu');
+  if (sMenu) sMenu.classList.remove('open');
+  var sBtn = $('top-status-btn');
+  if (sBtn) sBtn.classList.remove('open');
+
   Array.prototype.forEach.call(document.querySelectorAll('.page'), function (s) { s.classList.toggle('on', s.id === 'page-' + page); });
   renderPage();
+  updateTabBadges();
   window.scrollTo(0, 0);
+  animatePageIn($('page-' + page));
 }
 
 function renderPage() {
   if (STATE.page === 'overview') renderOverview();
-  else if (STATE.page === 'munis') renderMunis();
+  else if (STATE.page === 'munis') { if (isMunicipalUser()) go('overview'); else renderMunis(); }
   else if (STATE.page === 'brgys') renderBrgys();
+  else if (STATE.page === 'attendees') renderAttendees();
+  else if (STATE.page === 'households') renderHouseholds();
+  else if (STATE.page === 'volunteers') renderVolunteers();
+  else if (STATE.page === 'brest') renderBrest();
+  else if (STATE.page === 'mrest') renderMrest();
+  else if (STATE.page === 'kpisummary') renderKpiSummary();
   else if (STATE.page === 'people') renderPeople();
   else if (STATE.page === 'verify') renderVerify();
   else if (STATE.page === 'health') renderHealth();
@@ -222,13 +887,17 @@ function setTabsEnabled(on) {
     var p = b.getAttribute('data-page');
     if (p !== 'import' && p !== 'settings') b.disabled = !on;
   });
+  var grpAtt = $('tab-group-attendance');
+  if (grpAtt) grpAtt.disabled = !on;
+  var grpVol = $('tab-group-volunteers');
+  if (grpVol) grpVol.disabled = !on;
   $('btn-export').disabled = !on;
 }
 
 // Hooks the Data Health page calls.
 function openMuni(mKey) { STATE.muni = mKey; STATE.brgyFilter = 'all'; STATE.brgySearch = ''; go('brgys'); }
 function openPasskeyModal() {}
-function openHealthMemoModal() { $('memo-text').value = dhMemoText(); $('memo-dialog').showModal(); }
+function openHealthMemoModal() { $('memo-text').value = dhMemoText(); openModalAnimated($('memo-dialog')); }
 
 // ---- import --------------------------------------------------------------
 
@@ -279,7 +948,7 @@ function handleFiles(fileList) {
     });
   }, Promise.resolve()).then(function () {
     setProgress('');
-    renderImport(); renderStatus();
+    renderImport(); renderStatus(); updateTabBadges();
     if (LOADED.participants) computeAndShow(STATE.computed ? null : 'overview');
   });
 }
@@ -303,6 +972,7 @@ function computeAndShow(thenPage) {
       setTabsEnabled(true);
       renderStatus();
       renderImport();   // shows how much of the chosen municipality the export covers
+      updateTabBadges();
       if (thenPage) go(thenPage); else renderPage();
       savedAfterCompute();
       var cov = homeCoverage();
@@ -321,43 +991,109 @@ function computeAndShow(thenPage) {
 function renderImport() {
   renderHome();
   renderSavedBar();
-  var kinds = ['participants', 'households', 'volunteers'];
+  var kinds = [
+    { k: 'participants', ico: 'users', desc: 'Needed for every activity & attendance finding.' },
+    { k: 'households', ico: 'building-2', desc: 'Needed for K2 quorum and household roster checks.' },
+    { k: 'volunteers', ico: 'list-checks', desc: 'Needed for 1st BA BResT / SFMSC & MResT tracking.' }
+  ];
   var p = prefs();
-  var items = kinds.map(function (k) {
-    var l = LOADED[k], info = KIND_INFO[k];
-    return '<div class="import-item">' +
-      '<span class="status-chip ' + (l ? 'ok' : 'off') + '">' + (l ? '✓ Loaded' : (k === 'participants' ? 'Required' : 'Optional')) + '</span>' +
-      '<div><div class="what">' + esc(info.label) + '</div>' +
-        '<div class="where">' + (l ? esc(l.file) + (l.sheet && l.sheet !== 'Sheet1' ? ' · sheet ' + esc(l.sheet) : '') + ' · ' + n(l.rows) + ' rows'
-          : (k === 'participants' ? 'Needed for every finding.' : k === 'households' ? 'Needed for K2 and the household roster checks.' : 'Needed for the 1st BA BResT / SFMSC tracking.')) + '</div></div>' +
-      '<span></span></div>';
+  var cards = kinds.map(function (item) {
+    var k = item.k, l = LOADED[k], info = KIND_INFO[k];
+    return '<div class="slot-card' + (l ? ' loaded' : '') + '">' +
+      '<div class="slot-head">' +
+        '<div class="slot-title">' + icon(item.ico) + ' <span>' + esc(info.label) + '</span></div>' +
+        '<span class="status-chip ' + (l ? 'ok' : (k === 'participants' ? 'off' : '')) + '">' + (l ? '✓ Loaded' : (k === 'participants' ? 'Required' : 'Optional')) + '</span>' +
+      '</div>' +
+      '<div class="slot-meta">' + (l
+        ? esc(l.file) + (l.sheet && l.sheet !== 'Sheet1' ? ' · sheet ' + esc(l.sheet) : '') + ' · <strong>' + n(l.rows) + ' rows</strong>'
+        : esc(item.desc)) + '</div>' +
+    '</div>';
   });
-  var refs = '<div class="import-item"><span class="status-chip ok">✓ ' + (p.baseline ? 'Loaded' : 'Built in') + '</span>' +
+  var refs = '<div class="import-item">' +
+    '<span class="status-chip ok">✓ ' + (p.baseline ? 'Custom loaded' : 'Built-in') + '</span>' +
     '<div><div class="what">Baseline (monitored barangays)</div><div class="where">' +
-    (p.baseline ? esc(p.baseline.file) : 'From ' + esc(BUILT_IN.source)) + ' · change it in Settings</div></div><span></span></div>';
+    (p.baseline ? esc(p.baseline.file) : 'From ' + esc(BUILT_IN.source)) + ' · configurable in <button class="link" data-act="go" data-v="settings">Settings</button></div></div><span></span></div>';
   var errs = IMPORT_ERRORS.map(function (e) {
-    return '<div class="import-item"><span class="status-chip off">⚠ Not loaded</span><div><div class="what">' + esc(e.file) + '</div><div class="where">' + esc(e.error) + '</div></div><span></span></div>';
+    return '<div class="msg bad" style="margin-top:10px;margin-bottom:0">' + icon('alert-triangle') + ' <div><strong>' + esc(e.file) + '</strong>: ' + esc(e.error) + '</div></div>';
   });
   var cov = homeCoverage();
-  var covLine = cov ? '<div class="msg ' + (cov.encoded ? 'ok' : 'warn') + '" style="margin-top:10px">' + (cov.encoded
-    ? '✓ ' + esc(homeLabel()) + ': ' + n(cov.encoded) + ' of ' + n(cov.barangays) + ' barangays have records in this export.'
-    : '⚠ This export has no records for ' + esc(homeLabel()) + '. Is it the right file, and is your municipality set correctly?') + '</div>' : '';
-  var pullLine = LOADED.participants ? '<div class="filters" style="margin:12px 0 0">' +
+  var covLine = cov ? '<div class="msg ' + (cov.encoded ? 'ok' : 'warn') + '" style="margin-top:10px;margin-bottom:0">' +
+    icon(cov.encoded ? 'check-circle-2' : 'alert-triangle') + ' <div>' + (cov.encoded
+    ? '<strong>' + esc(homeLabel()) + '</strong>: ' + n(cov.encoded) + ' of ' + n(cov.barangays) + ' monitored barangays have records in this export.'
+    : 'This export has <strong>no records for ' + esc(homeLabel()) + '</strong>. Is it the right file, and is your municipality set correctly?') + '</div></div>' : '';
+  var pullLine = LOADED.participants ? '<div class="toolbar-row" style="margin-top:12px;margin-bottom:0">' +
     '<label class="field"><span>KCIS pull date of these exports</span><input type="date" data-act="im-evaldate" value="' + attr(p.evalDate || today()) + '"></label>' +
-    '<span class="tiny" style="flex:1 1 240px">The day the exports were pulled from KCIS. Set it whenever you drop a newer pull: the 3-day window and the Fix list (new, still open, resolved) go by this date.</span></div>' : '';
-  $('import-list').innerHTML = items.join('') + refs + errs.join('') + covLine + pullLine;
-  $('btn-compute').disabled = !LOADED.participants;
-  $('btn-compute').textContent = STATE.computed ? 'Recompute findings' : 'Show findings';
+    '<span class="tiny" style="flex:1 1 240px">The day the exports were pulled from KCIS. Set it whenever you drop a newer pull: the 3-day attendance window and the Fix list (new, still open, resolved) go by this date.</span></div>' : '';
+  $('import-list').innerHTML = '<div class="import-grid">' + cards.join('') + '</div>' + refs + errs.join('') + covLine + pullLine;
+  var btnCompute = $('btn-compute');
+  btnCompute.disabled = !LOADED.participants;
+  btnCompute.innerHTML = icon('layout-dashboard') + ' <span>' + (STATE.computed ? 'Recompute findings' : 'Show findings') + '</span>';
 }
 
 function renderStatus() {
-  var chip = function (on, label) { return '<span class="status-chip ' + (on ? 'ok' : '') + '">' + label + '</span>'; };
   var l = LOADED;
-  $('top-status').innerHTML =
-    chip(l.participants, 'Participants ' + (l.participants ? n(l.participants.rows) : '—')) +
-    chip(l.households, 'Households ' + (l.households ? n(l.households.rows) : '—')) +
-    chip(l.volunteers, 'Volunteers ' + (l.volunteers ? n(l.volunteers.rows) : '—')) +
-    (STATE.computed ? chip(true, 'Computed ' + STATE.computedAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })) : '');
+  var keys = ['participants', 'households', 'volunteers'];
+  var loadedCount = keys.filter(function (k) { return !!l[k]; }).length;
+
+  var pillCls = loadedCount === 3 ? 'all-loaded' : (loadedCount > 0 ? 'some-loaded' : '');
+  var pillText = loadedCount === 3
+    ? '3 KCIS Exports Loaded'
+    : (loadedCount > 0 ? loadedCount + ' of 3 Exports Loaded' : 'No Exports Loaded');
+
+  var makeItem = function (kind, title, ico) {
+    var item = l[kind];
+    return '<div class="top-status-item ' + (item ? 'ok' : '') + '">' +
+      '<div class="top-status-item-ico">' + icon(ico) + '</div>' +
+      '<div class="top-status-item-info">' +
+        '<div class="top-status-item-title">' + esc(title) + '</div>' +
+        '<div class="top-status-item-sub">' + (item ? esc(item.file) : 'Not loaded yet') + '</div>' +
+      '</div>' +
+      '<span class="top-status-badge ' + (item ? 'ok' : 'missing') + '">' + (item ? n(item.rows) + ' rows' : 'Missing') + '</span>' +
+    '</div>';
+  };
+
+  var compTime = STATE.computed && STATE.computedAt
+    ? STATE.computedAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+    : '';
+
+  var updateNotice = (UPDATE_STATE.result && UPDATE_STATE.result.updateAvailable)
+    ? '<div class="top-status-update-pill">' +
+        '<span class="pill-chip good tiny">Update v' + esc(UPDATE_STATE.result.remote.version) + ' ready</span> ' +
+        '<button type="button" class="link tiny" data-act="go" data-v="settings">View in Settings ›</button>' +
+      '</div>'
+    : '';
+
+  var footHtml = updateNotice +
+    '<div class="top-status-foot">' +
+      (STATE.computed ? icon('check') + ' <span>Computed at ' + esc(compTime) + '</span>' : '<span>Local offline analysis</span>') +
+      '<span class="tiny muted" style="margin-left:auto">v' + APP_VERSION + '</span>' +
+    '</div>' +
+    '<div class="top-status-action">' +
+      '<button type="button" class="btn ghost btn-sm" id="btn-top-manage-files">' + icon('upload-cloud') + ' <span>Manage Files</span></button>' +
+    '</div>';
+
+  var html = '<div class="top-status-wrap" id="top-status-wrap">' +
+    '<button type="button" class="top-status-pill ' + pillCls + '" id="top-status-btn" aria-haspopup="true" aria-expanded="false" title="Click to view KCIS export data sources">' +
+      '<span class="status-dot"></span>' +
+      '<span class="top-status-label">' + esc(pillText) + '</span>' +
+      (STATE.computed ? '<span class="pill-chip good tiny" style="margin-left:2px;padding:1px 6px;font-size:10px">Computed ' + esc(compTime) + '</span>' : '') +
+      icon('chevron-down', 'status-chevron') +
+    '</button>' +
+    '<div class="top-status-menu" id="top-status-menu" role="menu">' +
+      '<div class="top-status-head">' +
+        '<span class="top-status-head-title">KCIS Data Sources</span>' +
+        '<span class="top-status-badge ' + (loadedCount === 3 ? 'ok' : 'missing') + '">' + loadedCount + '/3 Ready</span>' +
+      '</div>' +
+      '<div class="top-status-list">' +
+        makeItem('participants', 'Participants & Attendees', 'users') +
+        makeItem('households', 'Households Masterlist', 'building-2') +
+        makeItem('volunteers', 'Community Volunteers', 'list-checks') +
+      '</div>' +
+      footHtml +
+    '</div>' +
+  '</div>';
+
+  $('top-status').innerHTML = html;
 }
 
 // ---- scope helpers ---------------------------------------------------------
@@ -371,14 +1107,26 @@ function stageActs() {
   return (S.overview.activities || []).filter(function (a) { return (a.stage || 1) === STATE.stage; });
 }
 function matrixRows() {
+  if (isMunicipalUser()) {
+    var key = homeKey();
+    return (S.matrix.rows || []).filter(function (r) { return r.province + '|' + r.municipality === key; });
+  }
   return (S.matrix.rows || []).filter(function (r) { return !STATE.prov || r.province === STATE.prov; });
 }
 /** The rows the Overview and the export summarise: the chosen municipality, else the province filter. */
 function overviewRows() {
+  if (isMunicipalUser()) {
+    var key = homeKey();
+    return (S.matrix.rows || []).filter(function (r) { return r.province + '|' + r.municipality === key; });
+  }
   var key = homeKey();
   return key ? (S.matrix.rows || []).filter(function (r) { return r.province + '|' + r.municipality === key; }) : matrixRows();
 }
 function inOverviewScope(p) {
+  if (isMunicipalUser()) {
+    var key = homeKey();
+    return p.province + '|' + p.municipality === key;
+  }
   var key = homeKey();
   return key ? p.province + '|' + p.municipality === key : (!STATE.prov || p.province === STATE.prov);
 }
@@ -424,15 +1172,19 @@ function scopedVolunteers() {
 }
 
 function stageSwitch() {
-  return '<div class="filters" role="group" aria-label="Stage">' +
+  var allActs = (S.overview && S.overview.activities) || [];
+  return '<div class="filters" style="margin-bottom:12px"><div class="seg-control" role="group" aria-label="Stage">' +
     [1, 2].map(function (s) {
-      return '<button class="filter-chip' + (STATE.stage === s ? ' active' : '') + '" data-act="stage" data-v="' + s + '">Stage ' + s + (s === 1 ? ' · Assessment & Planning' : ' · Sub-Project Development') + '</button>';
-    }).join('') + '</div>';
+      var cnt = allActs.filter(function (a) { return (a.stage || 1) === s; }).length;
+      return '<button type="button" class="seg-btn' + (STATE.stage === s ? ' active' : '') + '" data-act="stage" data-v="' + s + '">' +
+        '<span>Stage ' + s + (s === 1 ? ' · Assessment & Planning' : ' · Sub-Project Development') + '</span>' +
+        '<span class="chip-count">' + cnt + '</span></button>';
+    }).join('') + '</div></div>';
 }
 function provChips() {
   return '<div class="filters" role="group" aria-label="Province">' +
-    ['', ].concat(provinces()).map(function (p) {
-      return '<button class="filter-chip' + (STATE.prov === p ? ' active' : '') + '" data-act="prov" data-v="' + attr(p) + '">' + (p ? esc(p) : 'Whole region') + '</button>';
+    [''].concat(provinces()).map(function (p) {
+      return '<button type="button" class="filter-chip' + (STATE.prov === p ? ' active' : '') + '" data-act="prov" data-v="' + attr(p) + '">' + (p ? esc(p) : 'Whole region') + '</button>';
     }).join('') + '</div>';
 }
 function progressBar(ok, warn, total) {
@@ -445,12 +1197,29 @@ function progressBar(ok, warn, total) {
 
 function renderOverview() {
   var o = S.overview, pipe = scopedPipeline(), k2 = scopedK2(), cv = scopedVolunteers();
-  var tot = pipe.reduce(function (s, p) { s.e += p.expected; s.c += p.complete; s.na += p.noAttendees; s.b += p.backlog; return s; }, { e: 0, c: 0, na: 0, b: 0 });
+  var tot = pipe.reduce(function (s, p) {
+    s.e += p.expected; s.c += p.complete; s.na += p.noAttendees; s.ne += p.notEncoded; s.b += p.backlog; return s;
+  }, { e: 0, c: 0, na: 0, ne: 0, b: 0 });
   var munis = overviewRows().length;
   var brgys = (SNAP.barangayRows || []).filter(inOverviewScope).length;
-  var kpi = function (label, value, sub) { return '<div class="kpi"><div class="kpi-label">' + label + '</div><div class="kpi-value">' + value + '</div><div class="kpi-sub">' + sub + '</div></div>'; };
   var key = homeKey();
-  var scopeName = key ? homeLabel() : (STATE.prov || 'Caraga Region');
+  var isMuni = isMunicipalUser();
+  var scopeName = isMuni
+    ? (home().municipality + ' (' + home().province + ')')
+    : (key ? homeLabel() : (STATE.prov || 'Caraga Region'));
+
+  var kpiCard = function (opts) {
+    var tag = opts.act ? 'button type="button"' : 'div';
+    var closeTag = opts.act ? 'button' : 'div';
+    return '<' + tag + ' class="kpi ' + (opts.accent || '') + (opts.act ? ' clickable' : '') + '"' +
+      (opts.act ? ' data-act="' + opts.act + '" data-v="' + attr(opts.v || '') + '" title="' + attr(opts.title || '') + '"' : '') + '>' +
+      '<div><div class="kpi-top"><div class="kpi-label">' + opts.label + '</div>' +
+      (opts.ico ? '<span class="kpi-icon">' + icon(opts.ico) + '</span>' : '') + '</div>' +
+      '<div class="kpi-value">' + opts.value + '</div>' +
+      '<div class="kpi-sub">' + opts.sub + '</div></div>' +
+      (opts.bar ? '<div class="kpi-bar">' + opts.bar + '</div>' : '') +
+    '</' + closeTag + '>';
+  };
 
   // Data Health in the same scope as the page
   var keepScope = S.healthScope;
@@ -461,7 +1230,28 @@ function renderOverview() {
   var sevCount = { critical: 0, verify: 0, passed: 0 };
   evs.forEach(function (e) { if (sevCount[e.status] !== undefined) sevCount[e.status]++; });
 
-  var rows = pipe.map(function (p) {
+  var q = normSearch(STATE.ovSearch || '');
+  var filteredPipe = pipe.filter(function (p) {
+    if (!q) return true;
+    var hay = normSearch(p.a.seq + ' ' + p.a.code + ' ' + p.a.label + ' ' + p.a.level + ' ' + p.a.field);
+    return hay.indexOf(q) !== -1;
+  });
+
+  var curCol = (STATE.ovSort && STATE.ovSort.col) || 'seq';
+  var curDir = (STATE.ovSort && STATE.ovSort.dir) || 'asc';
+  var ovExtractors = {
+    seq: function (p) { return p.a.seq; },
+    activity: function (p) { return p.a.label; },
+    expected: function (p) { return p.expected; },
+    complete: function (p) { return p.complete; },
+    noAttendees: function (p) { return p.noAttendees; },
+    notEncoded: function (p) { return p.notEncoded; },
+    backlog: function (p) { return p.backlog; },
+    progress: function (p) { return p.expected ? p.complete / p.expected : -1; }
+  };
+  var sortedPipe = tblSort(filteredPipe, curCol, curDir, ovExtractors);
+
+  var rows = sortedPipe.map(function (p) {
     var cond = p.complete + p.noAttendees;
     return '<tr><td class="num">' + esc(p.a.seq) + '</td><td><strong>' + esc(p.a.label) + '</strong>' + (p.a.prioOnly ? ' <span class="pill idle">Prioritized only</span>' : '') +
       '<div class="tiny">' + esc(p.a.level) + ' level · field: ' + esc(p.a.field) + '</div></td>' +
@@ -470,40 +1260,100 @@ function renderOverview() {
       '<td><div class="cell-pct"><span>' + pctText(pctOf(p.complete, p.expected)) + ' <span class="tiny">(' + pctText(pctOf(cond, p.expected)) + ' recorded)</span></span>' + progressBar(p.complete, p.noAttendees, p.expected) + '</div></td></tr>';
   }).join('');
 
+  var totalCond = tot.c + tot.na;
+  var totalRow = '<tr class="total"><td class="num"></td><td>Total · Stage ' + STATE.stage + '</td>' +
+    '<td class="num">' + n(tot.e) + '</td><td class="num">' + n(tot.c) + '</td><td class="num">' + n(tot.na) + '</td>' +
+    '<td class="num">' + n(tot.ne) + '</td><td class="num">' + (tot.b ? '<span style="color:var(--bad-text)">' + n(tot.b) + '</span>' : '0') + '</td>' +
+    '<td><div class="cell-pct"><span>' + pctText(pctOf(tot.c, tot.e)) + ' <span class="tiny">(' + pctText(pctOf(totalCond, tot.e)) + ' recorded)</span></span>' + progressBar(tot.c, tot.na, tot.e) + '</div></td></tr>';
+
+  var th = function (col, label, num) {
+    return sortTh({ col: col, curCol: curCol, dir: curDir, label: label, num: num, act: 'ov-sort' });
+  };
+
   var cvHtml = cv ? (S.overview.volunteers.bodies || []).map(function (b) {
     var t = cv[b.code];
     return '<div class="cv-row"><strong>' + esc(b.short) + '</strong>' + progressBar(t.encoded, t.needsFix, t.expected) +
       '<span class="num">' + n(t.encoded) + '/' + n(t.expected) + (t.needsFix ? ' <span class="tiny" style="color:var(--warn-text)">+' + n(t.needsFix) + ' to fix</span>' : '') + '</span></div>';
-  }).join('') + (cv.missing ? '<p class="tiny" style="color:var(--warn-text);font-weight:700">⚠ ' + n(cv.missing) + ' barangays: 1st BA encoded, volunteers not encoded. <button class="link" data-act="health-open" data-v="cv_missing">See the list</button></p>' : '')
+  }).join('') + (cv.missing ? '<p class="tiny" style="color:var(--warn-text);font-weight:700;margin-top:8px">⚠ ' + n(cv.missing) + ' barangays: 1st BA encoded, volunteers not encoded. <button class="link" data-act="health-open" data-v="cv_missing">See the list</button></p>' : '')
     : '<p class="muted">Load the Community Volunteer List to track the BResT and SFMSC.</p>';
 
   $('ov-body').innerHTML =
     coverageBanner() +
-    '<div class="card-head"><div><h2>Overview · ' + esc(scopeName) + '</h2>' +
-      '<div class="muted">' + (key ? '' : n(munis) + ' municipalities · ') + n(brgys) + ' barangays monitored · pull date ' + esc(prefs().evalDate || today() + ' (today)') + '</div></div>' +
-      (key ? '<button class="btn ghost" data-act="go-brgys">See the barangays</button>' : '') + '</div>' +
-    stageSwitch() + (key ? '' : provChips()) +
+    '<div class="page-banner"><div><h2>Overview · ' + esc(scopeName) + ' ' + (isMuni ? '<span class="role-badge field">PEA / MDM Workspace</span>' : '<span class="role-badge region">RPMO Oversight</span>') + '</h2>' +
+      '<div class="muted">' + (isMuni ? '' : (key ? '' : n(munis) + ' municipalities · ')) + n(brgys) + ' barangays monitored · KCIS pull date: <strong>' + esc(prefs().evalDate || today() + ' (today)') + '</strong></div></div>' +
+      '<div class="row-actions" style="margin:0">' +
+        '<button class="btn ghost" data-act="go-brgys">' + icon('map-pin') + ' <span>See the barangays</span></button>' +
+        (!isMuni ? '<button class="btn ghost" data-act="go" data-v="munis">' + icon('building-2') + ' <span>See municipalities</span></button>' : '') +
+        '<button class="btn ghost" data-act="go" data-v="health">' + icon('shield-check') + ' <span>Data Health</span></button>' +
+      '</div></div>' +
+    stageSwitch() + (isMuni ? '' : provChips()) +
     '<div class="grid-kpi">' +
-      kpi('Records with attendance sheet', pctText(pctOf(tot.c, tot.e)), n(tot.c) + ' of ' + n(tot.e) + ' Stage ' + STATE.stage + ' records') +
-      kpi('Recorded without a sheet', n(tot.na), 'encoded, attendance sheet still missing') +
-      kpi('Lacking records', n(tot.b), 'past the 3-day window, or not encoded where field conduct is Completed') +
-      kpi('K2 · 1st BA households', pctText(k2.rate), k2.listed ? n(k2.present) + ' of ' + n(k2.listed) + ' listed households present (target 70%)' : 'Not reported: load the households export') +
+      kpiCard({
+        label: 'Records with attendance sheet',
+        value: pctText(pctOf(tot.c, tot.e)),
+        sub: n(tot.c) + ' of ' + n(tot.e) + ' Stage ' + STATE.stage + ' records complete',
+        ico: 'check-circle-2',
+        accent: tot.c === tot.e && tot.e > 0 ? 'accent-good' : '',
+        bar: progressBar(tot.c, tot.na, tot.e),
+        act: 'kpi-brgy', v: 'all', title: 'Open Barangays view'
+      }) +
+      kpiCard({
+        label: 'Recorded without a sheet',
+        value: n(tot.na),
+        sub: 'Encoded in KCIS, attendance sheet still missing',
+        ico: 'clock-alert',
+        accent: tot.na > 0 ? 'accent-warn' : 'accent-good',
+        act: 'kpi-brgy', v: 'nosheet', title: 'Filter barangays recorded without a sheet'
+      }) +
+      kpiCard({
+        label: 'Lacking records',
+        value: n(tot.b),
+        sub: 'Past the 3-day window, or not encoded where field conduct is Completed',
+        ico: 'alert-triangle',
+        accent: tot.b > 0 ? 'accent-bad' : 'accent-good',
+        act: 'kpi-brgy', v: 'lacking', title: 'Filter barangays with lacking records'
+      }) +
+      kpiCard({
+        label: 'K2 · 1st BA households',
+        value: pctText(k2.rate),
+        sub: k2.listed ? n(k2.present) + ' of ' + n(k2.listed) + ' listed households present (target 70%)' : 'Not reported: load the households export',
+        ico: 'users',
+        accent: k2.rate === null ? 'accent-idle' : (k2.rate >= 0.7 ? 'accent-good' : 'accent-warn'),
+        bar: k2.listed ? progressBar(k2.present, 0, k2.listed) : '',
+        act: k2.listed ? 'kpi-brgy' : '', v: 'k2', title: 'Filter barangays with K2 below 70%'
+      }) +
     '</div>' +
     '<div class="two-col">' +
-      '<div class="card"><div class="card-head"><h3>Stage ' + STATE.stage + ' activities</h3><button class="btn ghost" data-act="csv-pipeline">CSV</button></div>' +
+      '<div class="card"><div class="card-head"><div><h3>Stage ' + STATE.stage + ' activities</h3><div class="tiny">Target vs. encoded records per activity</div></div>' +
+        '<button class="btn ghost btn-sm" data-act="csv-pipeline">' + icon('download') + ' <span>CSV</span></button></div>' +
+        '<div class="toolbar-row" style="margin-top:10px;margin-bottom:12px"><div class="filters" style="margin:0;flex:1">' +
+          '<label class="field" style="flex:1"><span>Search activities</span><input type="search" id="ov-search" value="' + attr(STATE.ovSearch) + '" placeholder="Search activity, sequence, code, level…"></label>' +
+          (STATE.ovSearch ? '<button type="button" class="btn ghost btn-sm" data-act="ov-reset">' + icon('rotate-ccw') + ' <span>Reset</span></button>' : '') +
+        '</div><span class="tiny">Showing <strong>' + n(sortedPipe.length) + '</strong> of <strong>' + n(pipe.length) + '</strong></span></div>' +
         '<div class="legend"><span class="pill good">With attendance sheet</span><span class="pill warn">Recorded, no sheet</span><span>Not encoded means not in KCIS yet, not "not conducted".</span></div>' +
-        '<div class="table-wrap"><table class="grid"><thead><tr><th class="num">Seq</th><th>Activity</th><th class="num">Target</th><th class="num">With sheet</th><th class="num">No sheet</th><th class="num">Not encoded</th><th class="num">Lacking</th><th>Progress</th></tr></thead><tbody>' + rows + '</tbody></table></div></div>' +
+        '<div class="table-wrap"><table class="grid"><thead><tr>' +
+          th('seq', 'Seq', true) +
+          th('activity', 'Activity') +
+          th('expected', 'Target', true) +
+          th('complete', 'With sheet', true) +
+          th('noAttendees', 'No sheet', true) +
+          th('notEncoded', 'Not encoded', true) +
+          th('backlog', 'Lacking', true) +
+          th('progress', 'Progress') +
+        '</tr></thead><tbody>' + (rows || '<tr><td colspan="8" class="empty-state">No activity matches your search.</td></tr>') + totalRow + '</tbody></table></div></div>' +
       '<div>' +
-        '<div class="card"><h3>1st BA community volunteers</h3>' + cvHtml + '</div>' +
-        '<div class="card"><div class="card-head"><h3>Data Health</h3><button class="link" data-act="go" data-v="health">Open</button></div>' +
-          '<div class="muted" style="margin-bottom:6px"><strong style="color:var(--bad-text)">' + sevCount.critical + '</strong> critical · <strong style="color:var(--warn-text)">' + sevCount.verify + '</strong> to verify · <strong style="color:var(--good-text)">' + sevCount.passed + '</strong> passed · ' + esc(scopeName) + '</div>' +
-          open.map(function (e) {
+        '<div class="card"><div class="card-head" style="margin-bottom:8px"><h3>1st BA community volunteers</h3>' +
+          (cv ? '<button class="link tiny" data-act="go" data-v="people">Open People ›</button>' : '') + '</div>' + cvHtml + '</div>' +
+        '<div class="card"><div class="card-head" style="margin-bottom:8px"><h3>Data Health</h3><button class="link tiny" data-act="go" data-v="health">Open Data Health ›</button></div>' +
+          '<div class="muted" style="margin-bottom:10px"><strong style="color:var(--bad-text)">' + sevCount.critical + '</strong> critical · <strong style="color:var(--warn-text)">' + sevCount.verify + '</strong> to verify · <strong style="color:var(--good-text)">' + sevCount.passed + '</strong> passed · ' + esc(scopeName) + '</div>' +
+          (open.length ? open.map(function (e) {
             return '<div class="sev-line"><span><span class="pill ' + (e.status === 'critical' ? 'bad' : 'warn') + '">' + (e.status === 'critical' ? 'Critical' : 'To verify') + '</span> ' + esc(e.check.name) + '</span>' +
               '<button class="link" data-act="health-open" data-v="' + attr(e.check.id) + '">' + n(e.count) + ' ' + esc(e.count === 1 ? e.check.unit[0] : e.check.unit[1]) + '</button></div>';
-          }).join('') +
+          }).join('') : '<div class="msg ok" style="margin:0">' + icon('check-circle-2') + ' <span>All automated checks passed in ' + esc(scopeName) + '.</span></div>') +
         '</div>' +
       '</div>' +
     '</div>';
+  bindSearch('ov-search', function (v) { STATE.ovSearch = v; renderOverview(); });
   refreshIcons($('ov-body'));
 }
 
@@ -518,8 +1368,25 @@ function cvCell(v, code) {
 
 function muniTableData() {
   var q = normSearch(STATE.muniSearch);
-  return matrixRows().filter(function (r) { return !q || normSearch(r.municipality + ' ' + r.province).indexOf(q) !== -1; })
-    .sort(function (a, b) { return a.province.localeCompare(b.province) || a.municipality.localeCompare(b.municipality); });
+  var acts = stageActs();
+  var lacking = function (r) { return acts.reduce(function (s, a) { return s + ((r.cells[a.code] || {}).backlog || 0); }, 0); };
+  var filtered = matrixRows().filter(function (r) { return !q || normSearch(r.municipality + ' ' + r.province).indexOf(q) !== -1; });
+  var curCol = (STATE.muniSort && STATE.muniSort.col) || 'muni';
+  var curDir = (STATE.muniSort && STATE.muniSort.dir) || 'asc';
+  var extractors = {
+    muni: function (r) { return r.municipality + ' ' + r.province; },
+    lacking: function (r) { return lacking(r); },
+    k2: function (r) { return muniK2(r); },
+    BREST: function (r) { var x = (r.volunteers && r.volunteers.BREST); return x ? x.encoded : null; },
+    SFMSC: function (r) { var x = (r.volunteers && r.volunteers.SFMSC); return x ? x.encoded : null; }
+  };
+  acts.forEach(function (a) {
+    extractors['act_' + a.code] = function (r) {
+      var c = r.cells[a.code];
+      return c ? (c.complete || 0) : null;
+    };
+  });
+  return tblSort(filtered, curCol, curDir, extractors);
 }
 
 function renderMunis() {
@@ -527,7 +1394,6 @@ function renderMunis() {
   var lacking = function (r) { return acts.reduce(function (s, a) { return s + ((r.cells[a.code] || {}).backlog || 0); }, 0); };
   var cell = function (c, a) {
     if (!c || (a.prioOnly && !c.expected)) return '<td class="num tiny">—</td>';
-    var p = c.expected ? c.complete / c.expected : 0;
     return '<td><div class="cell-pct"><span class="num">' + n(c.complete) + '/' + n(c.expected) + (c.noAttendees ? ' <span class="tiny" style="color:var(--warn-text)">+' + n(c.noAttendees) + '</span>' : '') + '</span>' +
       progressBar(c.complete, c.noAttendees, c.expected) + '</div></td>';
   };
@@ -538,23 +1404,33 @@ function renderMunis() {
       '<td class="sticky"><strong>' + esc(r.municipality) + '</strong>' + (mine ? ' <span class="pill good">Yours</span>' : '') + '<div class="tiny">' + esc(r.province) + '</div></td>' +
       acts.map(function (a) { return cell(r.cells[a.code], a); }).join('') +
       '<td class="num">' + (lacking(r) ? '<strong style="color:var(--bad-text)">' + n(lacking(r)) + '</strong>' : '0') + '</td>' +
-      (STATE.stage === 1 ? '<td class="num">' + (k === null ? '<span class="tiny">not reported</span>' : '<span style="color:' + (k >= 0.7 ? 'var(--good-text)' : 'var(--warn-text)') + '">' + pctText(k) + '</span>') + '</td>' : '') +
+      (STATE.stage === 1 ? '<td class="num">' + (k === null ? '<span class="tiny">not reported</span>' : '<span style="color:' + (k >= 0.7 ? 'var(--good-text)' : 'var(--warn-text)') + ';font-weight:700">' + pctText(k) + '</span>') + '</td>' : '') +
       (cvOn ? '<td class="num">' + cvCell(r.volunteers, 'BREST') + '</td><td class="num">' + cvCell(r.volunteers, 'SFMSC') + '</td>' : '') +
     '</tr>';
   }).join('');
+  var hasFilter = !!(STATE.prov || STATE.muniSearch);
+  var curCol = (STATE.muniSort && STATE.muniSort.col) || 'muni';
+  var curDir = (STATE.muniSort && STATE.muniSort.dir) || 'asc';
+  var th = function (col, label, num, sub, title, sticky) {
+    return sortTh({ col: col, curCol: curCol, dir: curDir, label: label, num: num, sub: sub, title: title, sticky: sticky, act: 'mu-sort' });
+  };
   $('mu-body').innerHTML =
     '<div class="card"><div class="card-head"><div><h2>Municipalities</h2><div class="muted">Records with an attendance sheet / target per activity (+ recorded without a sheet). Click a municipality for its barangays.</div></div>' +
-      '<button class="btn ghost" data-act="csv-munis">CSV</button></div>' +
+      '<button class="btn ghost btn-sm" data-act="csv-munis">' + icon('download') + ' <span>CSV</span></button></div>' +
       stageSwitch() +
-      '<div class="filters">' +
+      '<div class="toolbar-row"><div class="filters" style="margin:0">' +
         '<label class="field"><span>Province</span><select data-act="prov-select">' + ['<option value="">Whole region</option>'].concat(provinces().map(function (p) {
           return '<option value="' + attr(p) + '"' + (STATE.prov === p ? ' selected' : '') + '>' + esc(p) + '</option>'; })).join('') + '</select></label>' +
-        '<label class="field"><span>Search</span><input type="search" id="mu-search" value="' + attr(STATE.muniSearch) + '" placeholder="Municipality or province"></label>' +
-      '</div>' +
-      '<div class="table-wrap"><table class="grid"><thead><tr><th class="sticky">Municipality (' + rows.length + ')</th>' +
-        acts.map(function (a) { return '<th title="' + attr(a.label) + '">' + esc(a.code) + '<div class="tiny" style="text-transform:none">Seq ' + esc(a.seq) + '</div></th>'; }).join('') +
-        '<th class="num">Lacking</th>' + (STATE.stage === 1 ? '<th class="num">K2 (1st BA)</th>' : '') + (cvOn ? '<th class="num">BResT</th><th class="num">SFMSC</th>' : '') +
-      '</tr></thead><tbody>' + (body || '<tr><td colspan="20" class="empty-state">No municipality matches.</td></tr>') + '</tbody></table></div>' +
+        '<label class="field"><span>Search</span><input type="search" id="mu-search" value="' + attr(STATE.muniSearch) + '" placeholder="Municipality or province…"></label>' +
+        (hasFilter ? '<button type="button" class="btn ghost btn-sm" data-act="muni-reset">' + icon('rotate-ccw') + ' <span>Reset filters</span></button>' : '') +
+      '</div><span class="tiny">Showing <strong>' + n(rows.length) + '</strong> ' + (rows.length === 1 ? 'municipality' : 'municipalities') + '</span></div>' +
+      '<div class="table-wrap"><table class="grid"><thead><tr>' +
+        th('muni', 'Municipality (' + rows.length + ')', false, null, null, true) +
+        acts.map(function (a) { return th('act_' + a.code, esc(a.code), false, 'Seq ' + esc(a.seq), a.label); }).join('') +
+        th('lacking', 'Lacking', true) +
+        (STATE.stage === 1 ? th('k2', 'K2 (1st BA)', true) : '') +
+        (cvOn ? th('BREST', 'BResT', true) + th('SFMSC', 'SFMSC', true) : '') +
+      '</tr></thead><tbody>' + (body || '<tr><td colspan="30" class="empty-state">No municipality matches your filter.</td></tr>') + '</tbody></table></div>' +
     '</div>';
   bindSearch('mu-search', function (v) { STATE.muniSearch = v; renderMunis(); });
 }
@@ -586,14 +1462,39 @@ function cvPill(v, code) {
 function brgyRows() {
   var key = STATE.muni, q = normSearch(STATE.brgySearch);
   var f = BRGY_FILTERS.filter(function (x) { return x.id === STATE.brgyFilter; })[0] || BRGY_FILTERS[0];
-  return (SNAP.barangayRows || []).filter(function (b) {
+  var filtered = (SNAP.barangayRows || []).filter(function (b) {
     return (!key || b.province + '|' + b.municipality === key) && (!q || normSearch(b.barangay).indexOf(q) !== -1) && f.test(b);
   });
+  var acts = stageActs();
+  var curCol = (STATE.brgySort && STATE.brgySort.col) || 'brgy';
+  var curDir = (STATE.brgySort && STATE.brgySort.dir) || 'asc';
+  var extractors = {
+    brgy: function (b) { return b.barangay; },
+    k2: function (b) { return b.hhListed ? b.hhRate : null; },
+    BREST: function (b) { var v = b.volunteers && b.volunteers.BREST; return v ? (v.status === 'Encoded' ? 2 : v.status === 'Needs fixing' ? 1 : 0) : null; },
+    SFMSC: function (b) { var v = b.volunteers && b.volunteers.SFMSC; return v ? (v.status === 'Encoded' ? 2 : v.status === 'Needs fixing' ? 1 : 0) : null; },
+    lacking: function (b) { return (b.todo && b.todo.length) || (b.owed || 0); }
+  };
+  acts.forEach(function (a) {
+    extractors['act_' + a.code] = function (b) {
+      var x = b.activities[a.code];
+      if (!x || x.notApplicable || x.status === 'N/A') return -1;
+      if (x.status === 'Complete') return 100000 + (x.attendees || 0);
+      if (x.status === 'No Attendees') return 50000;
+      return 0;
+    };
+  });
+  return tblSort(filtered, curCol, curDir, extractors);
 }
 
 function renderBrgys() {
   var munis = (S.overview.municipalities || []).slice().sort(function (a, b) { return a.province.localeCompare(b.province) || a.municipality.localeCompare(b.municipality); });
-  if (!STATE.muni && munis.length) STATE.muni = munis[0].province + '|' + munis[0].municipality;
+  var isMuni = isMunicipalUser();
+  if (isMuni) {
+    STATE.muni = homeKey();
+  } else if (!STATE.muni && munis.length) {
+    STATE.muni = munis[0].province + '|' + munis[0].municipality;
+  }
   var acts = stageActs(), cvOn = STATE.stage === 1 && S.overview.volunteers && S.overview.volunteers.imported;
   var all = (SNAP.barangayRows || []).filter(function (b) { return b.province + '|' + b.municipality === STATE.muni; });
   var rows = brgyRows();
@@ -604,55 +1505,549 @@ function renderBrgys() {
     opts += '<option value="' + attr(v) + '"' + (STATE.muni === v ? ' selected' : '') + '>' + esc(m.municipality) + '</option>';
   });
   opts += '</optgroup>';
-  var chips = BRGY_FILTERS.map(function (f) {
-    var c = all.filter(f.test).length;
+  var bq = normSearch(STATE.brgySearch);
+  var baseAll = bq ? all.filter(function (b) { return normSearch(b.barangay).indexOf(bq) !== -1; }) : all;
+  var cards = BRGY_FILTERS.map(function (f) {
+    var c = baseAll.filter(f.test).length;
     if (f.id === 'cv' || f.id === 'sfmsc') { if (!cvOn) return ''; }
-    return '<button class="filter-chip' + (STATE.brgyFilter === f.id ? ' active' : '') + '" data-act="brgy-filter" data-v="' + f.id + '">' + esc(f.label) + ' <span class="chip-count">' + c + '</span></button>';
+    var cardCls = f.id === 'lacking' && c > 0 ? 'fc-bad' : ((f.id === 'nosheet' || f.id === 'k2' || f.id === 'sfmsc') && c > 0 ? 'fc-warn' : '');
+    return '<button type="button" class="filter-card' + (cardCls ? ' ' + cardCls : '') + (STATE.brgyFilter === f.id ? ' active' : '') + '" data-act="brgy-filter" data-v="' + f.id + '">' +
+      '<span class="fc-label">' + esc(f.label) + '</span>' +
+      '<span class="fc-count">' + n(c) + '</span>' +
+    '</button>';
   }).join('');
-  // every cell opens the people behind it on the People page
-  var link = function (v, html, title) { return '<button class="cell-link" data-act="p-open" data-v="' + attr(v) + '" title="' + attr(title) + '">' + html + '</button>'; };
+  // every cell opens the people behind it in the dedicated module
+  var link = function (v, html, title) { return '<button type="button" class="cell-link" data-act="p-open" data-v="' + attr(v) + '" title="' + attr(title) + '">' + html + '</button>'; };
   var body = rows.map(function (b) {
     var bkey = b.province + '|' + b.municipality + '|' + b.barangay;
     return '<tr><td class="sticky"><strong>' + esc(b.barangay) + '</strong>' + (b.stage2Prio && STATE.stage === 2 ? ' <span class="pill idle">Prio</span>' : '') +
-        '<div><button class="link tiny" data-act="p-open" data-v="' + attr('attendees#' + bkey) + '">People</button></div></td>' +
+        '<div><button type="button" class="link tiny" data-act="p-open" data-v="' + attr('attendees#' + bkey) + '">Attendees ›</button></div></td>' +
       acts.map(function (a) {
         var x = b.activities[a.code], pill = brgyStatusPill(x, a);
         return '<td>' + (x && x.status !== 'Not Encoded' && x.status !== 'N/A' && a.level !== 'Municipal' ? link('attendees#' + bkey + '#' + a.code, pill, 'See the attendees') : pill) + '</td>';
       }).join('') +
       (STATE.stage === 1 ? '<td class="num">' + (b.hhListed
-        ? link('households#' + bkey + '#BA1', '<span style="color:' + (b.hhRate >= 0.7 ? 'var(--good-text)' : 'var(--warn-text)') + '">' + pctText(b.hhRate) + '</span><div class="tiny">' + n(b.hhPresent) + '/' + n(b.hhListed) + '</div>', 'See the household roster')
+        ? link('households#' + bkey + '#BA1', '<span style="color:' + (b.hhRate >= 0.7 ? 'var(--good-text)' : 'var(--warn-text)') + ';font-weight:700">' + pctText(b.hhRate) + '</span><div class="tiny">' + n(b.hhPresent) + '/' + n(b.hhListed) + '</div>', 'See the household roster')
         : '<span class="tiny">not reported</span>') + '</td>' : '') +
-      (cvOn ? '<td>' + link('volunteers#' + bkey + '#BREST', cvPill(b.volunteers, 'BREST'), 'See the BResT') + '</td><td>' + link('volunteers#' + bkey + '#SFMSC', cvPill(b.volunteers, 'SFMSC'), 'See the SFMSC') + '</td>' : '') +
-      '<td class="tiny">' + (b.todo && b.todo.length ? esc(b.todo.join(' · ')) : '') + '</td></tr>';
+      (cvOn ? '<td>' + link('volunteers#' + bkey + '#BREST', cvPill(b.volunteers, 'BREST'), 'See BResT') + '</td><td>' + link('volunteers#' + bkey + '#SFMSC', cvPill(b.volunteers, 'SFMSC'), 'See SFMSC') + '</td>' : '') +
+      '<td class="tiny">' + (b.todo && b.todo.length ? '<span style="color:var(--bad-text);font-weight:600">' + esc(b.todo.join(' · ')) + '</span>' : '<span class="tiny">—</span>') + '</td></tr>';
   }).join('');
   var parts = STATE.muni.split('|');
+  var hasFilter = !!(STATE.brgySearch || STATE.brgyFilter !== 'all');
+  var curCol = (STATE.brgySort && STATE.brgySort.col) || 'brgy';
+  var curDir = (STATE.brgySort && STATE.brgySort.dir) || 'asc';
+  var th = function (col, label, num, sub, title, sticky) {
+    return sortTh({ col: col, curCol: curCol, dir: curDir, label: label, num: num, sub: sub, title: title, sticky: sticky, act: 'bg-sort' });
+  };
+  var muniControl = isMuni
+    ? '<div class="static-val">' + icon('map-pin') + ' <span>Municipality: <strong>' + esc(parts[1] || '') + '</strong> (' + esc(parts[0] || '') + ')</span> <span class="role-badge field">PEA / MDM Scope</span></div>'
+    : '<label class="field"><span>Municipality</span><select data-act="muni-select">' + opts + '</select></label>';
+
   $('bg-body').innerHTML =
     '<div class="card"><div class="card-head"><div><h2>Barangays · ' + esc(parts[1] || '') + ' <span class="muted" style="font-weight:400">(' + esc(parts[0] || '') + ')</span></h2>' +
-      '<div class="muted">' + n(all.length) + ' monitored barangays. ✓ = with attendance sheet (attendees), No sheet = encoded without attendance, ○ = not in KCIS.</div></div>' +
-      '<button class="btn ghost" data-act="csv-brgys">CSV</button></div>' +
+      '<div class="muted">' + n(all.length) + ' monitored barangays. Click any cell to inspect the attendees, roster, or volunteers.</div></div>' +
+      '<button class="btn ghost btn-sm" data-act="csv-brgys">' + icon('download') + ' <span>CSV</span></button></div>' +
       stageSwitch() +
-      '<div class="filters">' +
-        '<label class="field"><span>Municipality</span><select data-act="muni-select">' + opts + '</select></label>' +
-        '<label class="field"><span>Search</span><input type="search" id="bg-search" value="' + attr(STATE.brgySearch) + '" placeholder="Barangay"></label>' +
-      '</div>' +
-      '<div class="filters">' + chips + '</div>' +
-      '<div class="table-wrap"><table class="grid"><thead><tr><th class="sticky">Barangay (' + rows.length + ')</th>' +
-        acts.map(function (a) { return '<th title="' + attr(a.label) + '">' + esc(a.code) + '<div class="tiny" style="text-transform:none">Seq ' + esc(a.seq) + '</div></th>'; }).join('') +
-        (STATE.stage === 1 ? '<th class="num">K2</th>' : '') + (cvOn ? '<th>BResT</th><th>SFMSC</th>' : '') + '<th>Lacking</th>' +
-      '</tr></thead><tbody>' + (body || '<tr><td colspan="30" class="empty-state">No barangay matches.</td></tr>') + '</tbody></table></div>' +
+      '<div class="toolbar-row"><div class="filters" style="margin:0">' +
+        muniControl +
+        '<label class="field"><span>Search</span><input type="search" id="bg-search" value="' + attr(STATE.brgySearch) + '" placeholder="Barangay name…"></label>' +
+        (hasFilter ? '<button type="button" class="btn ghost btn-sm" data-act="brgy-reset">' + icon('rotate-ccw') + ' <span>Reset filters</span></button>' : '') +
+      '</div><div class="legend" style="margin:0"><span class="pill good">✓ Attendees</span><span class="pill warn">No sheet</span><span class="pill idle">○ Not in KCIS</span></div></div>' +
+      '<div class="filter-cards">' + cards + '</div>' +
+      '<div class="table-wrap"><table class="grid"><thead><tr>' +
+        th('brgy', 'Barangay (' + rows.length + ')', false, null, null, true) +
+        acts.map(function (a) { return th('act_' + a.code, esc(a.code), false, 'Seq ' + esc(a.seq), a.label); }).join('') +
+        (STATE.stage === 1 ? th('k2', 'K2', true) : '') +
+        (cvOn ? th('BREST', 'BResT') + th('SFMSC', 'SFMSC') : '') +
+        th('lacking', 'Lacking') +
+      '</tr></thead><tbody>' + (body || '<tr><td colspan="30" class="empty-state">No barangay matches these filters.</td></tr>') + '</tbody></table></div>' +
     '</div>';
   bindSearch('bg-search', function (v) { STATE.brgySearch = v; renderBrgys(); });
 }
 
-function bindSearch(id, fn) {
-  var el = $(id);
-  if (!el) return;
-  el.addEventListener('input', function () {
-    var v = el.value, pos = el.selectionStart;
-    fn(v);
-    var again = $(id);
-    if (again) { again.focus({ preventScroll: true }); try { again.setSelectionRange(pos, pos); } catch (e) {} }
+// ---- KPI Summary -------------------------------------------------------------
+
+var KPI_STATE = { search: '', filter: 'all', sortCol: 'score', sortDir: 'desc' };
+
+function renderKpiSummary() {
+  var body = $('kpi-body');
+  if (!body) return;
+  if (!STATE.computed) {
+    body.innerHTML = '<div class="card"><p class="muted">Load KCIS exports on the Import tab first to calculate KPIs.</p></div>';
+    return;
+  }
+
+  var isMuni = isMunicipalUser(), key = homeKey();
+  var h = home() || {};
+  var scopeTitle = isMuni
+    ? (h.municipality ? h.municipality + ' (' + h.province + ')' : 'Assigned Municipality')
+    : (STATE.prov ? STATE.prov + ' Province' : 'Caraga Region (All Monitored LGUs)');
+
+  // 1. Pipeline Metrics
+  var pipe = scopedPipeline();
+  var pipeTot = pipe.reduce(function (acc, p) {
+    acc.e += p.expected || 0;
+    acc.c += p.complete || 0;
+    acc.na += p.noAttendees || 0;
+    acc.ne += p.notEncoded || 0;
+    acc.b += p.backlog || 0;
+    return acc;
+  }, { e: 0, c: 0, na: 0, ne: 0, b: 0 });
+  var pipeRate = pipeTot.e > 0 ? (pipeTot.c / pipeTot.e) : 0;
+
+  // 2. K2 Quorum Metrics
+  var k2 = scopedK2();
+
+  // 3. People / Volunteer Inclusion Metrics
+  var P = people(), inScope = pScopeTest();
+  var volsInScope = P.volunteers.filter(inScope);
+  var totVols = volsInScope.length;
+  var womenVols = volsInScope.filter(function (v) { return v.sex === 'female'; }).length;
+  var margVols = volsInScope.filter(function (v) { return v.sex === 'female' || v.ip || v.pwd; }).length;
+  var chairVols = volsInScope.filter(function (v) { return v.chair; }).length;
+
+  // 4. BResT Metrics
+  var brgysInScope = (SNAP.barangayRows || []).filter(function (b) {
+    return isMuni ? (b.province + '|' + b.municipality === key) : (!STATE.prov || b.province === STATE.prov);
   });
+  var totalBrgys = brgysInScope.length;
+  var brestCompliant = brgysInScope.filter(function (b) { return b.volunteers && b.volunteers.BREST && b.volunteers.BREST.status === 'Encoded'; }).length;
+  var brestIssues = brgysInScope.filter(function (b) { return b.volunteers && b.volunteers.BREST && b.volunteers.BREST.status === 'Needs fixing'; }).length;
+  var brestRate = totalBrgys > 0 ? (brestCompliant / totalBrgys) : 0;
+
+  // 5. MResT Metrics
+  var mrestList = (P.mrest || []).filter(inScope);
+  var mrestEncoded = mrestList.length > 0;
+  var eoTag = isMuni ? ((typeof vfTag === 'function') ? vfTag('mrest|' + (h.province || '') + '|' + (h.municipality || '') + '||MREST') : null) : null;
+  var eoVerified = eoTag && eoTag.rows && Object.keys(eoTag.rows).length > 0;
+  var munisList = baselineMunis().filter(function (m) { return !STATE.prov || m.province === STATE.prov; });
+  var regionalMrestEnc = munisList.filter(function (m) {
+    return (P.mrest || []).some(function (r) { return r.province === m.province && r.municipality === m.municipality; });
+  }).length;
+
+  // 6. Overall Composite Index
+  var compositeIndex = isMuni
+    ? Math.round(0.4 * (pipeRate * 100) + 0.3 * ((k2.rate ? Math.min(1, k2.rate / 0.7) : 0) * 100) + 0.3 * (brestRate * 100))
+    : Math.round(0.35 * (pipeRate * 100) + 0.25 * ((k2.rate ? Math.min(1, k2.rate / 0.7) : 0) * 100) + 0.25 * (brestRate * 100) + 0.15 * ((regionalMrestEnc / (munisList.length || 1)) * 100));
+
+  // Executive Header Hero
+  var heroHtml =
+    '<div class="kpi-summary-hero">' +
+      '<div>' +
+        '<div style="display:flex;align-items:center;gap:10px;margin-bottom:6px">' +
+          '<h2 style="margin:0;font-size:22px">Executive KPI Scorecard</h2>' +
+          (isMuni ? '<span class="role-badge field">' + icon('map-pin') + ' PEA / MDM Scope</span>' : '<span class="role-badge region">' + icon('building-2') + ' Regional RPMO Oversight</span>') +
+        '</div>' +
+        '<div class="muted">Strategic indicators, quorum compliance &amp; field health for <strong>' + esc(scopeTitle) + '</strong> · Stage ' + STATE.stage + '</div>' +
+      '</div>' +
+      '<div class="row-actions" style="margin:0">' +
+        '<button class="btn primary btn-sm" data-act="kpi-export">' + icon('download') + ' <span>Export Executive Scorecard CSV</span></button>' +
+      '</div>' +
+    '</div>';
+
+  // 6 Tier 1 Strategic KPI Mini-Cards
+  var cardsHtml =
+    '<div class="kpi-section-title">' + icon('gauge') + ' <span>Tier 1 Strategic Performance Index</span></div>' +
+    '<div class="kpi-mini-grid">' +
+      '<div class="kpi-mini-card ' + (pipeRate >= 0.8 ? 'accent-good' : (pipeRate >= 0.5 ? 'accent-warn' : 'accent-bad')) + '">' +
+        '<div class="kpi-mini-label">Pipeline Completion (Attn Sheet)</div>' +
+        '<div class="kpi-mini-val">' + pctText(pipeRate) + '</div>' +
+        '<div class="kpi-mini-sub">' + n(pipeTot.c) + ' of ' + n(pipeTot.e) + ' Stage ' + STATE.stage + ' target activities</div>' +
+      '</div>' +
+      '<div class="kpi-mini-card ' + (k2.rate !== null && k2.rate >= 0.7 ? 'accent-good' : (k2.rate !== null ? 'accent-warn' : 'accent-idle')) + '">' +
+        '<div class="kpi-mini-label">K2 Assembly Quorum (≥70%)</div>' +
+        '<div class="kpi-mini-val">' + (k2.rate !== null ? pctText(k2.rate) : '—') + '</div>' +
+        '<div class="kpi-mini-sub">' + (k2.listed ? n(k2.present) + ' of ' + n(k2.listed) + ' households (' + n(k2.met) + ' brgys met)' : 'Load households export') + '</div>' +
+      '</div>' +
+      '<div class="kpi-mini-card accent-good">' +
+        '<div class="kpi-mini-label">Volunteer Inclusion &amp; Leadership</div>' +
+        '<div class="kpi-mini-val">' + (totVols ? pctText(pctOf(womenVols, totVols)) : '—') + '</div>' +
+        '<div class="kpi-mini-sub">' + n(womenVols) + ' women (' + pctText(pctOf(margVols, totVols || 1)) + ' marginalized) · ' + n(chairVols) + ' chairs</div>' +
+      '</div>' +
+      '<div class="kpi-mini-card ' + (brestCompliant === totalBrgys && totalBrgys > 0 ? 'accent-good' : (brestRate >= 0.5 ? 'accent-warn' : 'accent-bad')) + '">' +
+        '<div class="kpi-mini-label">BResT Formation Compliance</div>' +
+        '<div class="kpi-mini-val">' + pctText(brestRate) + '</div>' +
+        '<div class="kpi-mini-sub">' + n(brestCompliant) + ' of ' + n(totalBrgys) + ' teams compliant with active lead</div>' +
+      '</div>' +
+      '<div class="kpi-mini-card ' + (isMuni ? (eoVerified ? 'accent-good' : (mrestEncoded ? 'accent-warn' : 'accent-bad')) : (regionalMrestEnc === munisList.length ? 'accent-good' : 'accent-warn')) + '">' +
+        '<div class="kpi-mini-label">MResT Institutionalization</div>' +
+        '<div class="kpi-mini-val">' + (isMuni ? (eoVerified ? '✓ EO Verified' : (mrestEncoded ? '✓ Encoded' : '○ Pending')) : n(regionalMrestEnc) + ' / ' + n(munisList.length)) + '</div>' +
+        '<div class="kpi-mini-sub">' + (isMuni ? (eoVerified ? 'Matched against Mayor\'s EO' : (mrestEncoded ? 'Pending EO precision tag' : 'No MResT committee in KCIS')) : 'Municipal LGUs with encoded MResT') + '</div>' +
+      '</div>' +
+      '<div class="kpi-mini-card ' + (compositeIndex >= 80 ? 'accent-good' : (compositeIndex >= 60 ? 'accent-warn' : 'accent-bad')) + '">' +
+        '<div class="kpi-mini-label">Overall Composite Readiness</div>' +
+        '<div class="kpi-mini-val" style="color:' + (compositeIndex >= 80 ? 'var(--good-text)' : (compositeIndex >= 60 ? 'var(--warn-text)' : 'var(--bad-text)')) + '">' + compositeIndex + '%</div>' +
+        '<div class="kpi-mini-sub">' + (compositeIndex >= 80 ? 'Optimal implementation readiness' : (compositeIndex >= 60 ? 'Moderate compliance; address gaps' : 'Requires high priority field support')) + '</div>' +
+      '</div>' +
+    '</div>';
+
+  // Section 2: Milestone Pipeline Heatmap Table
+  var milestoneRows = pipe.map(function (p) {
+    var prate = p.expected > 0 ? (p.complete / p.expected) : 0;
+    return '<tr>' +
+      '<td class="num"><strong>' + esc(p.a.seq) + '</strong></td>' +
+      '<td><strong>' + esc(p.a.label) + '</strong><div class="tiny">' + esc(p.a.level) + ' level · field: ' + esc(p.a.field) + '</div></td>' +
+      '<td class="num">' + n(p.expected) + '</td>' +
+      '<td class="num"><strong style="color:var(--good-text)">' + n(p.complete) + '</strong></td>' +
+      '<td class="num">' + (p.noAttendees ? '<strong style="color:var(--warn-text)">' + n(p.noAttendees) + '</strong>' : '0') + '</td>' +
+      '<td class="num">' + (p.backlog ? '<strong style="color:var(--bad-text)">' + n(p.backlog) + '</strong>' : '0') + '</td>' +
+      '<td style="min-width:180px"><div class="cell-pct"><span><strong>' + pctText(prate) + '</strong></span>' + progressBar(p.complete, p.noAttendees, p.expected) + '</div></td>' +
+    '</tr>';
+  }).join('');
+
+  var pipelineTableHtml =
+    '<div class="card" style="margin-bottom:20px">' +
+      '<div class="card-head"><div><h3>Stage ' + STATE.stage + ' Milestone Pipeline Execution</h3><div class="tiny">Detailed delivery progress with signed attendance sheets (attn sheet) per activity</div></div></div>' +
+      '<div class="table-wrap"><table class="grid"><thead><tr>' +
+        '<th class="num">Seq</th><th>Activity</th><th class="num">Target</th><th class="num">With Attn Sheet</th><th class="num">No Sheet</th><th class="num">Lacking</th><th>Progress Rate</th>' +
+      '</tr></thead><tbody>' + milestoneRows + '</tbody></table></div>' +
+    '</div>';
+
+  // Section 3: Performance Scorecard Table (Barangay level for PEA/MDM, Municipal level for RPMO)
+  var q = normSearch((KPI_STATE.search || '').trim());
+  var tableHtml = '';
+
+  if (isMuni) {
+    // ---- BARANGAY SCORECARD (PEA / MDM) ----
+    var brgyScoreList = brgysInScope.map(function (b) {
+      var bActs = Object.keys(b.activities).map(function (k) { return b.activities[k]; });
+      var bExp = bActs.filter(function (x) { return !x.notApplicable && x.status !== 'N/A'; }).length;
+      var bComp = bActs.filter(function (x) { return x.status === 'Complete'; }).length;
+      var bNoSheet = bActs.filter(function (x) { return x.status === 'No Attendees'; }).length;
+      var pScore = bExp > 0 ? (bComp / bExp) * 100 : 100;
+      var k2Score = b.hhListed > 0 ? Math.min(100, (b.hhPresent / b.hhListed) / 0.7 * 100) : 0;
+      var brstObj = b.volunteers && b.volunteers.BREST;
+      var bScore = brstObj ? (brstObj.status === 'Encoded' ? 100 : (brstObj.status === 'Needs fixing' ? 50 : 0)) : 0;
+      var compScore = Math.round(0.4 * pScore + 0.3 * k2Score + 0.3 * bScore);
+      return {
+        b: b,
+        brgy: b.barangay,
+        expected: bExp,
+        complete: bComp,
+        noSheet: bNoSheet,
+        pipeRate: bExp > 0 ? bComp / bExp : 0,
+        hhListed: b.hhListed || 0,
+        hhPresent: b.hhPresent || 0,
+        hhRate: b.hhListed ? b.hhRate : null,
+        brestStatus: brstObj ? brstObj.status : 'Not encoded',
+        owed: (b.owed || 0) + ((b.todo && b.todo.length) || 0),
+        score: compScore
+      };
+    });
+
+    var baseBrgys = brgyScoreList.filter(function (item) {
+      if (q && normSearch(item.brgy).indexOf(q) === -1) return false;
+      return true;
+    });
+
+    var cBAll = baseBrgys.length;
+    var cBHigh = baseBrgys.filter(function (x) { return x.score >= 80; }).length;
+    var cBMod = baseBrgys.filter(function (x) { return x.score >= 50 && x.score < 80; }).length;
+    var cBLow = baseBrgys.filter(function (x) { return x.score < 50; }).length;
+
+    var filterCards = [
+      ['all', 'All Barangays', cBAll, ''],
+      ['high', 'High Readiness (≥80%)', cBHigh, 'fc-good'],
+      ['mod', 'Moderate (50-79%)', cBMod, 'fc-warn'],
+      ['low', 'Needs Support (<50%)', cBLow, 'fc-bad']
+    ].map(function (x) {
+      return '<button type="button" class="filter-card' + (x[3] ? ' ' + x[3] : '') + (KPI_STATE.filter === x[0] ? ' active' : '') + '" data-act="kpi-filter" data-v="' + x[0] + '">' +
+        '<span class="fc-label">' + esc(x[1]) + '</span>' +
+        '<span class="fc-count">' + n(x[2]) + '</span>' +
+      '</button>';
+    }).join('');
+
+    var filteredList = baseBrgys.filter(function (x) {
+      if (KPI_STATE.filter === 'high' && x.score < 80) return false;
+      if (KPI_STATE.filter === 'mod' && (x.score < 50 || x.score >= 80)) return false;
+      if (KPI_STATE.filter === 'low' && x.score >= 50) return false;
+      return true;
+    });
+
+    var curCol = KPI_STATE.sortCol || 'score';
+    var curDir = KPI_STATE.sortDir || 'desc';
+    var bExtractors = {
+      brgy: function (x) { return x.brgy; },
+      pipe: function (x) { return x.pipeRate; },
+      nosheet: function (x) { return x.noSheet; },
+      k2: function (x) { return x.hhRate === null ? -1 : x.hhRate; },
+      brest: function (x) { return x.brestStatus === 'Encoded' ? 2 : (x.brestStatus === 'Needs fixing' ? 1 : 0); },
+      lacking: function (x) { return x.owed; },
+      score: function (x) { return x.score; }
+    };
+    var sortedList = tblSort(filteredList, curCol, curDir, bExtractors);
+
+    var th = function (col, label, num) {
+      return sortTh({ col: col, curCol: curCol, dir: curDir, label: label, num: num, act: 'kpi-sort' });
+    };
+
+    var bRowsHtml = sortedList.map(function (x) {
+      var bkey = x.b.province + '|' + x.b.municipality + '|' + x.b.barangay;
+      var k2Pill = x.hhListed === 0
+        ? '<span class="tiny">—</span>'
+        : (x.hhRate >= 0.7 ? '<span class="pill good">✓ ' + pctText(x.hhRate) + '</span>' : '<span class="pill warn">⚠ ' + pctText(x.hhRate) + '</span>');
+      var bPill = x.brestStatus === 'Encoded'
+        ? '<span class="pill good">✓ Compliant</span>'
+        : (x.brestStatus === 'Needs fixing' ? '<span class="pill warn">⚠ Needs Fixing</span>' : '<span class="pill bad">○ Not Encoded</span>');
+      var scoreBadge = x.score >= 80
+        ? '<span class="pill good"><strong>' + x.score + '%</strong> High</span>'
+        : (x.score >= 50 ? '<span class="pill warn"><strong>' + x.score + '%</strong> Moderate</span>' : '<span class="pill bad"><strong>' + x.score + '%</strong> Needs Support</span>');
+
+      return '<tr>' +
+        '<td><strong>' + esc(x.brgy) + '</strong></td>' +
+        '<td><div class="cell-pct"><span>' + pctText(x.pipeRate) + ' <span class="tiny">(' + x.complete + '/' + x.expected + ')</span></span>' + progressBar(x.complete, x.noSheet, x.expected) + '</div></td>' +
+        '<td class="num">' + (x.noSheet ? '<strong style="color:var(--warn-text)">' + x.noSheet + '</strong>' : '0') + '</td>' +
+        '<td class="num">' + k2Pill + '</td>' +
+        '<td>' + bPill + '</td>' +
+        '<td class="num">' + (x.owed ? '<strong style="color:var(--bad-text)">' + x.owed + '</strong>' : '0') + '</td>' +
+        '<td>' + scoreBadge + '</td>' +
+        '<td><button type="button" class="btn ghost btn-sm" data-act="p-open" data-v="' + attr('attendees#' + bkey) + '">' + icon('search') + ' <span>Inspect</span></button></td>' +
+      '</tr>';
+    }).join('');
+
+    tableHtml =
+      '<div class="card">' +
+        '<div class="card-head"><div><h3>Barangay Performance &amp; Readiness Scorecard</h3><div class="tiny">Composite evaluation combining Activity Attendance Sheets, K2 Quorum (≥70%), and BResT formation</div></div></div>' +
+        '<div class="toolbar-row"><div class="filters" style="margin:0;flex:1">' +
+          '<label class="field" style="flex:1"><span>Search Barangay</span><input type="search" id="kpi-search" value="' + attr(KPI_STATE.search) + '" placeholder="Barangay name…"></label>' +
+          (KPI_STATE.search || KPI_STATE.filter !== 'all' ? '<button type="button" class="btn ghost btn-sm" data-act="kpi-reset">' + icon('rotate-ccw') + ' <span>Reset</span></button>' : '') +
+        '</div><span class="tiny">Showing <strong>' + n(sortedList.length) + '</strong> of <strong>' + n(brgyScoreList.length) + '</strong></span></div>' +
+        '<div class="filter-cards" style="margin:8px 0 12px">' + filterCards + '</div>' +
+        '<div class="table-wrap"><table class="grid"><thead><tr>' +
+          th('brgy', 'Barangay') +
+          th('pipe', 'Pipeline Progress') +
+          th('nosheet', 'Missing Sheet', true) +
+          th('k2', 'K2 Quorum', true) +
+          th('brest', 'BResT Status') +
+          th('lacking', 'Lacking', true) +
+          th('score', 'Composite Score') +
+          '<th>Action</th>' +
+        '</tr></thead><tbody>' + (bRowsHtml || '<tr><td colspan="8" class="empty-state">No barangays match these filters.</td></tr>') + '</tbody></table></div>' +
+      '</div>';
+  } else {
+    // ---- REGIONAL MUNICIPAL LEAGUE TABLE (RPMO) ----
+    var mRows = overviewRows();
+    var muniScoreList = mRows.map(function (r) {
+      var mKey = r.province + '|' + r.municipality;
+      var mBrgys = (SNAP.barangayRows || []).filter(function (b) { return b.province + '|' + b.municipality === mKey; });
+      var totExp = 0, totComp = 0, totOwed = 0;
+      mBrgys.forEach(function (b) {
+        Object.keys(b.activities).forEach(function (k) {
+          var act = b.activities[k];
+          if (!act.notApplicable && act.status !== 'N/A') {
+            totExp++;
+            if (act.status === 'Complete') totComp++;
+          }
+        });
+        totOwed += (b.owed || 0) + ((b.todo && b.todo.length) || 0);
+      });
+      var pScore = totExp > 0 ? (totComp / totExp) * 100 : 100;
+      var h = r.households || {};
+      var k2Score = h.listed > 0 ? Math.min(100, (h.present / h.listed) / 0.7 * 100) : 0;
+      var k2Rate = h.listed ? (h.present / h.listed) : null;
+      var brestEnc = mBrgys.filter(function (b) { return b.volunteers && b.volunteers.BREST && b.volunteers.BREST.status === 'Encoded'; }).length;
+      var bRate = mBrgys.length > 0 ? (brestEnc / mBrgys.length) : 0;
+      var mVols = (P.mrest || []).filter(function (x) { return x.province === r.province && x.municipality === r.municipality; });
+      var mRecKey = 'mrest|' + r.province + '|' + r.municipality + '||MREST';
+      var mTag = (typeof vfTag === 'function') ? vfTag(mRecKey) : null;
+      var mVer = mTag && mTag.rows && Object.keys(mTag.rows).length > 0;
+      var mScore = mVols.length > 0 ? (mVer ? 100 : 75) : 0;
+
+      var compScore = Math.round(0.35 * pScore + 0.25 * k2Score + 0.25 * (bRate * 100) + 0.15 * mScore);
+      return {
+        r: r,
+        muni: r.municipality,
+        prov: r.province,
+        brgysCount: mBrgys.length,
+        pipeRate: totExp > 0 ? totComp / totExp : 0,
+        pipeComp: totComp,
+        pipeExp: totExp,
+        k2Rate: k2Rate,
+        brestCompliant: brestEnc,
+        brestRate: bRate,
+        mrestEnc: mVols.length > 0,
+        mrestVer: mVer,
+        owed: totOwed,
+        score: compScore
+      };
+    });
+
+    var baseMunis = muniScoreList.filter(function (x) {
+      if (q && normSearch(x.muni + ' ' + x.prov).indexOf(q) === -1) return false;
+      return true;
+    });
+
+    var cMAll = baseMunis.length;
+    var cMHigh = baseMunis.filter(function (x) { return x.score >= 80; }).length;
+    var cMMod = baseMunis.filter(function (x) { return x.score >= 50 && x.score < 80; }).length;
+    var cMLow = baseMunis.filter(function (x) { return x.score < 50; }).length;
+
+    var filterCards2 = [
+      ['all', 'All Municipalities', cMAll, ''],
+      ['high', 'Top Performers (≥80%)', cMHigh, 'fc-good'],
+      ['mod', 'Moderate (50-79%)', cMMod, 'fc-warn'],
+      ['low', 'Needs Support (<50%)', cMLow, 'fc-bad']
+    ].map(function (x) {
+      return '<button type="button" class="filter-card' + (x[3] ? ' ' + x[3] : '') + (KPI_STATE.filter === x[0] ? ' active' : '') + '" data-act="kpi-filter" data-v="' + x[0] + '">' +
+        '<span class="fc-label">' + esc(x[1]) + '</span>' +
+        '<span class="fc-count">' + n(x[2]) + '</span>' +
+      '</button>';
+    }).join('');
+
+    var filteredMunisList = baseMunis.filter(function (x) {
+      if (KPI_STATE.filter === 'high' && x.score < 80) return false;
+      if (KPI_STATE.filter === 'mod' && (x.score < 50 || x.score >= 80)) return false;
+      if (KPI_STATE.filter === 'low' && x.score >= 50) return false;
+      return true;
+    });
+
+    var curCol2 = KPI_STATE.sortCol || 'score';
+    var curDir2 = KPI_STATE.sortDir || 'desc';
+    var mExtractors = {
+      muni: function (x) { return x.muni; },
+      brgys: function (x) { return x.brgysCount; },
+      pipe: function (x) { return x.pipeRate; },
+      k2: function (x) { return x.k2Rate === null ? -1 : x.k2Rate; },
+      brest: function (x) { return x.brestRate; },
+      mrest: function (x) { return x.mrestVer ? 2 : (x.mrestEnc ? 1 : 0); },
+      lacking: function (x) { return x.owed; },
+      score: function (x) { return x.score; }
+    };
+    var sortedMunisList = tblSort(filteredMunisList, curCol2, curDir2, mExtractors);
+
+    var th2 = function (col, label, num) {
+      return sortTh({ col: col, curCol: curCol2, dir: curDir2, label: label, num: num, act: 'kpi-sort' });
+    };
+
+    var mRowsHtml = sortedMunisList.map(function (x) {
+      var mKey = x.prov + '|' + x.muni;
+      var k2Pill = x.k2Rate === null
+        ? '<span class="tiny">—</span>'
+        : (x.k2Rate >= 0.7 ? '<span class="pill good">✓ ' + pctText(x.k2Rate) + '</span>' : '<span class="pill warn">⚠ ' + pctText(x.k2Rate) + '</span>');
+      var mrestPill = x.mrestVer
+        ? '<span class="pill good">✓ EO Verified</span>'
+        : (x.mrestEnc ? '<span class="pill good">✓ Encoded</span>' : '<span class="pill bad">○ Pending</span>');
+      var scoreBadge = x.score >= 80
+        ? '<span class="pill good"><strong>' + x.score + '%</strong> High</span>'
+        : (x.score >= 50 ? '<span class="pill warn"><strong>' + x.score + '%</strong> Moderate</span>' : '<span class="pill bad"><strong>' + x.score + '%</strong> Critical</span>');
+
+      return '<tr>' +
+        '<td><strong>' + esc(x.muni) + '</strong> <span class="tiny muted">' + esc(x.prov) + '</span></td>' +
+        '<td class="num">' + n(x.brgysCount) + '</td>' +
+        '<td><div class="cell-pct"><span>' + pctText(x.pipeRate) + '</span>' + progressBar(x.pipeComp, 0, x.pipeExp) + '</div></td>' +
+        '<td class="num">' + k2Pill + '</td>' +
+        '<td class="num">' + pctText(x.brestRate) + ' <span class="tiny">(' + x.brestCompliant + '/' + x.brgysCount + ')</span></td>' +
+        '<td>' + mrestPill + '</td>' +
+        '<td class="num">' + (x.owed ? '<strong style="color:var(--bad-text)">' + x.owed + '</strong>' : '0') + '</td>' +
+        '<td>' + scoreBadge + '</td>' +
+        '<td><button type="button" class="btn ghost btn-sm" data-act="muni" data-v="' + attr(mKey) + '">' + icon('map-pin') + ' <span>Barangays</span></button></td>' +
+      '</tr>';
+    }).join('');
+
+    tableHtml =
+      '<div class="card">' +
+        '<div class="card-head"><div><h3>Regional Municipal Performance League Table</h3><div class="tiny">Cross-municipality composite scoring for Caraga Region oversight</div></div></div>' +
+        '<div class="toolbar-row"><div class="filters" style="margin:0;flex:1">' +
+          '<label class="field" style="flex:1"><span>Search Municipality / Province</span><input type="search" id="kpi-search" value="' + attr(KPI_STATE.search) + '" placeholder="Search…"></label>' +
+          (KPI_STATE.search || KPI_STATE.filter !== 'all' ? '<button type="button" class="btn ghost btn-sm" data-act="kpi-reset">' + icon('rotate-ccw') + ' <span>Reset</span></button>' : '') +
+        '</div><span class="tiny">Showing <strong>' + n(sortedMunisList.length) + '</strong> of <strong>' + n(muniScoreList.length) + '</strong></span></div>' +
+        '<div class="filter-cards" style="margin:8px 0 12px">' + filterCards2 + '</div>' +
+        '<div class="table-wrap"><table class="grid"><thead><tr>' +
+          th2('muni', 'Municipality') +
+          th2('brgys', 'Brgys', true) +
+          th2('pipe', 'Pipeline Completion') +
+          th2('k2', 'K2 Quorum', true) +
+          th2('brest', 'BResT Rate', true) +
+          th2('mrest', 'MResT Status') +
+          th2('lacking', 'Lacking', true) +
+          th2('score', 'Composite Score') +
+          '<th>Action</th>' +
+        '</tr></thead><tbody>' + (mRowsHtml || '<tr><td colspan="9" class="empty-state">No municipalities match these filters.</td></tr>') + '</tbody></table></div>' +
+      '</div>';
+  }
+
+  body.innerHTML =
+    coverageBanner() +
+    heroHtml +
+    stageSwitch() + (isMuni ? '' : provChips()) +
+    cardsHtml +
+    pipelineTableHtml +
+    tableHtml;
+
+  bindSearch('kpi-search', function (v) { KPI_STATE.search = v; renderKpiSummary(); });
+  refreshIcons(body);
+}
+
+function exportKpiSummaryCsv() {
+  var isMuni = isMunicipalUser(), key = homeKey();
+  var P = people();
+  var h = home() || {};
+
+  if (isMuni) {
+    var brgys = (SNAP.barangayRows || []).filter(function (b) { return b.province + '|' + b.municipality === key; });
+    var head = ['Barangay', 'Municipality', 'Province', 'Activities Expected', 'With Attn Sheet', 'Missing Attn Sheet', 'Pipeline Completion %', 'K2 Listed', 'K2 Present', 'K2 Quorum %', 'BResT Status', 'Lacking Records', 'Composite Score %'];
+    var rows = brgys.map(function (b) {
+      var bActs = Object.keys(b.activities).map(function (k) { return b.activities[k]; });
+      var bExp = bActs.filter(function (x) { return !x.notApplicable && x.status !== 'N/A'; }).length;
+      var bComp = bActs.filter(function (x) { return x.status === 'Complete'; }).length;
+      var bNoSheet = bActs.filter(function (x) { return x.status === 'No Attendees'; }).length;
+      var pScore = bExp > 0 ? (bComp / bExp) * 100 : 100;
+      var k2Score = b.hhListed > 0 ? Math.min(100, (b.hhPresent / b.hhListed) / 0.7 * 100) : 0;
+      var brstObj = b.volunteers && b.volunteers.BREST;
+      var bScore = brstObj ? (brstObj.status === 'Encoded' ? 100 : (brstObj.status === 'Needs fixing' ? 50 : 0)) : 0;
+      var compScore = Math.round(0.4 * pScore + 0.3 * k2Score + 0.3 * bScore);
+      var owed = (b.owed || 0) + ((b.todo && b.todo.length) || 0);
+
+      return [
+        b.barangay, b.municipality, b.province,
+        bExp, bComp, bNoSheet, (bExp > 0 ? (bComp / bExp * 100).toFixed(1) + '%' : '100%'),
+        b.hhListed || 0, b.hhPresent || 0, (b.hhListed ? (b.hhRate * 100).toFixed(1) + '%' : 'N/A'),
+        brstObj ? brstObj.status : 'Not encoded',
+        owed, compScore + '%'
+      ];
+    });
+    downloadCsv('PCRP_KPI_Summary_' + (h.municipality || 'muni').replace(/[^A-Za-z0-9]+/g, '_') + '_' + stamp() + '.csv', csvOf([head].concat(rows)));
+  } else {
+    var mRows = overviewRows();
+    var head = ['Municipality', 'Province', 'Monitored Barangays', 'Pipeline Target', 'With Attn Sheet', 'Pipeline Completion %', 'K2 Listed', 'K2 Present', 'K2 Quorum %', 'BResT Compliant', 'BResT Rate %', 'MResT Status', 'Lacking Records', 'Composite Score %'];
+    var rows = mRows.map(function (r) {
+      var mKey = r.province + '|' + r.municipality;
+      var mBrgys = (SNAP.barangayRows || []).filter(function (b) { return b.province + '|' + b.municipality === mKey; });
+      var totExp = 0, totComp = 0, totOwed = 0;
+      mBrgys.forEach(function (b) {
+        Object.keys(b.activities).forEach(function (k) {
+          var act = b.activities[k];
+          if (!act.notApplicable && act.status !== 'N/A') {
+            totExp++;
+            if (act.status === 'Complete') totComp++;
+          }
+        });
+        totOwed += (b.owed || 0) + ((b.todo && b.todo.length) || 0);
+      });
+      var pScore = totExp > 0 ? (totComp / totExp) * 100 : 100;
+      var h = r.households || {};
+      var k2Score = h.listed > 0 ? Math.min(100, (h.present / h.listed) / 0.7 * 100) : 0;
+      var k2Rate = h.listed ? (h.present / h.listed) : null;
+      var brestEnc = mBrgys.filter(function (b) { return b.volunteers && b.volunteers.BREST && b.volunteers.BREST.status === 'Encoded'; }).length;
+      var bRate = mBrgys.length > 0 ? (brestEnc / mBrgys.length) : 0;
+      var mVols = (P.mrest || []).filter(function (x) { return x.province === r.province && x.municipality === r.municipality; });
+      var mRecKey = 'mrest|' + r.province + '|' + r.municipality + '||MREST';
+      var mTag = (typeof vfTag === 'function') ? vfTag(mRecKey) : null;
+      var mVer = mTag && mTag.rows && Object.keys(mTag.rows).length > 0;
+      var mScore = mVols.length > 0 ? (mVer ? 100 : 75) : 0;
+      var compScore = Math.round(0.35 * pScore + 0.25 * k2Score + 0.25 * (bRate * 100) + 0.15 * mScore);
+
+      return [
+        r.municipality, r.province, mBrgys.length,
+        totExp, totComp, (totExp > 0 ? (totComp / totExp * 100).toFixed(1) + '%' : '100%'),
+        h.listed || 0, h.present || 0, (k2Rate !== null ? (k2Rate * 100).toFixed(1) + '%' : 'N/A'),
+        brestEnc, (bRate * 100).toFixed(1) + '%',
+        (mVer ? 'EO Verified' : (mVols.length ? 'Encoded' : 'Pending')),
+        totOwed, compScore + '%'
+      ];
+    });
+    downloadCsv('PCRP_Regional_KPI_Summary_' + stamp() + '.csv', csvOf([head].concat(rows)));
+  }
 }
 
 // ---- settings ----------------------------------------------------------------
@@ -661,15 +2056,15 @@ function renderSettings() {
   var p = prefs(), bs = baselineSummary();
   var acts = readActivities();
   $('st-body').innerHTML =
-    '<div class="card"><div class="home-set"><div><h2>Your municipality</h2><div class="muted">' + esc(homeLabel() || 'Not chosen yet') + '</div></div>' +
-      '<button class="btn ghost" data-act="home-edit">Change</button></div></div>' +
+    '<div class="card"><div class="home-set"><div><h2>Role &amp; Workspace Scope</h2><div class="muted">' + homeRoleBadge() + ' ' + esc(homeLabel() || 'Not chosen yet') + '</div></div>' +
+      '<button class="btn ghost" data-act="home-edit">' + icon('map-pin') + ' <span>Change</span></button></div></div>' +
     '<div class="card"><h2>Baseline</h2>' +
       '<p class="muted">' + (p.baseline ? 'Loaded from <strong>' + esc(p.baseline.file) + '</strong> on ' + esc(new Date(p.baseline.at).toLocaleString()) + '.'
         : 'Built in from <strong>' + esc(BUILT_IN.source) + '</strong> (built ' + esc(new Date(BUILT_IN.builtAt).toLocaleDateString()) + ').') +
       ' ' + n(bs.rows) + ' barangays listed; ' + n(bs.brgys) + ' monitored in ' + n(bs.munis) + ' municipalities.</p>' +
-      '<div class="row-actions"><label class="btn ghost">Load a newer baseline…<input type="file" id="st-baseline" accept=".xlsx,.csv" hidden></label>' +
+      '<div class="row-actions"><label class="btn ghost">' + icon('upload-cloud') + ' <span>Load a newer baseline…</span><input type="file" id="st-baseline" accept=".xlsx,.csv" hidden></label>' +
         (p.baseline ? '<button class="btn ghost" data-act="baseline-reset">Use the built-in baseline</button>' : '') + '</div>' +
-      '<p class="tiny">A Baseline file needs Province, Municipality and Barangay columns (PSGC codes and Monitored are used when present). The monitor workbook works too.</p></div>' +
+      '<p class="tiny" style="margin-top:8px">A Baseline file needs Province, Municipality and Barangay columns (PSGC codes and Monitored are used when present). The monitor workbook works too.</p></div>' +
     '<div class="card"><h2>KCIS pull date</h2>' +
       '<p class="muted">The date the exports were pulled from KCIS. A record with no attendance sheet counts as lacking from the 3rd day after the activity, judged on this date.</p>' +
       '<div class="filters"><label class="field"><span>Pull date</span><input type="date" id="st-evaldate" value="' + attr(p.evalDate || '') + '"></label>' +
@@ -677,13 +2072,122 @@ function renderSettings() {
     '<div class="card"><h2>Field conduct per activity</h2>' +
       '<p class="muted">A record not in KCIS counts as lacking only when its activity is marked <strong>Completed</strong> in the field. ' +
         (p.activities ? 'Taken from <strong>' + esc(p.activities.file) + '</strong>.' : 'Starts from the built-in monitor settings.') + '</p>' +
-      '<div class="table-wrap"><table class="grid"><thead><tr><th class="num">Seq</th><th>Activity</th><th>Stage</th><th>Field conduct</th></tr></thead><tbody>' +
-        acts.map(function (a) {
-          return '<tr><td class="num">' + esc(a.seq) + '</td><td>' + esc(a.label) + '</td><td>' + esc(a.stage) + '</td><td><select data-act="field" data-v="' + attr(a.code) + '">' +
+      (function () {
+        var q = normSearch(STATE.settingsSearch || '');
+        var filteredActs = acts.filter(function (a) {
+          if (!q) return true;
+          return normSearch(a.seq + ' ' + a.code + ' ' + a.label + ' Stage ' + a.stage + ' ' + a.field).indexOf(q) !== -1;
+        });
+        var curCol = (STATE.settingsSort && STATE.settingsSort.col) || 'seq';
+        var curDir = (STATE.settingsSort && STATE.settingsSort.dir) || 'asc';
+        var stExtractors = {
+          seq: function (a) { return a.seq; },
+          activity: function (a) { return a.label; },
+          stage: function (a) { return a.stage || 1; },
+          field: function (a) { return a.field; }
+        };
+        var sortedActs = tblSort(filteredActs, curCol, curDir, stExtractors);
+        var th = function (col, label, num) {
+          return sortTh({ col: col, curCol: curCol, dir: curDir, label: label, num: num, act: 'st-sort' });
+        };
+        var actRows = sortedActs.map(function (a) {
+          return '<tr><td class="num">' + esc(a.seq) + '</td><td><strong>' + esc(a.label) + '</strong></td><td>Stage ' + esc(a.stage) + '</td><td><select data-act="field" data-v="' + attr(a.code) + '">' +
             FIELD_VALUES.map(function (f) { return '<option' + (a.field === f ? ' selected' : '') + '>' + f + '</option>'; }).join('') + '</select></td></tr>';
-        }).join('') + '</tbody></table></div></div>' +
+        }).join('');
+        return '<div class="toolbar-row" style="margin-top:10px;margin-bottom:12px"><div class="filters" style="margin:0;flex:1">' +
+          '<label class="field" style="flex:1"><span>Filter activities</span><input type="search" id="st-act-search" value="' + attr(STATE.settingsSearch) + '" placeholder="Search sequence, activity name, stage, field conduct…"></label>' +
+          (STATE.settingsSearch ? '<button type="button" class="btn ghost btn-sm" data-act="st-reset">' + icon('rotate-ccw') + ' <span>Reset</span></button>' : '') +
+        '</div><span class="tiny">Showing <strong>' + n(sortedActs.length) + '</strong> of <strong>' + n(acts.length) + '</strong> activities</span></div>' +
+        '<div class="table-wrap"><table class="grid"><thead><tr>' +
+          th('seq', 'Seq', true) +
+          th('activity', 'Activity') +
+          th('stage', 'Stage') +
+          th('field', 'Field conduct') +
+        '</tr></thead><tbody>' + (actRows || '<tr><td colspan="4" class="empty-state">No activity matches your search.</td></tr>') + '</tbody></table></div>';
+      })() + '</div>' +
+    (function () {
+      var isOnline = typeof navigator !== 'undefined' && navigator.onLine;
+      var notesBox = '';
+      if (UPDATE_STATE.result && UPDATE_STATE.result.updateAvailable && UPDATE_STATE.result.remote) {
+        var rem = UPDATE_STATE.result.remote;
+        if (rem.notes && rem.notes.length) {
+          notesBox = '<div class="update-notes-box"><div class="update-notes-title">What\'s New in v' + esc(rem.version) + ':</div><ul class="update-notes-list">' +
+            rem.notes.map(function (note) { return '<li>' + esc(note) + '</li>'; }).join('') +
+          '</ul></div>';
+        }
+      }
+      return '<div class="card update-settings-card">' +
+        '<div class="card-head" style="margin-bottom:8px">' +
+          '<div>' +
+            '<h2>App Version &amp; Updates</h2>' +
+            '<div class="muted">Runs 100% offline in field barangays. Connect to Wi-Fi or mobile hotspot when in town to check or download updates.</div>' +
+          '</div>' +
+          '<div style="display:flex;align-items:center;gap:8px">' +
+            '<span class="pill ' + (isOnline ? 'good' : 'idle') + '" id="net-status-badge">' +
+              '<span class="status-dot" style="background:' + (isOnline ? '#16a34a' : 'var(--idle-text)') + '"></span> ' +
+              (isOnline ? 'Online' : 'Offline (Field Mode)') +
+            '</span>' +
+            '<span class="pill neutral">Installed: v' + APP_VERSION + '</span>' +
+          '</div>' +
+        '</div>' +
+
+        (UPDATE_STATE.checking ? '<div class="msg info" style="margin:10px 0 0"><span class="spin"></span> <strong>Checking for updates…</strong> Connecting to update server.</div>' : '') +
+        (UPDATE_STATE.error ? '<div class="msg warn" style="margin:10px 0 0">' + icon('alert-triangle') + ' <div>' + esc(UPDATE_STATE.error) + '</div></div>' : '') +
+
+        (UPDATE_STATE.result && UPDATE_STATE.result.updateAvailable ? (
+          '<div class="update-banner-card">' +
+            '<div class="update-banner-head">' +
+              '<div class="update-banner-title">' +
+                '<span class="pill good" style="font-weight:800;font-size:10px;letter-spacing:0.04em">NEW VERSION AVAILABLE</span>' +
+                '<h3 style="margin:6px 0 2px;font-size:16px">' + esc(UPDATE_STATE.result.remote.title || ('v' + UPDATE_STATE.result.remote.version)) + '</h3>' +
+                '<div class="tiny muted">Released on ' + esc(UPDATE_STATE.result.remote.releaseDate || 'recently') + (UPDATE_STATE.result.remote.fileSize ? ' · ' + esc(UPDATE_STATE.result.remote.fileSize) : '') + '</div>' +
+              '</div>' +
+              '<div class="row-actions" style="margin:0">' +
+                '<button type="button" class="btn primary" data-act="update-download"' + (UPDATE_STATE.downloading ? ' disabled' : '') + '>' +
+                  (UPDATE_STATE.downloading ? '<span class="spin"></span>' : icon('download')) +
+                  ' <span>' + (UPDATE_STATE.downloading ? esc(UPDATE_STATE.downloadProgress) : 'Download Update (.html)') + '</span>' +
+                '</button>' +
+                (UPDATE_STATE.result.remote.releaseUrl ? '<a href="' + attr(UPDATE_STATE.result.remote.releaseUrl) + '" target="_blank" rel="noopener noreferrer" class="btn ghost btn-sm">' + icon('external-link') + ' <span>Release Page</span></a>' : '') +
+              '</div>' +
+            '</div>' +
+            notesBox +
+            '<div class="update-banner-tip">' +
+              icon('info') +
+              '<span><strong>Seamless local data transfer:</strong> All your municipal scopes, verification tags, and saved sessions in IndexedDB are automatically kept when opening the new file on this PC.</span>' +
+            '</div>' +
+          '</div>'
+        ) : (UPDATE_STATE.result && !UPDATE_STATE.result.updateAvailable ? (
+          '<div class="msg ok" style="margin:10px 0 0">' + icon('check-circle-2') + ' <div><strong>Your app is up to date!</strong> Version v' + APP_VERSION + ' is the latest release.</div></div>'
+        ) : '')) +
+
+        '<div class="row-actions" style="margin-top:14px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px">' +
+          '<div style="display:flex;align-items:center;gap:8px">' +
+            '<button type="button" class="btn ' + (UPDATE_STATE.result && UPDATE_STATE.result.updateAvailable ? 'ghost' : 'primary') + '" data-act="update-check"' + (UPDATE_STATE.checking ? ' disabled' : '') + '>' +
+              (UPDATE_STATE.checking ? '<span class="spin"></span>' : icon('rotate-ccw')) +
+              ' <span>' + (UPDATE_STATE.checking ? 'Checking…' : 'Check for updates now') + '</span>' +
+            '</button>' +
+            '<button type="button" class="btn ghost btn-sm" data-act="update-feed-toggle">' + icon('settings') + ' <span>Feed Server</span></button>' +
+          '</div>' +
+          '<div class="tiny muted">' +
+            (p.lastUpdateCheck ? 'Last checked: ' + new Date(p.lastUpdateCheck).toLocaleString() : 'Never checked') +
+          '</div>' +
+        '</div>' +
+
+        '<div id="update-feed-config" style="display:none;margin-top:12px;padding-top:12px;border-top:1px dashed var(--border-subtle)">' +
+          '<label class="field" style="max-width:100%">' +
+            '<span>Update Feed URL (for Regional IT / Custom Server)</span>' +
+            '<input type="url" id="st-update-url" value="' + attr(p.updateUrl || DEFAULT_UPDATE_URL) + '" placeholder="https://raw.githubusercontent.com/.../version.json">' +
+          '</label>' +
+          '<div style="display:flex;align-items:center;gap:8px;margin-top:8px;flex-wrap:wrap">' +
+            '<button type="button" class="btn ghost btn-sm" data-act="update-feed-save">Save Feed URL</button>' +
+            '<button type="button" class="btn ghost btn-sm" data-act="update-feed-reset">Reset to Official Feed</button>' +
+            '<button type="button" class="btn ghost btn-sm" data-act="update-demo" title="Preview the update experience with simulated release notes">Preview / Test Update</button>' +
+          '</div>' +
+        '</div>' +
+      '</div>';
+    })() +
     '<div class="card note-card"><h3>About</h3><ul>' +
-      '<li>PCRP Monitor Desktop runs the Encoding Monitor v' + esc(BUILT_IN.monitorVersion) + ' rules on this computer. Files are never uploaded.</li>' +
+      '<li>PCRP Encoding and Data Quality Assessment Tool runs the Encoding Monitor v' + esc(BUILT_IN.monitorVersion) + ' rules on this computer. Files are never uploaded.</li>' +
       '<li>The loaded exports, the findings of earlier pulls and the verification tags are kept in this browser until you choose "Forget saved data" on the Import page; settings above are remembered too.</li>' +
       '<li>Household heads\' names appear in Data Health, as for an editor of the web monitor. Handle the exports and any downloaded file under the Data Privacy Act.</li>' +
     '</ul></div>';
@@ -700,6 +2204,7 @@ function renderSettings() {
   });
   var ed = $('st-evaldate');
   if (ed) ed.addEventListener('change', function () { var q = prefs(); q.evalDate = ed.value || ''; delete q.evalDateFromSave; savePrefs(q); afterSettingsChange(); });
+  bindSearch('st-act-search', function (v) { STATE.settingsSearch = v; renderSettings(); });
 }
 
 function afterSettingsChange() {
@@ -777,21 +2282,30 @@ function stamp() { return new Date().toISOString().slice(0, 10); }
 
 function exportExcel() {
   var keepStage = STATE.stage, keepProv = STATE.prov;
-  var summary = [['PCRP Monitor Desktop — findings'], ['Municipality', homeLabel()], ['Generated', new Date().toLocaleString()], ['Pull date', prefs().evalDate || today()],
-    ['Monitor rules', 'v' + BUILT_IN.monitorVersion], ['Participants file', LOADED.participants ? LOADED.participants.file : ''],
-    ['Households file', LOADED.households ? LOADED.households.file : ''], ['Volunteer file', LOADED.volunteers ? LOADED.volunteers.file : ''], []];
+  var isMuni = isMunicipalUser();
+  var summary = [['PCRP Encoding and Data Quality Assessment Tool — findings'],
+    ['User Scope', isMuni ? 'PEA / MDM (Field Municipal Workspace)' : 'Project Evaluation Officer (Region Level) RPMO'],
+    ['Municipality', homeLabel()],
+    ['Generated', new Date().toLocaleString()],
+    ['Pull date', prefs().evalDate || today()],
+    ['Monitor rules', 'v' + BUILT_IN.monitorVersion],
+    ['Participants file', LOADED.participants ? LOADED.participants.file : ''],
+    ['Households file', LOADED.households ? LOADED.households.file : ''],
+    ['Volunteer file', LOADED.volunteers ? LOADED.volunteers.file : ''], []];
   STATE.prov = '';
   [1, 2].forEach(function (s) { STATE.stage = s; summary.push(['Stage ' + s]); summary = summary.concat(pipelineTable()); summary.push([]); });
   STATE.stage = keepStage; STATE.prov = keepProv;
   var sheets = [
-    { name: 'Summary', rows: summary },
-    { name: homeKey() ? 'Municipalities in ' + home().province.slice(0, 15) : 'Municipalities', rows: muniTable(true) },
-    { name: 'Barangays', rows: brgyTable((SNAP.barangayRows || []).filter(function (b) { return !homeKey() || inOverviewScope(b); }), true) },
-    { name: 'Data Health', rows: healthTable() }
+    { name: 'Summary', rows: summary }
   ];
-  var fname = 'PCRP_findings_' + (homeKey() ? home().municipality.replace(/[^A-Za-z0-9]+/g, '_') + '_' : '') + stamp() + '.xlsx';
+  if (!isMuni) {
+    sheets.push({ name: 'Municipalities', rows: muniTable(true) });
+  }
+  sheets.push({ name: 'Barangays', rows: brgyTable((SNAP.barangayRows || []).filter(function (b) { return !homeKey() || inOverviewScope(b); }), true) });
+  sheets.push({ name: 'Data Health', rows: healthTable() });
+  var fname = 'PCRP_findings_' + (homeKey() ? (isMuni ? home().municipality.replace(/[^A-Za-z0-9]+/g, '_') + '_' : '') : 'Regional_') + stamp() + '.xlsx';
   saveBlob(makeXlsx(sheets), fname);
-  toast('Saved ' + fname + ' (4 sheets).');
+  toast('Saved ' + fname + ' (' + sheets.length + ' sheets).');
 }
 
 // ---- events -------------------------------------------------------------------
@@ -802,26 +2316,168 @@ document.addEventListener('click', function (ev) {
   var act = t.getAttribute('data-act'), v = t.getAttribute('data-v');
   if (t.tagName === 'SELECT') return;
   if (act === 'stage') { STATE.stage = Number(v); renderPage(); }
-  else if (act === 'prov') { STATE.prov = v || ''; renderPage(); }
+  else if (act === 'prov') { STATE.prov = v || ''; renderPage(); updateTabBadges(); }
   else if (act === 'go') go(v);
   else if (act === 'muni') openMuni(v);
+  else if (act === 'muni-reset') { STATE.prov = ''; STATE.muniSearch = ''; renderMunis(); updateTabBadges(); }
   else if (act === 'brgy-filter') { STATE.brgyFilter = v; renderBrgys(); }
+  else if (act === 'brgy-reset') { STATE.brgyFilter = 'all'; STATE.brgySearch = ''; renderBrgys(); }
+  else if (act === 'kpi-brgy') { STATE.muni = homeKey() || STATE.muni; STATE.brgyFilter = v || 'all'; go('brgys'); }
   else if (act === 'health-open') {
     S.healthOpen = {}; S.healthOpen[v] = true;
     S.healthScope = homeKey() ? 'm:' + homeKey() : (STATE.prov ? 'p:' + STATE.prov : '');
     S.healthView = 'check'; S.healthSeverity = 'all'; go('health');
   }
   else if (act === 'go-brgys') { STATE.muni = homeKey() || STATE.muni; STATE.brgyFilter = 'all'; go('brgys'); }
-  else if (act === 'home-edit') { STATE.editHome = true; go('import'); }
+  else if (act === 'home-edit') { openScopeDialog(); }
   else if (act === 'home-cancel') { STATE.editHome = false; renderHome(); }
-  else if (act === 'home-save') saveHome($('home-select') && $('home-select').value);
+  else if (act === 'role-pick') { STATE.pendingRole = v; renderHome(); }
+  else if (act === 'home-save') {
+    var sel = $('home-select');
+    var r = STATE.pendingRole || userRole() || 'pea_mdm';
+    if (r === 'pea_mdm') {
+      saveHome(sel ? sel.value : '', 'pea_mdm');
+    } else {
+      saveHome('REGION', 'rpmo');
+    }
+  }
+  else if (act === 'p-open') {
+    var parts = (v || '').split('#');
+    var targetTab = parts[0] || 'attendees';
+    var bkey = parts[1] || '';
+    var sub = parts[2] || '';
+    if (targetTab === 'attendees') {
+      if (typeof ATT_STATE !== 'undefined') { ATT_STATE.brgy = bkey; ATT_STATE.act = sub; }
+      go('attendees');
+    } else if (targetTab === 'households') {
+      if (typeof HH_STATE !== 'undefined') { HH_STATE.brgy = bkey; HH_STATE.tab = 'roster'; }
+      go('households');
+    } else if (targetTab === 'volunteers') {
+      if (sub === 'BREST') {
+        if (typeof BRT_STATE !== 'undefined') { BRT_STATE.brgy = bkey; }
+        go('brest');
+      } else {
+        if (typeof VOL_STATE !== 'undefined') { VOL_STATE.brgy = bkey; VOL_STATE.body = sub || 'all'; }
+        go('volunteers');
+      }
+    } else {
+      go(targetTab);
+    }
+  }
   else if (act === 'csv-pipeline') downloadCsv('PCRP_activities_stage' + STATE.stage + '_' + stamp() + '.csv', csvOf(pipelineTable()));
   else if (act === 'csv-munis') downloadCsv('PCRP_municipalities_stage' + STATE.stage + '_' + stamp() + '.csv', csvOf(muniTable(false)));
   else if (act === 'csv-brgys') downloadCsv('PCRP_barangays_' + STATE.muni.replace(/[^A-Za-z0-9]+/g, '_') + '_' + stamp() + '.csv', csvOf(brgyTable(brgyRows(), false)));
+  else if (act === 'ov-sort') {
+    var col = t.getAttribute('data-col');
+    if (STATE.ovSort.col === col) {
+      STATE.ovSort.dir = STATE.ovSort.dir === 'asc' ? 'desc' : 'asc';
+    } else {
+      STATE.ovSort.col = col;
+      STATE.ovSort.dir = (col === 'seq' || col === 'activity') ? 'asc' : 'desc';
+    }
+    renderOverview();
+  }
+  else if (act === 'ov-reset') { STATE.ovSearch = ''; renderOverview(); }
+  else if (act === 'mu-sort') {
+    var col = t.getAttribute('data-col');
+    if (STATE.muniSort.col === col) {
+      STATE.muniSort.dir = STATE.muniSort.dir === 'asc' ? 'desc' : 'asc';
+    } else {
+      STATE.muniSort.col = col;
+      STATE.muniSort.dir = (col === 'muni') ? 'asc' : 'desc';
+    }
+    renderMunis();
+  }
+  else if (act === 'bg-sort') {
+    var col = t.getAttribute('data-col');
+    if (STATE.brgySort.col === col) {
+      STATE.brgySort.dir = STATE.brgySort.dir === 'asc' ? 'desc' : 'asc';
+    } else {
+      STATE.brgySort.col = col;
+      STATE.brgySort.dir = (col === 'brgy') ? 'asc' : 'desc';
+    }
+    renderBrgys();
+  }
+  else if (act === 'kpi-filter') { KPI_STATE.filter = v; renderKpiSummary(); }
+  else if (act === 'kpi-reset') { KPI_STATE.filter = 'all'; KPI_STATE.search = ''; renderKpiSummary(); }
+  else if (act === 'kpi-sort') {
+    var kCol = t.getAttribute('data-col');
+    if (KPI_STATE.sortCol === kCol) {
+      KPI_STATE.sortDir = KPI_STATE.sortDir === 'asc' ? 'desc' : 'asc';
+    } else {
+      KPI_STATE.sortCol = kCol;
+      KPI_STATE.sortDir = (kCol === 'brgy' || kCol === 'muni') ? 'asc' : 'desc';
+    }
+    renderKpiSummary();
+  }
+  else if (act === 'kpi-export') exportKpiSummaryCsv();
+  else if (act === 'st-sort') {
+    var col = t.getAttribute('data-col');
+    if (STATE.settingsSort.col === col) {
+      STATE.settingsSort.dir = STATE.settingsSort.dir === 'asc' ? 'desc' : 'asc';
+    } else {
+      STATE.settingsSort.col = col;
+      STATE.settingsSort.dir = 'asc';
+    }
+    renderSettings();
+  }
+  else if (act === 'st-reset') { STATE.settingsSearch = ''; renderSettings(); }
   else if (act === 'baseline-reset') { var p = prefs(); delete p.baseline; savePrefs(p); toast('Using the built-in baseline.'); afterSettingsChange(); }
   else if (act === 'evaldate-clear') { var q = prefs(); delete q.evalDate; delete q.evalDateFromSave; savePrefs(q); afterSettingsChange(); }
+  else if (act === 'update-check') { checkForUpdates(true); }
+  else if (act === 'update-download') { downloadAppUpdate(); }
+  else if (act === 'update-feed-toggle') {
+    var cfg = $('update-feed-config');
+    if (cfg) cfg.style.display = cfg.style.display === 'none' ? 'block' : 'none';
+  }
+  else if (act === 'update-feed-save') {
+    var inp = $('st-update-url');
+    if (inp) {
+      var p = prefs();
+      p.updateUrl = inp.value.trim();
+      savePrefs(p);
+      toast('Update feed URL saved.');
+      renderSettings();
+    }
+  }
+  else if (act === 'update-feed-reset') {
+    var p = prefs();
+    delete p.updateUrl;
+    savePrefs(p);
+    toast('Reset to official update feed.');
+    renderSettings();
+  }
+  else if (act === 'update-demo') {
+    UPDATE_STATE.checking = false;
+    UPDATE_STATE.error = null;
+    UPDATE_STATE.result = {
+      updateAvailable: true,
+      remote: {
+        version: '2.13.0',
+        releaseDate: today(),
+        title: 'PCRP Encoding and Data Quality Assessment Tool v2.13.0',
+        fileSize: '796 KB',
+        notes: [
+          'Consolidated top header status pill with floating KCIS export details popover',
+          'Grouped navigation bar tabs for Attendance & Households and Volunteers & BResT',
+          'In-page sub-navigation tabs for instant 1-click toggling between sister modules',
+          'Semi-offline update checker: automatically detects Wi-Fi/data to check and download new versions without data loss'
+        ],
+        downloadUrl: 'https://raw.githubusercontent.com/hidalgokimjohn/pcrp-monitor-desktop/main/dist/PCRP%20Encoding%20and%20Data%20Quality%20Assessment%20Tool.html',
+        releaseUrl: 'https://github.com/hidalgokimjohn/pcrp-monitor-desktop'
+      }
+    };
+    toast('Simulated v2.13.0 update available!');
+    renderSettings();
+    updateTabBadges();
+    renderStatus();
+  }
 });
 document.addEventListener('keydown', function (ev) {
+  if (ev.key === 'Enter' || ev.key === ' ') {
+    var th = ev.target && ev.target.closest && ev.target.closest('th.sortable');
+    if (th) { ev.preventDefault(); th.click(); return; }
+  }
   if (ev.key !== 'Enter') return;
   var t = ev.target.closest && ev.target.closest('tr[data-act="muni"]');
   if (t) openMuni(t.getAttribute('data-v'));
@@ -829,7 +2485,7 @@ document.addEventListener('keydown', function (ev) {
 document.addEventListener('change', function (ev) {
   var t = ev.target;
   var act = t.getAttribute && t.getAttribute('data-act');
-  if (act === 'prov-select') { STATE.prov = t.value; renderPage(); }
+  if (act === 'prov-select') { STATE.prov = t.value; renderPage(); updateTabBadges(); }
   else if (act === 'im-evaldate') {
     var q = prefs(); q.evalDate = t.value || ''; delete q.evalDateFromSave; savePrefs(q);
     if (STATE.computed) computeAndShow(null); else renderImport();
@@ -841,9 +2497,79 @@ document.addEventListener('change', function (ev) {
   }
 });
 
+// Close <dialog> when clicking its backdrop
+['memo-dialog', 'person-dialog', 'scope-dialog'].forEach(function (id) {
+  var dlg = $(id);
+  if (dlg) dlg.addEventListener('click', function (ev) {
+    if (ev.target === dlg) dlg.close();
+  });
+});
+
+if ($('btn-theme')) $('btn-theme').addEventListener('click', toggleTheme);
 $('tabs').addEventListener('click', function (ev) {
+  var trigger = ev.target.closest('.tab-group-trigger');
+  if (trigger && !trigger.disabled) {
+    var group = trigger.closest('.nav-tab-group');
+    if (group) {
+      var wasOpen = group.classList.contains('open');
+      Array.prototype.forEach.call(document.querySelectorAll('.nav-tab-group.open'), function (g) {
+        g.classList.remove('open');
+      });
+      if (!wasOpen) group.classList.add('open');
+    }
+    return;
+  }
   var b = ev.target.closest('button[data-page]');
-  if (b && !b.disabled) go(b.getAttribute('data-page'));
+  if (b && !b.disabled) {
+    Array.prototype.forEach.call(document.querySelectorAll('.nav-tab-group.open'), function (g) {
+      g.classList.remove('open');
+    });
+    go(b.getAttribute('data-page'));
+  }
+});
+
+document.addEventListener('click', function (ev) {
+  // Top status dropdown toggle
+  var sBtn = ev.target.closest('#top-status-btn');
+  if (sBtn) {
+    var menu = $('top-status-menu');
+    if (menu) {
+      var isOpen = menu.classList.contains('open');
+      menu.classList.toggle('open', !isOpen);
+      sBtn.classList.toggle('open', !isOpen);
+      sBtn.setAttribute('aria-expanded', !isOpen);
+    }
+    return;
+  }
+  // Click on "Manage Files" in top status dropdown
+  if (ev.target.closest('#btn-top-manage-files')) {
+    var sMenu = $('top-status-menu');
+    var sBtn2 = $('top-status-btn');
+    if (sMenu) sMenu.classList.remove('open');
+    if (sBtn2) sBtn2.classList.remove('open');
+    go('import');
+    return;
+  }
+  // Close top status popover if clicking outside
+  var statusWrap = $('top-status-wrap');
+  if (statusWrap && !statusWrap.contains(ev.target)) {
+    var sBtn3 = $('top-status-btn');
+    var sMenu3 = $('top-status-menu');
+    if (sBtn3) sBtn3.classList.remove('open');
+    if (sMenu3) sMenu3.classList.remove('open');
+  }
+  // Close nav-tab-group dropdowns if clicking outside
+  if (!ev.target.closest('.nav-tab-group')) {
+    Array.prototype.forEach.call(document.querySelectorAll('.nav-tab-group.open'), function (g) {
+      g.classList.remove('open');
+    });
+  }
+  // In-page sub-navigation tabs quick switch
+  var subBtn = ev.target.closest('.sub-nav-btn[data-go]');
+  if (subBtn) {
+    var target = subBtn.getAttribute('data-go');
+    if (target) go(target);
+  }
 });
 $('btn-import-top').addEventListener('click', function () { go('import'); });
 $('btn-export').addEventListener('click', exportExcel);
@@ -854,12 +2580,24 @@ $('btn-clear').addEventListener('click', function () {
   // The saved exports go too; earlier pulls and verification tags stay until "Forget saved data".
   SAVED.current = null;
   if (SAVED.available) savedTx('readwrite', function (s) { s.delete('current'); }).then(renderSavedBar).catch(function () {});
-  setTabsEnabled(false); renderStatus(); renderImport();
+  setTabsEnabled(false); renderStatus(); renderImport(); updateTabBadges();
 });
 $('file-input').addEventListener('change', function () { handleFiles(this.files); this.value = ''; });
 var drop = $('drop');
-['dragenter', 'dragover'].forEach(function (e) { drop.addEventListener(e, function (ev) { ev.preventDefault(); drop.classList.add('over'); }); });
-['dragleave', 'drop'].forEach(function (e) { drop.addEventListener(e, function (ev) { ev.preventDefault(); drop.classList.remove('over'); }); });
+['dragenter', 'dragover'].forEach(function (e) {
+  drop.addEventListener(e, function (ev) {
+    ev.preventDefault();
+    drop.classList.add('over');
+    if (hasGsap()) gsap.to(drop, { scale: 1.012, duration: 0.2, ease: 'power1.out' });
+  });
+});
+['dragleave', 'drop'].forEach(function (e) {
+  drop.addEventListener(e, function (ev) {
+    ev.preventDefault();
+    drop.classList.remove('over');
+    if (hasGsap()) gsap.to(drop, { scale: 1, duration: 0.2, ease: 'power1.out', clearProps: 'transform' });
+  });
+});
 drop.addEventListener('drop', function (ev) { handleFiles(ev.dataTransfer && ev.dataTransfer.files); });
 // a file dropped anywhere on the window should not open in the browser
 ['dragover', 'drop'].forEach(function (e) { window.addEventListener(e, function (ev) { ev.preventDefault(); }); });
@@ -872,14 +2610,51 @@ $('memo-save').addEventListener('click', function () {
   saveBlob(new Blob([$('memo-text').value], { type: 'text/plain;charset=utf-8' }), 'PCRP_data_health_memo_' + stamp() + '.txt');
 });
 
-$('home-chip').addEventListener('click', function () { STATE.editHome = true; go('import'); });
+$('home-chip').addEventListener('click', function () { openScopeDialog(); });
 
 // ---- start ----------------------------------------------------------------------
+refreshIcons(document);
+applyTheme();
 loadReferenceTables();
 applyHomeScope();
 renderImport();
 renderStatus();
+updateTabBadges();
 // after the computation's own 'Findings ready' message, so this one is the one left on screen
 savedRestore().then(function (restored) {
   if (restored) setTimeout(function () { toast('Opened the data saved on this PC: as of ' + SAVED.current.pullDate + '. Drop newer exports to replace it.'); }, 800);
 });
+
+// Network listeners for offline/online transitions and background update check
+window.addEventListener('online', function () {
+  toast('Internet connection detected.');
+  var badge = $('net-status-badge');
+  if (badge) {
+    badge.className = 'pill good';
+    badge.innerHTML = '<span class="status-dot" style="background:#16a34a"></span> Online';
+  }
+  var p = prefs();
+  var last = p.lastUpdateCheck ? new Date(p.lastUpdateCheck).getTime() : 0;
+  if (Date.now() - last > 24 * 60 * 60 * 1000) {
+    checkForUpdates(false);
+  }
+});
+
+window.addEventListener('offline', function () {
+  toast('Offline mode active (field ready).');
+  var badge = $('net-status-badge');
+  if (badge) {
+    badge.className = 'pill idle';
+    badge.innerHTML = '<span class="status-dot" style="background:var(--idle-text)"></span> Offline (Field Mode)';
+  }
+});
+
+if (typeof navigator !== 'undefined' && navigator.onLine) {
+  setTimeout(function () {
+    var p = prefs();
+    var last = p.lastUpdateCheck ? new Date(p.lastUpdateCheck).getTime() : 0;
+    if (Date.now() - last > 24 * 60 * 60 * 1000) {
+      checkForUpdates(false);
+    }
+  }, 3500);
+}

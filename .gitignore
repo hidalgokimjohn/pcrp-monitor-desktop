@@ -17,3 +17,6 @@ Thumbs.db
 
 # local knowledge-graph output
 graphify-out/
+
+# media binaries
+*.mp4

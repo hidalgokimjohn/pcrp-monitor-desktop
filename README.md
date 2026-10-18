@@ -1,41 +1,41 @@
-# PCRP Monitor Desktop
+# PCRP Encoding and Data Quality Assessment Tool
 
-One offline file, `dist/PCRP Monitor Desktop.html`, that shows the Encoding Monitor's findings for KCIS exports you drop into it. Double-click it to open it in Edge or Chrome; it needs no internet and no install. Files are read on the computer and never uploaded.
+One offline file, `dist/PCRP Encoding and Data Quality Assessment Tool.html`, that shows the Encoding Monitor's findings for KCIS exports you drop into it. Double-click it to open it in Edge or Chrome; it needs no internet and no install. Files are read on the computer and never uploaded.
 
 ## Using it
 
-1. Open `dist/PCRP Monitor Desktop.html`.
-2. **Choose your municipality** (step 1). Import stays locked until you do. The app remembers it on that computer, and you can change it from the chip in the header or in Settings. RPMO staff can choose *All municipalities* for the regional view.
-   - The Overview, Barangays, Data Health, the memo and the Excel export then open on that municipality.
-   - The Municipalities page shows its province, with your row marked.
-   - If the export has no records for your municipality, the app says so: check that it is the right file.
+1. Open `dist/PCRP Encoding and Data Quality Assessment Tool.html`.
+2. **Select your Workspace Role & Scope** (step 1):
+   - **PEA / MDM (Municipal Field Workspace):** For Project Evaluation Assistants and Municipal Data Monitors. Select your municipality once. The app strictly scopes the entire tool to your municipality:
+     - The **Municipalities** tab is removed from navigation.
+     - **Overview:** Provincial filter chips are removed; municipal KPI matrix shows only your municipality.
+     - **Barangays:** Municipality selector is replaced with a locked badge; displays only your barangays.
+     - **Verify & DQA:** Filters and precision samples are isolated strictly to your municipality.
+     - **Excel Export:** Multi-municipality comparison sheets are excluded, producing a clean LGU-specific workbook.
+     - No other municipality's data is displayed or leaked.
+   - **Regional RPMO (Project Evaluation Officer - Region Level):** Full regional access to all 26 monitored LGUs and 516 barangays with multi-municipality comparison tables, provincial filter chips, and region-wide analytics.
+   - Click the **Role & Scope Chip** in the header or on the Home card at any time to switch roles or municipalities via the Scope Dialog modal.
 3. Drop in the KCIS exports, all at once or one by one:
    - the participants export (required)
    - the households export (for K2 and the household roster checks)
    - the Community Volunteer List (for the 1st BA BResT / SFMSC tracking)
 
    You can also drop the whole monitor workbook, with its `Raw_Participants`, `Raw_Households`, `Baseline` and `Activities` tabs. The app recognises each file from its column headers.
-4. Read the findings:
-   - **Overview:** Stage 1 / 2 activities, K2, volunteers, a Data Health summary; whole region or one province.
-   - **Municipalities:** every LGU per activity; click one to see its barangays.
-   - **Barangays:** each barangay's status per activity, K2, BResT / SFMSC, and what is lacking; with filters. Every cell opens the people behind it.
-   - **People:** who is behind the numbers.
-     - *Attendees* by activity.
-     - The *household roster*: head, present, birthdate.
-     - *Volunteers & committees*: committee, position, sex, IP/PWD, term. Choosing a barangay shows its BResT and SFMSC roster, Chairperson first, with the status and what to fix.
-     - Search and investigation filters: listed twice, head in another barangay, volunteer not among the 1st BA attendees, no committee, a committee of another activity, sex not recorded.
-     - Click any name for the **person profile**: every record of that name in the three exports, possible matches with a different middle name, and what to check.
-     - **Export list** saves the filtered list to Excel.
-   - **Verify:** the Precision part of the DQA (SM7 Table 8). The PEA or MDE checks what is encoded in KCIS against the paper form, row by row: *Matches*, *Differs* (and what: name spelling, sex, birthdate, position…), or *Not on the form*, and enters how many names the form has.
-     - Four forms: the **attendance sheet** (any activity), the **household roster**, the **volunteers** (CV Profile Forms and the barangay resolution, BResT and SFMSC) and the **MResT** (the Executive Order).
-     - **Suggest a sample** picks random records not yet verified (a tenth of them, at least three) for a formal DQA; any other record can be verified too.
-     - The page shows the records verified, the rows matching the form, and the names on the form ÷ the rows encoded. **CSV of the results** saves every tag (it holds names).
-     - Type your name in *Checked by* first: every tag keeps who checked it and when. Tags follow the name, not the row, so they survive a re-import.
-   - **Data Health:** the web monitor's own page (checks, by-municipality view, memo, CSV), with:
-     - the data quality checks: attendance not encoded within 7 days, activity dates that cannot be right, an activity encoded as two KCIS records, an attendee listed twice, mistyped names, and birthdates that cannot be right;
-     - the **Scorecard**: the checks grouped by the six SM7 data quality dimensions (Table 8), with the checks passed in each. Precision shows the results of the Verify page;
-     - the **Fix list**: every open item for the MDE/PEA, by barangay, with what to do and a CSV, marked New, Still open or Resolved against the previous pull saved on this PC.
-   - **Export to Excel:** one workbook with Summary, Municipalities, Barangays and Data Health sheets.
+4. Read the findings across dedicated, sortable modules with live instant search:
+   - **Overview:** Stage 1 / 2 pipeline activities, K2, volunteers, and Data Health summary; locked to municipal scope for PEA/MDM, or switchable across provinces for RPMO.
+   - **Municipalities (RPMO only):** Region-wide matrix comparing progress across every LGU.
+   - **Barangays:** Detailed status per activity, K2 quorum, and volunteer teams; live search and sorting across all columns. Click any cell to jump directly into the corresponding records.
+   - **Attendees (Dedicated Module):** Complete activity attendance tracker. KPIs for total attendance, unique attendees, female ratio, and activities. Live search, bidirectional column sorting, data health flags filter, and CSV export.
+   - **Household Participation (Dedicated Module):**
+     - *Barangay Quorum Scorecard:* Tracks household targets, registered households, attendees, participation rate, and 70% Quorum compliance status.
+     - *Household Roster Directory:* Full roster of household heads and representatives with attendance counts. All tables support live search, sorting, and CSV export.
+   - **Community Volunteers (Dedicated Module):** Dedicated volunteer registry with inclusion metrics (women %, marginalized/IP/PWD %, chairpersons). Filter by committee/body, position, and data health flags. Searchable and sortable.
+   - **BResT (Barangay Resilience Team Module):** Executive team formation scorecard (Compliant vs Needs Fixing vs Not Encoded). Visual Barangay Team Status cards and member directory table with full search, sorting, and CSV export.
+   - **MResT (Municipal Resilience Team Module):** Executive Order (EO) tracking hero banner, precision EO checklist, RPMO Regional LGU Comparison Matrix, and complete MResT member roster with live search and sorting.
+   - **Person Profile Dialog:** Click any individual in any module to view their complete history across all 3 KCIS exports, matching identities, and integrity flags.
+   - **Verify (DQA Precision):** SM7 Table 8 field verification against physical source forms (Attendance sheets, Household rosters, Volunteer profiles, and MResT Executive Orders) with random sample generator and audit tags.
+   - **Data Health:** In-depth quality checks (7-day rule, date sanity, duplicate entries, name typos, age validation) and auto-generated findings memo.
+   - **Export to Excel:** Role-tailored offline Excel workbook with summary, barangay breakdowns, and data health logs.
 5. **Settings:**
    - the KCIS pull date (for the 3-day attendance window; also on the Import page once the exports are loaded)
    - field conduct per activity (which unencoded records count as lacking)
@@ -70,7 +70,7 @@ node build.js
 | `src/` | The desktop app: `app.html` (shell), `app.css`, `runtime.js` (in-memory Sheet, file reading, Excel writer), `app.js` (pages), `people.js` (People page and profiles), `verify.js` (Verify page), `saved.js` (saved data and .pcrp files) |
 | `vendor/monitor/` | The Encoding Monitor files the app runs, copied by the build with the web app's passkey and Sheet ID removed |
 | `data/reference.json` | Built-in Baseline and Activities (barangay names and PSGC codes, no personal data) |
-| `dist/PCRP Monitor Desktop.html` | The built app, the file to share |
+| `dist/PCRP Encoding and Data Quality Assessment Tool.html` | The built app, the file to share |
 
 When `../PCRP-Stage-1-Encoding-Monitor` sits next to this folder, or `PCRP_MONITOR_SRC` names the monitor's folder (for example its clasp folder), the build refreshes `vendor/monitor/` from it:
 

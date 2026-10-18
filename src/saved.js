@@ -191,7 +191,7 @@ function savedToFile() {
 function savedFromFile(file) {
   return file.arrayBuffer().then(gunzipBuf).then(function (text) {
     var d = JSON.parse(text);
-    if (!d || d.format !== SAVE_FORMAT || !d.tables || !d.tables.Raw_Participants) throw new Error(file.name + ' is not a PCRP Monitor Desktop save file.');
+    if (!d || d.format !== SAVE_FORMAT || !d.tables || !d.tables.Raw_Participants) throw new Error(file.name + ' is not a PCRP Encoding and Data Quality Assessment Tool save file.');
     var p = prefs();
     if (d.home) p.home = d.home;
     if (d.field) p.field = d.field;
@@ -214,23 +214,24 @@ function savedFromFile(file) {
 function renderSavedBar() {
   var el = $('saved-bar');
   if (!el) return;
+  var icoFn = typeof icon === 'function' ? icon : function () { return '<span class="ico">⛁</span>'; };
   var cur = SAVED.current, pulls = Object.keys(SAVED.ledger).length;
   var verified = VERIFY.tags ? Object.keys(VERIFY.tags.records || {}).length : 0;
   if (!SAVED.available) {
-    el.innerHTML = '<div class="msg warn">This browser does not keep data, so a refresh clears the exports. ' +
-      'Use <button class="link" data-act="save-file">Save to a file</button>, and drop that file back in next time.</div>';
+    el.innerHTML = '<div class="msg warn">' + icoFn('alert-triangle') + ' <div>This browser does not keep data, so a refresh clears the exports. ' +
+      'Use <button class="link" data-act="save-file">Save to a file</button>, and drop that file back in next time.</div></div>';
     return;
   }
   if (!cur && !pulls && !verified) { el.innerHTML = ''; return; }
   el.innerHTML = '<div class="saved-bar">' +
-    '<span class="ico" aria-hidden="true">⛁</span>' +
-    '<div class="saved-text"><strong>Saved on this PC' + (cur ? ': data as of ' + esc(cur.pullDate) : '') + '</strong>' +
+    '<div class="saved-bar-icon">' + icoFn('database') + '</div>' +
+    '<div class="saved-text"><strong>Saved on this PC' + (cur ? ' · Data as of ' + esc(cur.pullDate) : '') + '</strong>' +
       '<span class="tiny">' + [
-        cur ? 'saved ' + esc(new Date(cur.savedAt).toLocaleString()) : 'no exports saved',
+        cur ? 'Saved ' + esc(new Date(cur.savedAt).toLocaleString()) : 'No exports saved',
         pulls ? n(pulls) + ' earlier ' + (pulls === 1 ? 'pull' : 'pulls') + ' kept for the Fix list' : '',
         verified ? n(verified) + ' verified ' + (verified === 1 ? 'record' : 'records') : ''
-      ].filter(Boolean).join(' · ') + '. It stays until you forget it; anyone using this browser can open it.</span></div>' +
-    '<button class="btn ghost" data-act="save-file">Save to a file</button>' +
-    '<button class="btn ghost" data-act="saved-forget">Forget saved data</button>' +
+      ].filter(Boolean).join(' · ') + '. Stays in this browser until you forget it.</span></div>' +
+    '<button type="button" class="btn ghost btn-sm" data-act="save-file">' + icoFn('download') + ' <span>Save to a file (.pcrp)</span></button>' +
+    '<button type="button" class="btn ghost btn-sm" data-act="saved-forget">' + icoFn('trash-2') + ' <span>Forget saved data</span></button>' +
   '</div>';
 }

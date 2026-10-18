@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>PCRP Monitor Desktop</title>
+<title>PCRP Encoding and Data Quality Assessment Tool</title>
 <style>
 /*@@APP_CSS@@*/
 /*@@DH_CSS@@*/
@@ -12,77 +12,187 @@
 <body>
 <header class="top">
   <div class="brand">
-    <div class="brand-mark" aria-hidden="true">P</div>
+    <div class="brand-mark" aria-hidden="true">
+      <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/></svg>
+    </div>
     <div>
-      <div class="brand-title">PCRP Monitor Desktop</div>
-      <div class="brand-sub">KALAHI-CIDSS PCRP · Encoding findings, offline · monitor v@@VERSION@@</div>
+      <div class="brand-title">PCRP Encoding &amp; Data Quality Assessment Tool</div>
+      <div class="brand-sub"><span class="brand-tag">KALAHI-CIDSS PCRP</span> <span>Offline Field Console · Monitor v@@VERSION@@</span></div>
     </div>
   </div>
   <div class="top-status" id="top-status"></div>
-  <button class="home-chip" id="home-chip" type="button" hidden></button>
+  <button class="home-chip" id="home-chip" type="button" title="Change active municipality scope" hidden></button>
   <div class="top-actions">
-    <button class="btn ghost" id="btn-import-top" type="button">Import files</button>
-    <button class="btn primary" id="btn-export" type="button" disabled>Export to Excel</button>
+    <button class="btn ghost icon-btn" id="btn-theme" type="button" title="Toggle light / dark theme" aria-label="Toggle light or dark theme">
+      <i data-lucide="sun"></i>
+    </button>
+    <button class="btn ghost" id="btn-import-top" type="button"><i data-lucide="upload-cloud"></i> <span>Import files</span></button>
+    <button class="btn primary" id="btn-export" type="button" disabled><i data-lucide="download"></i> <span>Export to Excel</span></button>
   </div>
 </header>
 
 <nav class="tabs" id="tabs" role="tablist" aria-label="Pages">
-  <button role="tab" data-page="import" class="on">Import</button>
-  <button role="tab" data-page="overview" disabled>Overview</button>
-  <button role="tab" data-page="munis" disabled>Municipalities</button>
-  <button role="tab" data-page="brgys" disabled>Barangays</button>
-  <button role="tab" data-page="people" disabled>People</button>
-  <button role="tab" data-page="verify" disabled>Verify</button>
-  <button role="tab" data-page="health" disabled>Data Health</button>
-  <button role="tab" data-page="settings">Settings</button>
+  <button role="tab" data-page="import" class="on"><i data-lucide="upload-cloud"></i> <span>Import</span> <span class="tab-badge" id="badge-import" hidden></span></button>
+  <button role="tab" data-page="overview" disabled><i data-lucide="layout-dashboard"></i> <span>Overview</span></button>
+  <button role="tab" data-page="kpisummary" id="tab-kpisummary" disabled><i data-lucide="gauge"></i> <span>KPI Summary</span> <span class="tab-badge" id="badge-kpisummary" hidden></span></button>
+  <button role="tab" data-page="munis" id="tab-munis" disabled><i data-lucide="building-2"></i> <span>Municipalities</span> <span class="tab-badge" id="badge-munis" hidden></span></button>
+  <button role="tab" data-page="brgys" disabled><i data-lucide="map-pin"></i> <span>Barangays</span> <span class="tab-badge" id="badge-brgys" hidden></span></button>
+  <!-- Group 1: Attendance & Households -->
+  <div class="nav-tab-group" id="group-attendance-wrap">
+    <button role="tab" class="tab-group-trigger" id="tab-group-attendance" data-group="attendance" disabled>
+      <i data-lucide="users"></i> <span>Attendance &amp; Households</span>
+      <span class="tab-badge" id="badge-group-attendance" hidden></span>
+      <i data-lucide="chevron-down" class="group-arrow"></i>
+    </button>
+    <div class="nav-tab-dropdown" id="dropdown-attendance">
+      <button role="menuitem" data-page="attendees" id="tab-attendees">
+        <i data-lucide="calendar-check"></i>
+        <div class="nav-drop-info">
+          <span class="nav-drop-title">Attendees</span>
+          <span class="nav-drop-sub">Activity attendance records</span>
+        </div>
+        <span class="tab-badge" id="badge-attendees" hidden></span>
+      </button>
+      <button role="menuitem" data-page="households" id="tab-households">
+        <i data-lucide="home"></i>
+        <div class="nav-drop-info">
+          <span class="nav-drop-title">Household Participation</span>
+          <span class="nav-drop-sub">K2 Quorum scorecard &amp; roster</span>
+        </div>
+        <span class="tab-badge" id="badge-households" hidden></span>
+      </button>
+    </div>
+  </div>
+
+  <!-- Group 2: Volunteers & BResT -->
+  <div class="nav-tab-group" id="group-volunteers-wrap">
+    <button role="tab" class="tab-group-trigger" id="tab-group-volunteers" data-group="volunteers" disabled>
+      <i data-lucide="shield-check"></i> <span>Volunteers &amp; BResT</span>
+      <span class="tab-badge" id="badge-group-volunteers" hidden></span>
+      <i data-lucide="chevron-down" class="group-arrow"></i>
+    </button>
+    <div class="nav-tab-dropdown" id="dropdown-volunteers">
+      <button role="menuitem" data-page="volunteers" id="tab-volunteers">
+        <i data-lucide="users"></i>
+        <div class="nav-drop-info">
+          <span class="nav-drop-title">Community Volunteers</span>
+          <span class="nav-drop-sub">All committees &amp; officers</span>
+        </div>
+        <span class="tab-badge" id="badge-volunteers" hidden></span>
+      </button>
+      <button role="menuitem" data-page="brest" id="tab-brest">
+        <i data-lucide="shield"></i>
+        <div class="nav-drop-info">
+          <span class="nav-drop-title">BResT</span>
+          <span class="nav-drop-sub">Barangay Resilience Teams</span>
+        </div>
+        <span class="tab-badge" id="badge-brest" hidden></span>
+      </button>
+    </div>
+  </div>
+  <button role="tab" data-page="mrest" id="tab-mrest" disabled><i data-lucide="award"></i> <span>MResT</span> <span class="tab-badge" id="badge-mrest" hidden></span></button>
+  <button role="tab" data-page="verify" disabled><i data-lucide="clipboard-check"></i> <span>Verify</span> <span class="tab-badge" id="badge-verify" hidden></span></button>
+  <button role="tab" data-page="health" disabled><i data-lucide="shield-check"></i> <span>Data Health</span> <span class="tab-badge" id="badge-health" hidden></span></button>
+  <button role="tab" data-page="settings" id="tab-settings"><i data-lucide="settings"></i> <span>Settings</span> <span class="tab-badge" id="badge-settings" hidden></span></button>
 </nav>
 
 <main>
   <section class="page on" id="page-import">
     <div id="saved-bar"></div>
-    <div class="card" id="home-card"></div>
-    <div class="card" id="import-card">
-      <h2><span class="step-no">2</span> Import KCIS exports</h2>
-      <p class="muted">Drop the files here, all at once or one by one. The app recognises each file from its column headers. Files are read on this computer only; nothing is uploaded.</p>
+    <div class="card step-card" id="home-card"></div>
+    <div class="card step-card" id="import-card">
+      <div class="card-head" style="margin-bottom:4px">
+        <div>
+          <h2><span class="step-no">2</span> Import KCIS exports</h2>
+          <p class="muted" style="margin:4px 0 0">Drop the files here, all at once or one by one. The app recognises each file from its column headers. Files are read on this computer only; nothing is uploaded.</p>
+        </div>
+        <span class="pill good"><i data-lucide="lock"></i> 100% Offline &amp; Local</span>
+      </div>
       <label class="drop" id="drop">
         <input type="file" id="file-input" multiple accept=".xlsx,.csv,.pcrp" hidden>
-        <span class="drop-title">Drop .xlsx or .csv files here, or click to choose</span>
-        <span class="drop-sub">Participants export · Households export · Community Volunteer List · the whole monitor workbook · or a saved .pcrp file</span>
+        <div class="drop-icon"><i data-lucide="upload-cloud"></i></div>
+        <span class="drop-title">Drop .xlsx, .csv, or .pcrp files here, or click to browse</span>
+        <span class="drop-sub">Participants export · Households export · Community Volunteer List · the whole monitor workbook · or a saved .pcrp session file</span>
+        <div class="drop-badges">
+          <span class="drop-badge">.xlsx Workbook</span>
+          <span class="drop-badge">.csv Export</span>
+          <span class="drop-badge">.pcrp Session</span>
+        </div>
       </label>
       <div id="import-progress" class="progress-line" hidden></div>
       <div id="import-list"></div>
-      <div class="row-actions">
-        <button class="btn primary" id="btn-compute" type="button" disabled>Show findings</button>
-        <button class="btn ghost" id="btn-clear" type="button">Clear loaded files</button>
+      <div class="row-actions import-actions">
+        <button class="btn primary btn-lg" id="btn-compute" type="button" disabled><i data-lucide="layout-dashboard"></i> <span>Show findings</span></button>
+        <button class="btn ghost" id="btn-clear" type="button"><i data-lucide="trash-2"></i> <span>Clear loaded files</span></button>
       </div>
     </div>
     <div class="card note-card">
-      <h3>How the findings are counted</h3>
-      <ul>
-        <li>The same rules as the web Encoding Monitor (v@@VERSION@@): figures match it for the same files.</li>
-        <li><strong>Not encoded is not "not conducted".</strong> A missing record means it is not in KCIS yet.</li>
-        <li>The barangay baseline is built in (516 monitored barangays); load a newer one in Settings.</li>
-        <li>Field conduct per activity and the pull date (for the 3-day attendance window) are set in Settings.</li>
-      </ul>
+      <div class="note-card-head">
+        <span class="note-icon"><i data-lucide="info"></i></span>
+        <h3>How the findings are counted</h3>
+      </div>
+      <div class="note-grid">
+        <div class="note-item">
+          <strong>Exact Web Monitor Parity</strong>
+          <p>Runs the exact rules of the web Encoding Monitor (v@@VERSION@@): every figure matches it for the same files.</p>
+        </div>
+        <div class="note-item">
+          <strong>Not Encoded ≠ Not Conducted</strong>
+          <p>A missing record means it is not in KCIS yet. Unencoded activities only count as lacking when marked Completed in the field.</p>
+        </div>
+        <div class="note-item">
+          <strong>Built-in 516-Barangay Baseline</strong>
+          <p>The monitored barangay baseline is built in and ready offline; you can load a newer baseline anytime in Settings.</p>
+        </div>
+        <div class="note-item">
+          <strong>Pull Date &amp; 3-Day Window</strong>
+          <p>Field conduct per activity and the KCIS pull date (for the 3-day attendance sheet window) are configurable in Settings.</p>
+        </div>
+      </div>
     </div>
   </section>
 
   <section class="page" id="page-overview"><div id="ov-body"></div></section>
+  <section class="page" id="page-kpisummary"><div id="kpi-body"></div></section>
   <section class="page" id="page-munis"><div id="mu-body"></div></section>
   <section class="page" id="page-brgys"><div id="bg-body"></div></section>
+  <section class="page" id="page-attendees"><div id="att-body"></div></section>
+  <section class="page" id="page-households"><div id="hh-body"></div></section>
+  <section class="page" id="page-volunteers"><div id="vol-body"></div></section>
+  <section class="page" id="page-brest"><div id="brt-body"></div></section>
+  <section class="page" id="page-mrest"><div id="mrt-body"></div></section>
   <section class="page" id="page-people"><div id="pp-body"></div></section>
   <section class="page" id="page-verify"><div id="vf-body"></div></section>
   <section class="page" id="page-health"><div id="he-body" class="dh-page"></div></section>
   <section class="page" id="page-settings"><div id="st-body"></div></section>
 </main>
 
+<dialog id="scope-dialog" class="memo scope-dialog">
+  <form method="dialog">
+    <div class="dialog-head">
+      <div>
+        <h2>Change workspace &amp; role scope</h2>
+        <div class="tiny">Switch between PEA / MDM municipality workspace or RPMO regional oversight.</div>
+      </div>
+      <button class="btn ghost icon-btn" value="close" aria-label="Close dialog" title="Close (Esc)"><i data-lucide="x"></i></button>
+    </div>
+    <div id="scope-dialog-body" class="scope-dialog-body"></div>
+  </form>
+</dialog>
+
 <dialog id="memo-dialog" class="memo">
   <form method="dialog">
-    <h2>Data Health audit memo</h2>
-    <textarea id="memo-text" rows="22" readonly></textarea>
-    <div class="row-actions">
-      <button class="btn primary" type="button" id="memo-copy">Copy</button>
-      <button class="btn ghost" type="button" id="memo-save">Save as .txt</button>
+    <div class="dialog-head">
+      <div>
+        <h2>Data Health audit memo</h2>
+        <div class="tiny">Formatted plain-text field audit memo ready to copy into an email, chat, or document.</div>
+      </div>
+      <button class="btn ghost icon-btn" value="close" aria-label="Close dialog" title="Close (Esc)"><i data-lucide="x"></i></button>
+    </div>
+    <textarea id="memo-text" rows="20" readonly></textarea>
+    <div class="row-actions dialog-foot">
+      <button class="btn primary" type="button" id="memo-copy"><i data-lucide="copy"></i> <span>Copy memo</span></button>
+      <button class="btn ghost" type="button" id="memo-save"><i data-lucide="download"></i> <span>Save as .txt</span></button>
       <button class="btn ghost" value="close">Close</button>
     </div>
   </form>
@@ -91,7 +201,7 @@
 <dialog id="person-dialog" class="memo person">
   <form method="dialog">
     <div id="person-body" class="person-body"></div>
-    <div class="row-actions"><button class="btn ghost" value="close">Close</button></div>
+    <div class="row-actions dialog-foot"><button class="btn ghost" value="close">Close</button></div>
   </form>
 </dialog>
 
@@ -111,6 +221,9 @@ function $(id) { return document.getElementById(id); }
 </script>
 <script>
 /*@@HEALTH@@*/
+</script>
+<script>
+/*@@GSAP@@*/
 </script>
 <script>
 /*@@SAVED@@*/
