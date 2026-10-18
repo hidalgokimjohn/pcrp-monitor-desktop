@@ -577,7 +577,12 @@ function renderHealth() {
     if (first) S.healthOpen[first.check.id] = true;
   }
 
-  var out = [dhHeader(o, evs), dhScopeBar(o, evs)];
+  var subNav = '<div class="sub-nav-tabs">' +
+    '<button type="button" class="sub-nav-btn active" data-go="health">' + (typeof icon === 'function' ? icon('gauge') : '<i data-lucide="gauge"></i>') + ' <span>DQA Audit &amp; Scorecard</span></button>' +
+    '<button type="button" class="sub-nav-btn" data-go="verify">' + (typeof icon === 'function' ? icon('clipboard-check') : '<i data-lucide="clipboard-check"></i>') + ' <span>Field Form Verification</span></button>' +
+  '</div>';
+
+  var out = [subNav, dhHeader(o, evs), dhScopeBar(o, evs)];
   out.push(S.healthView === 'muni' ? dhMuniView(o, evs)
          : S.healthView === 'score' ? dhScoreView(o, evs)
          : S.healthView === 'fix' ? dhFixView(o, evs)
@@ -621,9 +626,10 @@ function dhHeader(o, evs) {
   return '<div class="dh-head">' +
     '<div class="dh-head-main">' +
       '<div class="dh-head-title">' +
-        '<h2>Data Health</h2>' +
+        '<h2>Data Quality Assessment (DQA)</h2>' +
         '<span class="pill ' + state.cls + ' dh-state">' + esc(state.label) + '</span>' +
       '</div>' +
+      '<div class="muted" style="margin-bottom:8px">Kalahi-CIDSS SM7 M&amp;E Data Quality Dimensions · Automated Anomaly Detection &amp; Quality Audit</div>' +
       '<div class="dh-counts">' +
         part('critical', c.critical === 1 ? 'critical check' : 'critical checks') +
         part('verify', 'to verify') +
@@ -1337,7 +1343,7 @@ function dhMemoText() {
   var L = [];
   L.push('====================================================');
   L.push('DSWD FIELD OFFICE CARAGA — KALAHI-CIDSS PCRP');
-  L.push('DATA HEALTH AUDIT MEMO — ' + dhScopeLabel().toUpperCase());
+  L.push('DATA QUALITY ASSESSMENT (DQA) AUDIT MEMO — ' + dhScopeLabel().toUpperCase());
   L.push('Date of audit: ' + dateStr);
   L.push('====================================================\n');
 
@@ -1362,7 +1368,7 @@ function dhMemoText() {
       var p = ch.places(r).filter(dhInScope)[0] || ch.places(r)[0] || {};
       L.push('  - ' + (p.municipality || '—') + ' / ' + (p.barangay || '—') + ': ' + ch.detail(r));
     });
-    if (e.rows.length > 5) L.push('  … and ' + n(e.rows.length - 5) + ' more (see the Data Health page or its CSV).');
+    if (e.rows.length > 5) L.push('  … and ' + n(e.rows.length - 5) + ' more (see the DQA page or its CSV).');
   });
   if (!k) L.push('No open items.');
 

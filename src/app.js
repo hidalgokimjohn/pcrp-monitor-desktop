@@ -499,7 +499,9 @@ var ICON_SVG = {
   'home': '<path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/>',
   'shield': '<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>',
   'award': '<circle cx="12" cy="8" r="6"/><path d="M15.477 12.89 17 22l-5-3-5 3 1.523-9.11"/>',
-  'user-check': '<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><polyline points="16 11 18 13 22 9"/>'
+  'user-check': '<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><polyline points="16 11 18 13 22 9"/>',
+  'layers': '<path d="m12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83Z"/><path d="m22 17.65-9.17 4.16a2 2 0 0 1-1.66 0L2 17.65"/><path d="m22 12.65-9.17 4.16a2 2 0 0 1-1.66 0L2 12.65"/>',
+  'grid': '<rect width="7" height="7" x="3" y="3" rx="1"/><rect width="7" height="7" x="14" y="3" rx="1"/><rect width="7" height="7" x="14" y="14" rx="1"/><rect width="7" height="7" x="3" y="14" rx="1"/>'
 };
 
 var ICON_GLYPH = {
@@ -509,7 +511,7 @@ var ICON_GLYPH = {
   'clipboard-x': '✕', 'search': '⌕', 'x': '✕', 'alert-triangle': '⚠', 'external-link': '↗',
   'clock-alert': '⏱', 'calendar-x': '✕', 'files': '⧉', 'users': '☷', 'spell-check': 'Aa', 'cake': '✱', 'gauge': '◔',
   'list-todo': '☑', 'target': '◎', 'repeat': '↻', 'crosshair': '⌖', 'clock': '⏱', 'shield-check': '✓', 'circle-alert': '!', 'clipboard-check': '☑', 'clipboard': '☐',
-  'arrow-up': '▲', 'arrow-down': '▼', 'chevrons-up-down': '↕', 'calendar': '📅', 'calendar-check': '☑', 'home': '⌂', 'shield': '⛊', 'award': '★', 'user-check': '✓'
+  'arrow-up': '▲', 'arrow-down': '▼', 'chevrons-up-down': '↕', 'calendar': '📅', 'calendar-check': '☑', 'home': '⌂', 'shield': '⛊', 'award': '★', 'user-check': '✓', 'layers': '≡', 'grid': '▦'
 };
 
 function icon(name, extraClass) {
@@ -863,8 +865,22 @@ function updateTabBadges() {
     var brestIssues = brgysInScope.filter(function (b) { return b.volunteers && b.volunteers.BREST && b.volunteers.BREST.status === 'Needs fixing'; }).length;
     setBadge('brest', brestIssues ? brestIssues + ' to fix' : (brestEncoded ? brestEncoded + '/' + brgysInScope.length : ''), brestIssues ? 'warn' : 'good');
 
-    if (brestIssues) {
-      setBadge('group-volunteers', brestIssues + ' to fix', 'warn');
+    var s2Vols = P.volunteers.filter(function (v) { return v.isStage2 && inScope(v); });
+    var s2Formed = 0, s2Issues = 0;
+    brgysInScope.forEach(function (b) {
+      var bv = s2Vols.filter(function (v) { return v.barangay === b.barangay && v.municipality === b.municipality; });
+      if (!bv.length) return;
+      var cmsc = bv.filter(function (v) { return v.stage2Body === 'CMSC'; });
+      var cmscChair = cmsc.filter(function (v) { return v.chair; })[0];
+      var cspmcChair = bv.filter(function (v) { return (v.stage2Body === 'CSPMC' && v.chair) || (v.chair && !v.stage2Body); })[0];
+      if (!cspmcChair || cmsc.length < 3 || !cmscChair) s2Issues++;
+      else s2Formed++;
+    });
+    setBadge('cspmc', s2Issues ? s2Issues + ' to fix' : (s2Formed ? s2Formed + '/' + brgysInScope.length : (s2Vols.length ? n(s2Vols.length) : '')), s2Issues ? 'warn' : (s2Formed ? 'good' : ''));
+
+    var totalIssues = brestIssues + s2Issues;
+    if (totalIssues) {
+      setBadge('group-volunteers', totalIssues + ' to fix', 'warn');
     } else if (volCount) {
       setBadge('group-volunteers', n(volCount), '');
     } else {
@@ -895,6 +911,7 @@ function updateTabBadges() {
     var ver = evs.filter(function (e) { return e.status === 'verify'; }).length;
     var openTot = crit + ver;
     setBadge('health', openTot ? n(openTot) : '✓', crit ? 'bad' : (ver ? 'warn' : 'good'));
+    setBadge('group-dqa', openTot ? openTot + ' to fix' : '✓', openTot ? (crit ? 'bad' : 'warn') : 'good');
   } catch (e) {}
 
   if (UPDATE_STATE.result && UPDATE_STATE.result.updateAvailable) {
@@ -908,9 +925,14 @@ function updateTabBadges() {
 
 function go(page) {
   if (page === 'import') page = 'settings';
+  if (page === 'dqa' || page === 'data-health') page = 'health';
   if (isMunicipalUser() && page === 'munis') page = 'overview';
   if (page === 'people') page = 'attendees';
   STATE.page = page;
+  try {
+    sessionStorage.setItem('pcrp_active_page', page);
+    localStorage.setItem('pcrp_active_page', page);
+  } catch (e) {}
   Array.prototype.forEach.call(document.querySelectorAll('#tabs button'), function (b) {
     var on = b.getAttribute('data-page') === page;
     b.classList.toggle('on', on); b.setAttribute('aria-selected', on);
@@ -931,11 +953,14 @@ function go(page) {
 
   // Highlight parent group triggers if active page is inside group
   var isAttendanceGroup = (page === 'attendees' || page === 'households');
-  var isVolunteersGroup = (page === 'volunteers' || page === 'brest');
+  var isVolunteersGroup = (page === 'volunteers' || page === 'brest' || page === 'cspmc');
+  var isDqaGroup = (page === 'health' || page === 'verify');
   var grpAtt = $('tab-group-attendance');
   if (grpAtt) grpAtt.classList.toggle('on', isAttendanceGroup);
   var grpVol = $('tab-group-volunteers');
   if (grpVol) grpVol.classList.toggle('on', isVolunteersGroup);
+  var grpDqa = $('tab-group-dqa');
+  if (grpDqa) grpDqa.classList.toggle('on', isDqaGroup);
 
   // Close open dropdowns
   Array.prototype.forEach.call(document.querySelectorAll('.nav-tab-group.open'), function (g) {
@@ -957,6 +982,7 @@ function renderPage() {
   else if (STATE.page === 'households') renderHouseholds();
   else if (STATE.page === 'volunteers') renderVolunteers();
   else if (STATE.page === 'brest') renderBrest();
+  else if (STATE.page === 'cspmc') renderCspmc();
   else if (STATE.page === 'mrest') renderMrest();
   else if (STATE.page === 'kpisummary') renderKpiSummary();
   else if (STATE.page === 'people') renderPeople();
@@ -975,6 +1001,8 @@ function setTabsEnabled(on) {
   if (grpAtt) grpAtt.disabled = !on;
   var grpVol = $('tab-group-volunteers');
   if (grpVol) grpVol.disabled = !on;
+  var grpDqa = $('tab-group-dqa');
+  if (grpDqa) grpDqa.disabled = !on;
   $('btn-export').disabled = !on;
 }
 
@@ -1033,7 +1061,12 @@ function handleFiles(fileList) {
   }, Promise.resolve()).then(function () {
     setProgress('');
     renderImport(); renderStatus(); updateTabBadges();
-    if (LOADED.participants) computeAndShow(STATE.computed ? null : 'overview');
+    if (typeof savedSaveCurrent === 'function') savedSaveCurrent();
+    if (LOADED.participants) {
+      computeAndShow(STATE.computed ? null : 'overview');
+    } else {
+      setTabsEnabled(true);
+    }
   });
 }
 
@@ -1331,7 +1364,7 @@ function renderOverview() {
       '<div class="row-actions" style="margin:0">' +
         '<button class="btn ghost" data-act="go-brgys">' + icon('map-pin') + ' <span>See the barangays</span></button>' +
         (!isMuni ? '<button class="btn ghost" data-act="go" data-v="munis">' + icon('building-2') + ' <span>See municipalities</span></button>' : '') +
-        '<button class="btn ghost" data-act="go" data-v="health">' + icon('shield-check') + ' <span>Data Health</span></button>' +
+        '<button class="btn ghost" data-act="go" data-v="health">' + icon('shield-check') + ' <span>Data Quality Assessment (DQA)</span></button>' +
       '</div></div>' +
     stageSwitch() + (isMuni ? '' : provChips()) +
     '<div class="grid-kpi">' +
@@ -1391,7 +1424,7 @@ function renderOverview() {
       '<div>' +
         '<div class="card"><div class="card-head" style="margin-bottom:8px"><h3>1st BA community volunteers</h3>' +
           (cv ? '<button class="link tiny" data-act="go" data-v="people">Open People ›</button>' : '') + '</div>' + cvHtml + '</div>' +
-        '<div class="card"><div class="card-head" style="margin-bottom:8px"><h3>Data Health</h3><button class="link tiny" data-act="go" data-v="health">Open Data Health ›</button></div>' +
+        '<div class="card"><div class="card-head" style="margin-bottom:8px"><h3>Data Quality Assessment (DQA)</h3><button class="link tiny" data-act="go" data-v="health">Open DQA Scorecard ›</button></div>' +
           '<div class="muted" style="margin-bottom:10px"><strong style="color:var(--bad-text)">' + sevCount.critical + '</strong> critical · <strong style="color:var(--warn-text)">' + sevCount.verify + '</strong> to verify · <strong style="color:var(--good-text)">' + sevCount.passed + '</strong> passed · ' + esc(scopeName) + '</div>' +
           (open.length ? open.map(function (e) {
             return '<div class="sev-line"><span><span class="pill ' + (e.status === 'critical' ? 'bad' : 'warn') + '">' + (e.status === 'critical' ? 'Critical' : 'To verify') + '</span> ' + esc(e.check.name) + '</span>' +
@@ -2458,7 +2491,7 @@ function exportExcel() {
     sheets.push({ name: 'Municipalities', rows: muniTable(true) });
   }
   sheets.push({ name: 'Barangays', rows: brgyTable((SNAP.barangayRows || []).filter(function (b) { return !homeKey() || inOverviewScope(b); }), true) });
-  sheets.push({ name: 'Data Health', rows: healthTable() });
+  sheets.push({ name: 'DQA Audit', rows: healthTable() });
   var fname = 'PCRP_findings_' + (homeKey() ? (isMuni ? home().municipality.replace(/[^A-Za-z0-9]+/g, '_') + '_' : '') : 'Regional_') + stamp() + '.xlsx';
   saveBlob(makeXlsx(sheets), fname);
   toast('Saved ' + fname + ' (' + sheets.length + ' sheets).');
@@ -2512,6 +2545,9 @@ document.addEventListener('click', function (ev) {
       if (sub === 'BREST') {
         if (typeof BRT_STATE !== 'undefined') { BRT_STATE.brgy = bkey; }
         go('brest');
+      } else if (sub === 'CSPMC' || sub === 'CMSC' || sub === 'STAGE2') {
+        if (typeof CSPMC_STATE !== 'undefined') { CSPMC_STATE.brgy = bkey; }
+        go('cspmc');
       } else {
         if (typeof VOL_STATE !== 'undefined') { VOL_STATE.brgy = bkey; VOL_STATE.body = sub || 'all'; }
         go('volunteers');
@@ -2757,6 +2793,15 @@ document.addEventListener('click', function (ev) {
           toast('Workspace unlocked.');
           var err = $('lock-error');
           if (err) err.style.display = 'none';
+          if (typeof savedRestore === 'function') {
+            savedRestore().then(function (restored) {
+              if (restored && SAVED.current) {
+                setTimeout(function () {
+                  toast('Opened the data saved on this PC: as of ' + SAVED.current.pullDate + '.');
+                }, 600);
+              }
+            });
+          }
         } else {
           var err2 = $('lock-error');
           if (err2) {
@@ -2780,7 +2825,11 @@ $('btn-clear').addEventListener('click', function () {
   LOADED = {}; IMPORT_ERRORS = []; STATE.computed = false; SNAP = null; S.overview = null; S.matrix = null; PEOPLE = null;
   // The saved exports go too; earlier pulls and verification tags stay until "Forget saved data".
   SAVED.current = null;
-  if (SAVED.available) savedTx('readwrite', function (s) { s.delete('current'); }).then(renderSavedBar).catch(function () {});
+  if (typeof savedTx === 'function') savedTx('readwrite', function (s) { s.delete('current'); }).then(renderSavedBar).catch(function () {});
+  try {
+    localStorage.removeItem('pcrp_save_current');
+    sessionStorage.removeItem('pcrp_save_current');
+  } catch (e) {}
   setTabsEnabled(false); renderStatus(); renderImport(); updateTabBadges();
 });
 $('file-input').addEventListener('change', function () { handleFiles(this.files); this.value = ''; });
@@ -2856,7 +2905,21 @@ if (secPrefs && secPrefs.enabled && secPrefs.pinHash) {
 }
 // after the computation's own 'Findings ready' message, so this one is the one left on screen
 savedRestore().then(function (restored) {
-  if (restored) setTimeout(function () { toast('Opened the data saved on this PC: as of ' + SAVED.current.pullDate + '. Drop newer exports to replace it.'); }, 800);
+  if (restored === true) {
+    setTimeout(function () {
+      toast('Opened the data saved on this PC: as of ' + (SAVED.current ? SAVED.current.pullDate : '') + '. Drop newer exports to replace it.');
+    }, 800);
+  }
+});
+
+// Auto-flush pending data when navigating away or refreshing
+window.addEventListener('beforeunload', function () {
+  if (typeof savedSaveCurrent === 'function') savedSaveCurrent();
+});
+document.addEventListener('visibilitychange', function () {
+  if (document.visibilityState === 'hidden' && typeof savedSaveCurrent === 'function') {
+    savedSaveCurrent();
+  }
 });
 
 // Network listeners for offline/online transitions and background update check

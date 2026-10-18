@@ -2047,3 +2047,427 @@ tr.row-warn td {
   background-color: var(--warn-bg);
 }
 
+/* Stage 2 CSPMC Sub-Committees Dialog & Organizational Chart */
+.cspmc-dialog {
+  max-width: 1240px;
+  width: 96vw;
+}
+.cspmc-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 12px;
+  margin: 16px 0;
+}
+.cspmc-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  transition: all 0.15s ease;
+}
+.cspmc-card.formed {
+  border-color: var(--border-strong);
+}
+.cspmc-card.accent-good {
+  border-top: 3px solid var(--good);
+}
+.cspmc-card.accent-warn {
+  border-top: 3px solid var(--warn);
+}
+.cspmc-card.accent-idle {
+  border-top: 3px solid var(--border-strong);
+  opacity: 0.85;
+}
+.cspmc-card-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+}
+.cspmc-card-title {
+  font-weight: 700;
+  font-size: 13.5px;
+  color: var(--text-main);
+  line-height: 1.3;
+}
+.cspmc-card-desc {
+  font-size: 11.5px;
+  color: var(--text-muted);
+  line-height: 1.4;
+}
+.cspmc-member-list {
+  margin: 6px 0 0;
+  padding-left: 18px;
+  font-size: 12px;
+}
+.cspmc-member-item {
+  margin: 4px 0;
+  line-height: 1.4;
+}
+
+/* CSPMC Hierarchical Organizational Chart */
+.cspmc-org-wrap {
+  background: var(--bg-subtle);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  padding: 18px 14px 22px;
+  margin: 14px 0 18px;
+  overflow-x: auto;
+}
+.cspmc-org-inner {
+  min-width: 1020px;
+  max-width: 1200px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+.cspmc-org-legend {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 14px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--border-subtle);
+  font-size: 11.5px;
+  color: var(--text-muted);
+}
+.cspmc-org-legend-items {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+.org-legend-dot {
+  display: inline-block;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  margin-right: 5px;
+}
+.org-tier-apex {
+  display: flex;
+  justify-content: center;
+  width: 100%;
+}
+.org-node-apex {
+  background: var(--bg-card);
+  border: 2px solid var(--primary);
+  border-radius: var(--radius-md);
+  padding: 10px 22px;
+  text-align: center;
+  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.06);
+  min-width: 340px;
+  max-width: 520px;
+}
+.org-node-apex-title {
+  font-weight: 800;
+  font-size: 14px;
+  color: var(--text-main);
+  letter-spacing: -0.01em;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+.org-node-apex-sub {
+  font-size: 11.5px;
+  color: var(--text-muted);
+  margin-top: 2px;
+}
+.org-stem-down {
+  width: 2px;
+  height: 20px;
+  background: var(--border-strong);
+  margin: 0 auto;
+}
+.org-tier-middle {
+  display: grid;
+  grid-template-columns: 1fr 1.15fr 1fr;
+  gap: 32px;
+  width: 100%;
+  max-width: 1040px;
+  align-items: stretch;
+  position: relative;
+}
+.org-mid-col {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+}
+.org-mid-col.side-left::after {
+  content: '';
+  position: absolute;
+  top: 42px;
+  right: -32px;
+  width: 32px;
+  border-top: 2px dashed var(--primary);
+  pointer-events: none;
+}
+.org-mid-col.side-right::before {
+  content: '';
+  position: absolute;
+  top: 42px;
+  left: -32px;
+  width: 32px;
+  border-top: 2px dashed var(--border-strong);
+  pointer-events: none;
+}
+.org-connector-tag {
+  font-size: 9.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+  text-align: center;
+  margin-bottom: 4px;
+}
+.org-tier-subcommittees {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(158px, 1fr));
+  gap: 10px;
+  width: 100%;
+  position: relative;
+}
+.org-sub-col {
+  position: relative;
+  padding-top: 18px;
+  display: flex;
+  flex-direction: column;
+}
+.org-sub-col::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -5px;
+  right: -5px;
+  height: 2px;
+  background: var(--border-strong);
+}
+.org-sub-col:first-child::before {
+  left: 50%;
+}
+.org-sub-col:last-child::before {
+  right: 50%;
+}
+.org-sub-col::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 50%;
+  width: 2px;
+  height: 18px;
+  background: var(--border-strong);
+  transform: translateX(-50%);
+}
+.org-node {
+  background: var(--bg-card);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  padding: 10px 11px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  flex: 1;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.04);
+  transition: all 0.15s ease;
+  text-align: left;
+}
+.org-node.clickable {
+  cursor: pointer;
+}
+.org-node.clickable:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(15, 23, 42, 0.09);
+  border-color: var(--primary);
+}
+.org-node.active-filter {
+  outline: 2px solid var(--primary);
+  outline-offset: 1px;
+  background: var(--primary-50);
+}
+.org-node.accent-good {
+  border-top: 3.5px solid var(--good);
+}
+.org-node.accent-warn {
+  border-top: 3.5px solid var(--warn);
+}
+.org-node.accent-idle {
+  border-top: 3.5px solid var(--border-strong);
+  opacity: 0.86;
+}
+.org-node.accent-exec {
+  border-top: 4px solid var(--primary);
+  box-shadow: 0 3px 10px rgba(15, 23, 42, 0.07);
+}
+.org-node-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px;
+}
+.org-node-code {
+  font-weight: 800;
+  font-size: 12px;
+  color: var(--text-main);
+  letter-spacing: 0.01em;
+}
+.org-node-name {
+  font-weight: 600;
+  font-size: 11px;
+  color: var(--text-main);
+  line-height: 1.25;
+}
+.org-node-mandate {
+  font-size: 10.5px;
+  color: var(--text-muted);
+  line-height: 1.3;
+}
+.org-lead-box {
+  background: var(--bg-subtle);
+  border: 1px solid var(--border-subtle);
+  border-radius: 6px;
+  padding: 5px 7px;
+  font-size: 11px;
+  margin-top: 2px;
+}
+.org-lead-label {
+  font-size: 9.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+  display: block;
+}
+.org-member-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 2px;
+  max-height: 155px;
+  overflow-y: auto;
+}
+.org-member-row {
+  font-size: 11px;
+  line-height: 1.3;
+  padding: 3px 5px;
+  border-radius: 4px;
+  background: var(--bg-subtle);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+.org-agg-stats {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: auto;
+  padding-top: 6px;
+  border-top: 1px dashed var(--border-subtle);
+  font-size: 11px;
+}
+.org-agg-bar {
+  height: 5px;
+  background: var(--border-subtle);
+  border-radius: 999px;
+  overflow: hidden;
+  margin: 2px 0;
+}
+.org-agg-bar > span {
+  display: block;
+  height: 100%;
+  background: var(--good);
+  border-radius: 999px;
+}
+
+/* MResT Co-Governance Organizational Chart */
+.mrest-dual-wings {
+  display: grid;
+  grid-template-columns: 1.15fr 1fr;
+  gap: 16px;
+  width: 100%;
+  margin-top: 4px;
+}
+@media (max-width: 980px) {
+  .mrest-dual-wings {
+    grid-template-columns: 1fr;
+  }
+}
+.mrest-wing-box {
+  background: var(--bg-card);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  padding: 12px 14px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.04);
+}
+.mrest-wing-box.community-wing {
+  border-top: 4px solid var(--primary);
+}
+.mrest-wing-box.technical-wing {
+  border-top: 4px solid #6366f1;
+}
+.mrest-wing-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--border-subtle);
+  flex-wrap: wrap;
+}
+.mrest-wing-title {
+  font-weight: 800;
+  font-size: 12.5px;
+  letter-spacing: 0.01em;
+  color: var(--text-main);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.mrest-wing-sub {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+.mrest-sub-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: 10px;
+}
+.mrest-captains-roster {
+  max-height: 220px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding-right: 4px;
+}
+.mrest-captain-card {
+  font-size: 11px;
+  background: var(--bg-subtle);
+  border: 1px solid var(--border-subtle);
+  border-radius: 6px;
+  padding: 5px 8px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+}
+.mrest-pb-badge {
+  font-size: 9.5px;
+  font-weight: 700;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: var(--primary-50);
+  color: var(--primary);
+  border: 1px solid var(--primary);
+}

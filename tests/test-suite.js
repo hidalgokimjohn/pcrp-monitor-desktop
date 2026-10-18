@@ -628,6 +628,410 @@ async function runAll() {
   }
 
   // -----------------------------------------------------------------
+  // 8. Stage 2 CSPMC & Specialized Sub-Committees Tests
+  // -----------------------------------------------------------------
+  console.log('🏛️ Testing Stage 2 CSPMC & 8 Sub-Committees (src/people.js)...');
+  {
+    const peopleCode = fs.readFileSync(path.join(ROOT, 'src', 'people.js'), 'utf8');
+    const sandbox = {
+      console,
+      normAlpha: (s) => String(s || '').toLowerCase().replace(/[^a-z0-9]/g, '')
+    };
+    vm.createContext(sandbox);
+    const topPart = peopleCode.substring(0, peopleCode.indexOf('function buildPeopleIndex'));
+    vm.runInContext(topPart, sandbox);
+
+    test('Stage 2 Committees: STAGE2_BODIES contains all 8 specialized sub-committees + Bookkeeper', () => {
+      assert.strictEqual(sandbox.STAGE2_BODIES.length, 9);
+      const ids = sandbox.STAGE2_BODIES.map(b => b.id);
+      assert.strictEqual(JSON.stringify(ids), JSON.stringify(['CSPMC', 'CMSC', 'PPSC', 'PSC', 'PIT', 'MISC', 'AISC', 'OMSC', 'BOOKKEEPER']));
+    });
+
+    test('Stage 2 Classification: classifyStage2Committee accurately identifies all 8 sub-committees & aliases', () => {
+      // 1. CMSC
+      assert.strictEqual(sandbox.classifyStage2Committee('Community Monitoring Sub-Committee', 'Member'), 'CMSC');
+      assert.strictEqual(sandbox.classifyStage2Committee('CMSC', 'Chairperson'), 'CMSC');
+      // 2. MISC
+      assert.strictEqual(sandbox.classifyStage2Committee('Monitoring and Inspection Sub-Committee', 'Lead Inspector'), 'MISC');
+      assert.strictEqual(sandbox.classifyStage2Committee('Inspection Committee', 'Member'), 'MISC');
+      // 3. PPSC
+      assert.strictEqual(sandbox.classifyStage2Committee('Proposal Preparation Sub-Committee', 'Member'), 'PPSC');
+      assert.strictEqual(sandbox.classifyStage2Committee('Project Preparation Team', 'Lead'), 'PPSC');
+      // 4. PSC / BASC
+      assert.strictEqual(sandbox.classifyStage2Committee('Procurement Sub-Committee', 'Canvasser'), 'PSC');
+      assert.strictEqual(sandbox.classifyStage2Committee('Bids and Awards Committee (BASC)', 'Member'), 'PSC');
+      // 5. SPISC / PIT
+      assert.strictEqual(sandbox.classifyStage2Committee('Sub-Project Implementation Team (SPISC)', 'Site Supervisor'), 'PIT');
+      assert.strictEqual(sandbox.classifyStage2Committee('PIT', 'Labor Coordinator'), 'PIT');
+      // 6. AISC / AIT
+      assert.strictEqual(sandbox.classifyStage2Committee('Audit and Inventory Sub-Committee (AISC)', 'Auditor'), 'AISC');
+      assert.strictEqual(sandbox.classifyStage2Committee('Inventory and Audit Team (AIT)', 'Member'), 'AISC');
+      // 7. O&MSC / OMT
+      assert.strictEqual(sandbox.classifyStage2Committee('Operations and Maintenance Sub-Committee', 'Secretary'), 'OMSC');
+      assert.strictEqual(sandbox.classifyStage2Committee('O&M Group (OMT)', 'Lead'), 'OMSC');
+      // 8. Bookkeeper
+      assert.strictEqual(sandbox.classifyStage2Committee('Financial Management', 'Community Bookkeeper'), 'BOOKKEEPER');
+      assert.strictEqual(sandbox.classifyStage2Committee('Accounting Unit', 'Assistant Bookkeeper'), 'BOOKKEEPER');
+      // 9. Generic CSPMC Officers
+      assert.strictEqual(sandbox.classifyStage2Committee('Community Sub-Project Management Committee', 'Chairperson'), 'CSPMC');
+      // 10. Regression: Stage 1 / Municipal bodies (like SFMC Municipal containing "feedBACk") must return null
+      assert.strictEqual(sandbox.classifyStage2Committee('StakeholdersFeedbackMechanismCommittee(SFMCMunicipal)', 'Member'), null);
+      assert.strictEqual(sandbox.classifyStage2Committee('Stakeholder and Feedback Mechanism Sub-Committee (SFMSC)', 'Chairperson'), null);
+      assert.strictEqual(sandbox.classifyStage2Committee('Barangay Resilience Team (BResT)', 'Member'), null);
+      assert.strictEqual(sandbox.classifyStage2Committee('Municipal Resilience Team (MResT)', 'Member'), null);
+    });
+
+    test('Stage 2 Compliance: evaluateCspmcBarangay evaluates quorum, leadership, and women quota', () => {
+      const b = { barangay: 'Poblacion 1', municipality: 'Buenavista', province: 'Agusan del Norte' };
+      const compliantVols = [
+        { name: 'Maria Santos', stage2Body: 'CSPMC', chair: true, sex: 'female', wasBrest: true },
+        { name: 'Juan Cruz', stage2Body: 'CMSC', chair: true, sex: 'male', wasBrest: true },
+        { name: 'Elena Ramos', stage2Body: 'CMSC', chair: false, sex: 'female', wasBrest: true },
+        { name: 'Pedro Reyes', stage2Body: 'CMSC', chair: false, sex: 'male', wasBrest: false },
+        { name: 'Ana Lopez', stage2Body: 'PSC', chair: false, sex: 'female', wasBrest: false }
+      ];
+
+      const ev = sandbox.evaluateCspmcBarangay(b, compliantVols);
+      assert.strictEqual(ev.status, 'Encoded');
+      assert.strictEqual(ev.cmscCount, 3);
+      assert.strictEqual(ev.hasCmscLead, true);
+      assert.strictEqual(ev.hasCspmcLead, true);
+      assert.strictEqual(ev.cmscBrestAlum, 2);
+      assert.strictEqual(ev.womenPct, 60);
+      assert.strictEqual(ev.reasons.length, 0);
+    });
+
+    test('Stage 2 Quorum: CMSC lacking < 3 members triggers validation issue', () => {
+      const b = { barangay: 'Poblacion 1', municipality: 'Buenavista', province: 'Agusan del Norte' };
+      const lackingVols = [
+        { name: 'Maria Santos', stage2Body: 'CSPMC', chair: true, sex: 'female', wasBrest: true },
+        { name: 'Juan Cruz', stage2Body: 'CMSC', chair: true, sex: 'male', wasBrest: true }
+      ];
+
+      const ev = sandbox.evaluateCspmcBarangay(b, lackingVols);
+      assert.strictEqual(ev.status, 'Needs fixing');
+      assert.strictEqual(ev.cmscCount, 1);
+      assert.strictEqual(ev.reasons.some(r => r.includes('CMSC quorum lacking: requires at least 3 Community Volunteers')), true);
+    });
+
+    test('Stage 2 CMSC Policy: Selection from BResT is encouraged but NOT strictly enforced', () => {
+      const b = { barangay: 'Poblacion 1', municipality: 'Buenavista', province: 'Agusan del Norte' };
+      const newVols = [
+        { name: 'Maria Santos', stage2Body: 'CSPMC', chair: true, sex: 'female', wasBrest: false },
+        { name: 'Juan Cruz', stage2Body: 'CMSC', chair: true, sex: 'male', wasBrest: false },
+        { name: 'Elena Ramos', stage2Body: 'CMSC', chair: false, sex: 'female', wasBrest: false },
+        { name: 'Pedro Reyes', stage2Body: 'CMSC', chair: false, sex: 'male', wasBrest: false }
+      ];
+
+      const ev = sandbox.evaluateCspmcBarangay(b, newVols);
+      assert.strictEqual(ev.status, 'Encoded');
+      assert.strictEqual(ev.cmscBrestAlum, 0);
+      assert.strictEqual(ev.reasons.length, 0);
+    });
+
+    test('Stage 2 Organizational Chart: builds 3-tier hierarchy (BA apex, Oversight/Exec/Books middle, 6 operational sub-committees)', () => {
+      // Provide sandbox helpers needed by Org Chart builders
+      sandbox.esc = (s) => String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+      sandbox.attr = (s) => String(s || '').replace(/"/g, '&quot;');
+      sandbox.n = (v) => String(v == null ? '' : v);
+      sandbox.icon = (name) => '<svg data-icon="' + name + '"></svg>';
+      sandbox.nameCell = (v) => '<a class="person-link">' + sandbox.esc(v.name) + '</a>';
+
+      const orgChunk = peopleCode.substring(
+        peopleCode.indexOf('var CSPMC_STATE ='),
+        peopleCode.indexOf('function renderCspmc')
+      );
+      vm.runInContext(orgChunk, sandbox);
+
+      const b = { barangay: 'Poblacion 1', municipality: 'Buenavista', province: 'Agusan del Norte' };
+      const vols = [
+        { name: 'Maria Santos', stage2Body: 'CSPMC', chair: true, sex: 'female', wasBrest: true },
+        { name: 'Juan Cruz', stage2Body: 'CMSC', chair: true, sex: 'male', wasBrest: true },
+        { name: 'Elena Ramos', stage2Body: 'CMSC', chair: false, sex: 'female', wasBrest: true },
+        { name: 'Pedro Reyes', stage2Body: 'CMSC', chair: false, sex: 'male', wasBrest: false },
+        { name: 'Ana Lopez', stage2Body: 'BOOKKEEPER', chair: false, sex: 'female', wasBrest: false },
+        { name: 'Carlos Tan', stage2Body: 'PPSC', chair: true, sex: 'male', wasBrest: false },
+        { name: 'Rosa Diaz', stage2Body: 'PSC', chair: true, sex: 'female', wasBrest: false },
+        { name: 'George Lim', stage2Body: 'PIT', chair: true, sex: 'male', wasBrest: false },
+        { name: 'Liza Dizon', stage2Body: 'MISC', chair: true, sex: 'female', wasBrest: false },
+        { name: 'David Sy', stage2Body: 'AISC', chair: true, sex: 'male', wasBrest: false },
+        { name: 'Grace Ong', stage2Body: 'OMSC', chair: true, sex: 'female', wasBrest: false }
+      ];
+      const ev = sandbox.evaluateCspmcBarangay(b, vols);
+
+      // 1. Barangay-level Org Chart
+      const brgyHtml = sandbox.buildBarangayOrgChartHtml(ev, b.barangay, b.municipality + ', ' + b.province, true);
+      assert.strictEqual(brgyHtml.includes('cspmc-org-wrap'), true);
+      assert.strictEqual(brgyHtml.includes('org-tier-apex'), true);
+      assert.strictEqual(brgyHtml.includes('BARANGAY ASSEMBLY (BA)'), true);
+      assert.strictEqual(brgyHtml.includes('org-tier-middle'), true);
+      assert.strictEqual(brgyHtml.includes('Independent M&amp;E &amp; Audit Arm'), true);
+      assert.strictEqual(brgyHtml.includes('CMSC'), true);
+      assert.strictEqual(brgyHtml.includes('CSPMC'), true);
+      assert.strictEqual(brgyHtml.includes('BOOKKEEPER'), true);
+      assert.strictEqual(brgyHtml.includes('org-tier-subcommittees'), true);
+      // All 6 operational sub-committees present
+      ['PPSC', 'PSC', 'PIT', 'MISC', 'AISC', 'OMSC'].forEach(id => {
+        assert.strictEqual(brgyHtml.includes(id), true);
+      });
+      assert.strictEqual(brgyHtml.includes('Maria Santos'), true);
+      assert.strictEqual(brgyHtml.includes('✓ BResT'), true);
+
+      // 2. Aggregate-level Org Chart
+      const evalMap = { 'Agusan del Norte|Buenavista|Poblacion 1': ev };
+      const aggHtml = sandbox.buildAggregateOrgChartHtml([b], evalMap, vols, 'Buenavista');
+      assert.strictEqual(aggHtml.includes('cspmc-org-wrap'), true);
+      assert.strictEqual(aggHtml.includes('BARANGAY ASSEMBLY (BA) · 1 BARANGAY'), true);
+      assert.strictEqual(aggHtml.includes('org-tier-middle'), true);
+      assert.strictEqual(aggHtml.includes('org-tier-subcommittees'), true);
+    });
+  }
+
+  // -----------------------------------------------------------------
+  // 9. MResT Co-Governance, Barangay Captains & 50% Quota Tests
+  // -----------------------------------------------------------------
+  console.log('🏛️ Testing MResT Co-Governance, Barangay Captains & 50% Quota (src/people.js)...');
+  {
+    const peopleCode = fs.readFileSync(path.join(ROOT, 'src', 'people.js'), 'utf8');
+    const sandbox = {
+      console,
+      normAlpha: (s) => String(s || '').toLowerCase().replace(/[^a-z0-9]/g, ''),
+      esc: (s) => String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'),
+      attr: (s) => String(s || '').replace(/"/g, '&quot;'),
+      n: (v) => String(v == null ? '' : v),
+      icon: (name) => '<svg data-icon="' + name + '"></svg>',
+      nameCell: (v) => '<a class="person-link">' + String(v.name || '') + '</a>',
+      MRT_STATE: { clusterFilter: 'all', search: '', showOrgChart: true }
+    };
+    vm.createContext(sandbox);
+    const mrestChunk = peopleCode.substring(
+      peopleCode.indexOf('var MREST_CLUSTERS ='),
+      peopleCode.indexOf('function renderMrest')
+    );
+    vm.runInContext(mrestChunk, sandbox);
+
+    test('MResT Classification: classifyMrestRole accurately assigns LCE, Leads, Captains, and Departments', () => {
+      assert.strictEqual(sandbox.classifyMrestRole('Municipal Mayor', 'MResT'), 'LCE');
+      assert.strictEqual(sandbox.classifyMrestRole('Mayor / Chairperson', 'MResT'), 'LCE');
+      assert.strictEqual(sandbox.classifyMrestRole('MPDC', 'MResT'), 'LEAD');
+      assert.strictEqual(sandbox.classifyMrestRole('MDRRMO', 'MResT'), 'LEAD');
+      assert.strictEqual(sandbox.classifyMrestRole('Punong Barangay', 'MResT'), 'CAPTAINS');
+      assert.strictEqual(sandbox.classifyMrestRole('Barangay Captain', 'MResT'), 'CAPTAINS');
+      assert.strictEqual(sandbox.classifyMrestRole('PB - Poblacion 1', 'MResT'), 'CAPTAINS');
+      assert.strictEqual(sandbox.classifyMrestRole('Municipal Engineer', 'MResT'), 'INFRA');
+      assert.strictEqual(sandbox.classifyMrestRole('MSWDO', 'MResT'), 'SOCIAL');
+      assert.strictEqual(sandbox.classifyMrestRole('Municipal Health Officer', 'MResT'), 'SOCIAL');
+      assert.strictEqual(sandbox.classifyMrestRole('MENRO', 'MResT'), 'CLIMATE');
+      assert.strictEqual(sandbox.classifyMrestRole('Municipal Agriculturist', 'MResT'), 'CLIMATE');
+      assert.strictEqual(sandbox.classifyMrestRole('Municipal Budget Officer', 'MResT'), 'FINANCE');
+      assert.strictEqual(sandbox.classifyMrestRole('CSO Representative', 'MResT'), 'CSO');
+      assert.strictEqual(sandbox.classifyMrestRole('IPMR', 'MResT'), 'IPMR');
+      assert.strictEqual(sandbox.classifyMrestRole('SB Member - Appropriations', 'MResT'), 'SB_DILG');
+      assert.strictEqual(sandbox.classifyMrestRole('MLGOO - DILG', 'MResT'), 'SB_DILG');
+      assert.strictEqual(sandbox.classifyMrestRole('Area Coordinator (ACT)', 'MResT'), 'ACT_MCT');
+    });
+
+    test('MResT Org Chart: builds Mayor Apex, Steering Leads, and Dual Co-Governance Wings with Barangay Captains', () => {
+      const muniVols = [
+        { name: 'Hon. Jose Rizal', position: 'Municipal Mayor', key: 'p1' },
+        { name: 'Engr. Juan Luna', position: 'MPDC', key: 'p2' },
+        { name: 'Capt. Andres Bonifacio', position: 'MDRRMO', key: 'p3' },
+        { name: 'PB Emilio Aguinaldo', position: 'Punong Barangay - Brgy 1', key: 'p4' },
+        { name: 'PB Apolinario Mabini', position: 'Barangay Captain - Brgy 2', key: 'p5' },
+        { name: 'PB Melchora Aquino', position: 'Punong Barangay - Brgy 3', key: 'p6' },
+        { name: 'Datu Bago', position: 'IPMR', key: 'p7' },
+        { name: 'Maria Clara', position: 'CSO Representative 1', key: 'p8' },
+        { name: 'Tandang Sora', position: 'CSO Representative 2', key: 'p9' },
+        { name: 'Engr. Antonio Luna', position: 'Municipal Engineer', key: 'p10' },
+        { name: 'Gliceria Marella', position: 'MSWDO', key: 'p11' },
+        { name: 'Mariano Alvarez', position: 'Municipal Budget Officer', key: 'p12' }
+      ];
+
+      const html = sandbox.buildMrestOrgChartHtml('Buenavista', 'Agusan del Norte', muniVols, 3, null, true, 12);
+      assert.strictEqual(html.includes('cspmc-org-wrap'), true);
+      assert.strictEqual(html.includes('OFFICE OF THE MUNICIPAL MAYOR'), true);
+      assert.strictEqual(html.includes('Hon. Jose Rizal'), true);
+      assert.strictEqual(html.includes('MPDC &amp; MDRRMO LEADS'), true);
+      assert.strictEqual(html.includes('Community &amp; Barangay Leadership Wing'), true);
+      assert.strictEqual(html.includes('ALL BARANGAY CAPTAINS (PUNONG BARANGAYS)'), true);
+      assert.strictEqual(html.includes('3 / 3 Barangays'), true);
+      assert.strictEqual(html.includes('MLGU Technical &amp; Sectoral Wing'), true);
+      assert.strictEqual(html.includes('50% Quota Met'), true);
+    });
+  }
+
+  // -----------------------------------------------------------------
+  // 10. Data Quality Assessment (DQA) Architecture & Navigation
+  // -----------------------------------------------------------------
+  console.log('🛡️ Testing Data Quality Assessment (DQA) Architecture & Navigation...');
+  {
+    const appHtml = fs.readFileSync(path.join(ROOT, 'src', 'app.html'), 'utf8');
+    const appJs = fs.readFileSync(path.join(ROOT, 'src', 'app.js'), 'utf8');
+    const healthHtml = fs.readFileSync(path.join(ROOT, 'vendor', 'monitor', 'JS_Health.html'), 'utf8');
+    const verifyJs = fs.readFileSync(path.join(ROOT, 'src', 'verify.js'), 'utf8');
+
+    test('DQA Navigation: src/app.html contains unified Nav Tab Group with dropdown sub-items', () => {
+      assert.strictEqual(appHtml.includes('id="group-dqa-wrap"'), true);
+      assert.strictEqual(appHtml.includes('id="tab-group-dqa"'), true);
+      assert.strictEqual(appHtml.includes('data-group="dqa"'), true);
+      assert.strictEqual(appHtml.includes('id="badge-group-dqa"'), true);
+      assert.strictEqual(appHtml.includes('id="dropdown-dqa"'), true);
+      assert.strictEqual(appHtml.includes('data-page="health" id="tab-health"'), true);
+      assert.strictEqual(appHtml.includes('data-page="verify" id="tab-verify"'), true);
+      assert.strictEqual(appHtml.includes('DQA Audit &amp; Scorecard'), true);
+      assert.strictEqual(appHtml.includes('Field Form Verification'), true);
+      // Ensure standalone top-level verify and health tab buttons are removed
+      assert.strictEqual(appHtml.includes('<button role="tab" data-page="verify">'), false);
+      assert.strictEqual(appHtml.includes('<button role="tab" data-page="health">'), false);
+    });
+
+    test('DQA Dialog: #memo-dialog header reflects DQA Audit Memo', () => {
+      assert.strictEqual(appHtml.includes('<h2>DQA Audit Memo</h2>'), true);
+      assert.strictEqual(appHtml.includes('<h2>Data Health audit memo</h2>'), false);
+    });
+
+    test('DQA Routing: src/app.js routes dqa aliases and manages isDqaGroup tab state', () => {
+      assert.strictEqual(appJs.includes("if (page === 'dqa' || page === 'data-health') page = 'health';"), true);
+      assert.strictEqual(appJs.includes("var isDqaGroup = (page === 'health' || page === 'verify');"), true);
+      assert.strictEqual(appJs.includes("var grpDqa = $('tab-group-dqa');"), true);
+      assert.strictEqual(appJs.includes("setBadge('group-dqa'"), true);
+      assert.strictEqual(appJs.includes("'DQA Audit'"), true);
+    });
+
+    test('DQA Audit & Scorecard: JS_Health.html contains sub-nav tabs, DQA header & SM7 subtitle', () => {
+      assert.strictEqual(healthHtml.includes('class="sub-nav-tabs"'), true);
+      assert.strictEqual(healthHtml.includes('data-go="health"'), true);
+      assert.strictEqual(healthHtml.includes('data-go="verify"'), true);
+      assert.strictEqual(healthHtml.includes('<h2>Data Quality Assessment (DQA)</h2>'), true);
+      assert.strictEqual(healthHtml.includes('Kalahi-CIDSS SM7 M&amp;E Data Quality Dimensions'), true);
+      assert.strictEqual(healthHtml.includes('DATA QUALITY ASSESSMENT (DQA) AUDIT MEMO'), true);
+    });
+
+    test('DQA Field Form Verification: src/verify.js contains sub-nav tabs and SM7 Table 8 Precision header', () => {
+      assert.strictEqual(verifyJs.includes('class="sub-nav-tabs"'), true);
+      assert.strictEqual(verifyJs.includes('data-go="health"'), true);
+      assert.strictEqual(verifyJs.includes('data-go="verify"'), true);
+      assert.strictEqual(verifyJs.includes('<h2>Field Form Verification (Precision Protocol)</h2>'), true);
+      assert.strictEqual(verifyJs.includes('The Precision dimension of the Data Quality Assessment (SM7 Table 8)'), true);
+    });
+  }
+
+  // -----------------------------------------------------------------
+  // 11. Persistent Storage & Refresh Data Preservation
+  // -----------------------------------------------------------------
+  console.log('🔄 Testing Persistent Storage & Refresh Data Preservation (src/saved.js & src/app.js)...');
+  {
+    const savedCode = fs.readFileSync(path.join(ROOT, 'src', 'saved.js'), 'utf8');
+    const appCode = fs.readFileSync(path.join(ROOT, 'src', 'app.js'), 'utf8');
+
+    test('Storage: src/saved.js implements persistent IDB connection caching and batch writing', () => {
+      assert.strictEqual(savedCode.includes('var _dbPromise = null;'), true);
+      assert.strictEqual(savedCode.includes('function savedPutMany('), true);
+      assert.strictEqual(savedCode.includes('function fallbackGet('), true);
+      assert.strictEqual(savedCode.includes('function fallbackPut('), true);
+      assert.strictEqual(savedCode.includes('function savedSaveCurrent('), true);
+    });
+
+    test('Page Persistence: src/app.js records active page in go() so refresh retains view', () => {
+      assert.strictEqual(appCode.includes("sessionStorage.setItem('pcrp_active_page', page);"), true);
+      assert.strictEqual(appCode.includes("localStorage.setItem('pcrp_active_page', page);"), true);
+    });
+
+    test('Immediate Save: src/app.js flushes loaded tables immediately in handleFiles', () => {
+      assert.strictEqual(appCode.includes("if (typeof savedSaveCurrent === 'function') savedSaveCurrent();"), true);
+    });
+
+    test('Auto-Flush: src/app.js registers beforeunload and visibilitychange listeners', () => {
+      assert.strictEqual(appCode.includes("window.addEventListener('beforeunload', function () {"), true);
+      assert.strictEqual(appCode.includes("document.addEventListener('visibilitychange', function () {"), true);
+    });
+
+    test('PIN Unlock Recovery: src/app.js restores workspace on unlock', () => {
+      assert.strictEqual(appCode.includes("savedRestore().then(function (restored) {"), true);
+      assert.strictEqual(appCode.includes("Opened the data saved on this PC"), true);
+    });
+
+    await test('Sandbox Storage & Restore: savedSaveCurrent and savedRestore preserve and bring back data across simulated reloads', async () => {
+      const mockStorage = {};
+      const sandbox = {
+        console,
+        clearTimeout,
+        setTimeout,
+        window: {
+          indexedDB: null // force fallback storage to verify cross-environment persistence
+        },
+        localStorage: {
+          getItem: (k) => mockStorage[k] || null,
+          setItem: (k, v) => { mockStorage[k] = String(v); },
+          removeItem: (k) => { delete mockStorage[k]; }
+        },
+        sessionStorage: {
+          getItem: (k) => mockStorage[k] || null,
+          setItem: (k, v) => { mockStorage[k] = String(v); },
+          removeItem: (k) => { delete mockStorage[k]; }
+        },
+        TABS: {
+          Raw_Volunteers: {
+            headers: ['Province', 'Municipality', 'Barangay', 'Committee', 'Position', 'First Name', 'Last Name'],
+            rows: [['Agusan del Norte', 'Buenavista', 'Poblacion 1', 'BResT', 'Team Leader', 'Juan', 'Dela Cruz']]
+          }
+        },
+        LOADED: {
+          volunteers: { file: 'Volunteers.xlsx', sheet: 'Sheet1', rows: 1 }
+        },
+        VERIFY: { tags: { version: 1, records: { r1: { verified: true } } } },
+        prefs: () => ({ home: 'Agusan del Norte|Buenavista', evalDate: '2026-10-18' }),
+        savePrefs: () => {},
+        pullDate: () => '2026-10-18',
+        today: () => '2026-10-18',
+        setTabsEnabled: () => {},
+        renderStatus: () => {},
+        renderImport: () => {},
+        updateTabBadges: () => {},
+        renderSavedBar: () => {},
+        $: () => null,
+        go: () => {},
+        computeAndShow: () => {},
+        FINDINGS_HEADERS: [],
+        SHEETS: { FINDINGS: 'DQA_Findings' },
+        SAVE_DB: 'pcrp-desktop',
+        SAVE_STORE: 'kv',
+        SAVE_KEEP_PULLS: 12,
+        SAVE_TABLES: ['Raw_Participants', 'Raw_Households', 'Raw_Volunteers'],
+        SAVE_FORMAT: 'pcrp-desktop-save',
+        SAVED: { current: null, ledger: {}, available: true, dataStamp: '' },
+        SNAP: null,
+        HH_LISTS: null,
+        STATE: { computed: false }
+      };
+
+      vm.createContext(sandbox);
+      vm.runInContext(savedCode, sandbox);
+
+      // 1. Save data currently in memory (only volunteers loaded)
+      await sandbox.savedSaveCurrent();
+
+      assert.strictEqual(mockStorage['pcrp_save_current'] != null, true);
+      const parsed = JSON.parse(mockStorage['pcrp_save_current']);
+      assert.strictEqual(parsed.tables.Raw_Volunteers.rows.length, 1);
+      assert.strictEqual(parsed.tables.Raw_Volunteers.rows[0][5], 'Juan');
+
+      // 2. Simulate refresh: wipe in-memory TABS and LOADED
+      sandbox.TABS = {};
+      sandbox.LOADED = {};
+      assert.strictEqual(sandbox.TABS.Raw_Volunteers, undefined);
+
+      // 3. Restore data from storage
+      const restored = await sandbox.savedRestore();
+      assert.strictEqual(restored, true);
+      assert.strictEqual(sandbox.TABS.Raw_Volunteers != null, true);
+      assert.strictEqual(sandbox.TABS.Raw_Volunteers.rows.length, 1);
+      assert.strictEqual(sandbox.TABS.Raw_Volunteers.rows[0][5], 'Juan');
+      assert.strictEqual(sandbox.LOADED.volunteers.rows, 1);
+    });
+  }
+
+  // -----------------------------------------------------------------
   // Summary
   // -----------------------------------------------------------------
   console.log('\n======================================================');

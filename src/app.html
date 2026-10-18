@@ -62,10 +62,10 @@
     </div>
   </div>
 
-  <!-- Group 2: Volunteers & BResT -->
+  <!-- Group 2: Volunteers & Committees -->
   <div class="nav-tab-group" id="group-volunteers-wrap">
     <button role="tab" class="tab-group-trigger" id="tab-group-volunteers" data-group="volunteers" disabled>
-      <i data-lucide="shield-check"></i> <span>Volunteers &amp; BResT</span>
+      <i data-lucide="shield-check"></i> <span>Volunteers &amp; Committees</span>
       <span class="tab-badge" id="badge-group-volunteers" hidden></span>
       <i data-lucide="chevron-down" class="group-arrow"></i>
     </button>
@@ -74,23 +74,55 @@
         <i data-lucide="users"></i>
         <div class="nav-drop-info">
           <span class="nav-drop-title">Community Volunteers</span>
-          <span class="nav-drop-sub">All committees &amp; officers</span>
+          <span class="nav-drop-sub">All committees &amp; directory</span>
         </div>
         <span class="tab-badge" id="badge-volunteers" hidden></span>
       </button>
       <button role="menuitem" data-page="brest" id="tab-brest">
         <i data-lucide="shield"></i>
         <div class="nav-drop-info">
-          <span class="nav-drop-title">BResT</span>
+          <span class="nav-drop-title">BResT (Stage 1)</span>
           <span class="nav-drop-sub">Barangay Resilience Teams</span>
         </div>
         <span class="tab-badge" id="badge-brest" hidden></span>
       </button>
+      <button role="menuitem" data-page="cspmc" id="tab-cspmc">
+        <i data-lucide="layers"></i>
+        <div class="nav-drop-info">
+          <span class="nav-drop-title">CSPMC &amp; Sub-Committees (Stage 2)</span>
+          <span class="nav-drop-sub">Sub-Project Management &amp; CMSC</span>
+        </div>
+        <span class="tab-badge" id="badge-cspmc" hidden></span>
+      </button>
     </div>
   </div>
   <button role="tab" data-page="mrest" id="tab-mrest" disabled><i data-lucide="award"></i> <span>MResT</span> <span class="tab-badge" id="badge-mrest" hidden></span></button>
-  <button role="tab" data-page="verify" disabled><i data-lucide="clipboard-check"></i> <span>Verify</span> <span class="tab-badge" id="badge-verify" hidden></span></button>
-  <button role="tab" data-page="health" disabled><i data-lucide="shield-check"></i> <span>Data Health</span> <span class="tab-badge" id="badge-health" hidden></span></button>
+  <!-- Group 3: Data Quality Assessment (DQA) -->
+  <div class="nav-tab-group" id="group-dqa-wrap">
+    <button role="tab" class="tab-group-trigger" id="tab-group-dqa" data-group="dqa" disabled>
+      <i data-lucide="shield-check"></i> <span>Data Quality Assessment (DQA)</span>
+      <span class="tab-badge" id="badge-group-dqa" hidden></span>
+      <i data-lucide="chevron-down" class="group-arrow"></i>
+    </button>
+    <div class="nav-tab-dropdown" id="dropdown-dqa">
+      <button role="menuitem" data-page="health" id="tab-health">
+        <i data-lucide="gauge"></i>
+        <div class="nav-drop-info">
+          <span class="nav-drop-title">DQA Audit &amp; Scorecard</span>
+          <span class="nav-drop-sub">6 SM7 dimensions &amp; anomaly checks</span>
+        </div>
+        <span class="tab-badge" id="badge-health" hidden></span>
+      </button>
+      <button role="menuitem" data-page="verify" id="tab-verify">
+        <i data-lucide="clipboard-check"></i>
+        <div class="nav-drop-info">
+          <span class="nav-drop-title">Field Form Verification</span>
+          <span class="nav-drop-sub">Precision sampling &amp; delta sync</span>
+        </div>
+        <span class="tab-badge" id="badge-verify" hidden></span>
+      </button>
+    </div>
+  </div>
 </nav>
 
 <main>
@@ -240,6 +272,7 @@
   <section class="page" id="page-households"><div id="hh-body"></div></section>
   <section class="page" id="page-volunteers"><div id="vol-body"></div></section>
   <section class="page" id="page-brest"><div id="brt-body"></div></section>
+  <section class="page" id="page-cspmc"><div id="cspmc-body"></div></section>
   <section class="page" id="page-mrest"><div id="mrt-body"></div></section>
   <section class="page" id="page-people"><div id="pp-body"></div></section>
   <section class="page" id="page-verify"><div id="vf-body"></div></section>
@@ -263,7 +296,7 @@
   <form method="dialog">
     <div class="dialog-head">
       <div>
-        <h2>Data Health audit memo</h2>
+        <h2>DQA Audit Memo</h2>
         <div class="tiny">Formatted plain-text field audit memo ready to copy into an email, chat, or document.</div>
       </div>
       <button class="btn ghost icon-btn" value="close" aria-label="Close dialog" title="Close (Esc)"><i data-lucide="x"></i></button>
@@ -315,6 +348,12 @@
       <button class="btn ghost" type="button" id="lacking-copy"><i data-lucide="copy"></i> <span>Copy findings</span></button>
       <button class="btn ghost" value="close">Close</button>
     </div>
+  </form>
+</dialog>
+
+<dialog id="cspmc-dialog" class="memo cspmc-dialog" style="max-width:1240px;width:96vw">
+  <form method="dialog">
+    <div id="cspmc-dialog-body"></div>
   </form>
 </dialog>
 

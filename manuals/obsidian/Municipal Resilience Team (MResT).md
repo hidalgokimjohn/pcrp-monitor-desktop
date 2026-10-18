@@ -18,17 +18,26 @@ The **Municipal Resilience Team (MResT)** is the inter-departmental coordinating
 
 ## 1. Legal Basis & Composition
 
-- **Legal Instrument**: Formed through an **Executive Order (EO)** issued by the Municipal Mayor.
-- **Leadership**: Chaired by the **Municipal Mayor**, or co-chaired by the Municipal Planning and Development Coordinator (MPDC) / Municipal Disaster Risk Reduction and Management Officer (MDRRMO).
-- **Core Membership**:
-  - Municipal Planning and Development Office (MPDO)
-  - Municipal Disaster Risk Reduction and Management Office (MDRRMO)
-  - Municipal Social Welfare and Development Office (MSWDO)
-  - Municipal Engineering Office (MEO)
-  - Municipal Agriculture Office (MAO)
-  - Municipal Environment and Natural Resources Office (MENRO)
-  - Municipal Economic Enterprise Development Office (MEEDO)
-  - Accredited Civil Society Organizations (CSOs) / Non-Government Organizations (NGOs)
+- **Legal Instrument**: Formed through an **Executive Order (EO)** issued by the Municipal Mayor per SM1 Section 3.1 (pp. 13–15).
+- **Leadership**: Chaired by the **Municipal Mayor**, with a designated **Co-Chairperson** (MPDC / MDRRMO).
+- **Community & Barangay Leadership (Mandated ≥ 50% of Total Quorum)**:
+  - **All Barangay Captains (Punong Barangays)**: Core members representing participating communities. (For municipalities with > 30 barangays, contiguous barangays may cluster, provided barangay representation comprises **not less than 50%** of total MResT membership per SM1 Para 13).
+  - **Indigenous Peoples Mandatory Representative (IPMR)** *(if applicable)*.
+  - At least **2 Accredited NGO / CSO Representatives**.
+- **Legislative & Departmental Membership**:
+  - At least **2 Sangguniang Bayan (SB)** members (Chairs of Appropriations and Social Welfare/Protection).
+  - Municipal Local Government Operations Officer (**MLGOO / DILG**).
+  - Municipal Planning and Development Coordinator (**MPDC**).
+  - Municipal Disaster Risk Reduction and Management Officer (**MDRRMO**).
+  - Municipal Social Welfare and Development Officer (**MSWDO**).
+  - Municipal Engineer (**ME / MEO**).
+  - Municipal Health Officer (**MHO**).
+  - Municipal Agriculture Officer (**MAO**).
+  - Municipal Environment and Natural Resources Officer (**MENRO**).
+  - Municipal Budget Officer (**MBO**).
+  - Municipal Accountant (**MA**).
+  - Municipal Economic Enterprise Development Officer (**MEEDO**).
+  - Public Employment Service Office (**PESO**).
 
 ---
 

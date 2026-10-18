@@ -18,43 +18,150 @@ var SAVE_TABLES = ['Raw_Participants', 'Raw_Households', 'Raw_Volunteers'];
 var SAVE_FORMAT = 'pcrp-desktop-save';
 var saveTimer = null;
 
+var _dbPromise = null;
+
 function savedDb() {
-  return new Promise(function (resolve, reject) {
-    if (!window.indexedDB) { reject(new Error('This browser cannot keep data.')); return; }
+  if (_dbPromise) return _dbPromise;
+  _dbPromise = new Promise(function (resolve, reject) {
+    if (typeof window === 'undefined' || !window.indexedDB) {
+      reject(new Error('This browser cannot keep data.'));
+      return;
+    }
     var req = indexedDB.open(SAVE_DB, 1);
-    req.onupgradeneeded = function () { req.result.createObjectStore(SAVE_STORE); };
-    req.onsuccess = function () { resolve(req.result); };
-    req.onerror = function () { reject(req.error || new Error('Browser storage is blocked.')); };
+    req.onupgradeneeded = function (ev) {
+      var db = ev.target.result;
+      if (!db.objectStoreNames.contains(SAVE_STORE)) {
+        db.createObjectStore(SAVE_STORE);
+      }
+    };
+    req.onsuccess = function (ev) {
+      var db = ev.target.result;
+      db.onversionchange = function () { db.close(); _dbPromise = null; };
+      db.onclose = function () { _dbPromise = null; };
+      resolve(db);
+    };
+    req.onerror = function (ev) {
+      _dbPromise = null;
+      reject(req.error || new Error('Browser storage is blocked.'));
+    };
   });
+  return _dbPromise;
 }
 
 function savedTx(mode, fn) {
   return savedDb().then(function (db) {
     return new Promise(function (resolve, reject) {
-      var tx = db.transaction(SAVE_STORE, mode), store = tx.objectStore(SAVE_STORE), out = fn(store);
-      // a get resolves to its value, which is undefined for a key never saved
-      tx.oncomplete = function () { db.close(); resolve(out instanceof IDBRequest ? out.result : out); };
-      tx.onerror = tx.onabort = function () { db.close(); reject(tx.error || new Error('Could not save in this browser.')); };
+      try {
+        var tx = db.transaction(SAVE_STORE, mode);
+        var store = tx.objectStore(SAVE_STORE);
+        var out = fn(store);
+        tx.oncomplete = function () {
+          resolve(out instanceof IDBRequest ? out.result : out);
+        };
+        tx.onerror = function () {
+          reject(tx.error || new Error('Could not save in this browser.'));
+        };
+        tx.onabort = function () {
+          reject(tx.error || new Error('Transaction aborted.'));
+        };
+      } catch (err) {
+        _dbPromise = null;
+        reject(err);
+      }
     });
   });
 }
-function savedGet(key) {
-  return savedTx('readonly', function (s) { return s.get(key); }).then(function (res) {
-    if (res && typeof PCRP_CRYPTO !== 'undefined' && typeof PCRP_CRYPTO.decrypt === 'function') {
-      return PCRP_CRYPTO.decrypt(res);
-    }
-    return res;
-  });
-}
-function savedPut(key, val) {
-  if (typeof PCRP_CRYPTO !== 'undefined' && typeof PCRP_CRYPTO.encrypt === 'function') {
-    return PCRP_CRYPTO.encrypt(val).then(function (encVal) {
-      return savedTx('readwrite', function (s) { s.put(encVal, key); });
-    });
+
+function fallbackGet(key) {
+  try {
+    var raw = (typeof localStorage !== 'undefined' ? localStorage.getItem('pcrp_save_' + key) : null) ||
+              (typeof sessionStorage !== 'undefined' ? sessionStorage.getItem('pcrp_save_' + key) : null);
+    return raw ? JSON.parse(raw) : undefined;
+  } catch (e) {
+    return undefined;
   }
-  return savedTx('readwrite', function (s) { s.put(val, key); });
 }
-function savedClear() { return savedTx('readwrite', function (s) { s.clear(); }); }
+
+function fallbackPut(key, val) {
+  try {
+    var s = typeof val === 'string' ? val : JSON.stringify(val);
+    if (typeof localStorage !== 'undefined') localStorage.setItem('pcrp_save_' + key, s);
+  } catch (e) {
+    try {
+      var s2 = typeof val === 'string' ? val : JSON.stringify(val);
+      if (typeof sessionStorage !== 'undefined') sessionStorage.setItem('pcrp_save_' + key, s2);
+    } catch (e2) {}
+  }
+}
+
+function fallbackClear() {
+  try {
+    ['current', 'ledger', 'tags'].forEach(function (k) {
+      if (typeof localStorage !== 'undefined') localStorage.removeItem('pcrp_save_' + k);
+      if (typeof sessionStorage !== 'undefined') sessionStorage.removeItem('pcrp_save_' + k);
+    });
+  } catch (e) {}
+}
+
+function savedGet(key) {
+  return savedTx('readonly', function (s) { return s.get(key); })
+    .catch(function () {
+      return fallbackGet(key);
+    })
+    .then(function (res) {
+      if (res === undefined) {
+        res = fallbackGet(key);
+      }
+      if (res && typeof PCRP_CRYPTO !== 'undefined' && typeof PCRP_CRYPTO.decrypt === 'function') {
+        return PCRP_CRYPTO.decrypt(res);
+      }
+      return res;
+    });
+}
+
+function savedPut(key, val) {
+  var pr = (typeof PCRP_CRYPTO !== 'undefined' && typeof PCRP_CRYPTO.encrypt === 'function')
+    ? PCRP_CRYPTO.encrypt(val)
+    : Promise.resolve(val);
+
+  return pr.then(function (encVal) {
+    fallbackPut(key, encVal);
+    return savedTx('readwrite', function (s) {
+      s.put(encVal, key);
+    }).catch(function (e) {
+      console.warn('[Saved] IndexedDB put failed, kept in fallback storage:', e.message);
+    });
+  });
+}
+
+function savedPutMany(items) {
+  var keys = Object.keys(items);
+  if (!keys.length) return Promise.resolve();
+
+  return Promise.all(keys.map(function (k) {
+    var val = items[k];
+    var pr = (typeof PCRP_CRYPTO !== 'undefined' && typeof PCRP_CRYPTO.encrypt === 'function')
+      ? PCRP_CRYPTO.encrypt(val)
+      : Promise.resolve(val);
+    return pr.then(function (encVal) {
+      fallbackPut(k, encVal);
+      return { key: k, val: encVal };
+    });
+  })).then(function (processed) {
+    return savedTx('readwrite', function (store) {
+      processed.forEach(function (it) {
+        store.put(it.val, it.key);
+      });
+    }).catch(function (e) {
+      console.warn('[Saved] IndexedDB batch put failed, fallback kept:', e.message);
+    });
+  });
+}
+
+function savedClear() {
+  fallbackClear();
+  return savedTx('readwrite', function (s) { s.clear(); }).catch(function () {});
+}
 
 /** The pull date of the data on screen: the Settings date, else today. */
 function pullDate() { return prefs().evalDate || today(); }
@@ -80,50 +187,68 @@ historyDates = function () {
 };
 
 /**
- * Save the data on screen after a computation. A new participants export
- * starts a new pull: the previous pull's findings move into the ledger under
- * its own pull date first, so the Fix list can say what changed since.
- * Households or volunteers dropped later, or a corrected pull date, belong to
- * the same pull and move nothing.
+ * Save the loaded data (participants, households, volunteers) and computed findings.
+ * Called immediately when files are imported and whenever computation completes.
  */
-function savedAfterCompute() {
-  if (!SAVED.available) return;
+function savedSaveCurrent() {
   clearTimeout(saveTimer);
-  saveTimer = setTimeout(function () {
-    var pd = pullDate();
-    var prev = SAVED.current;
-    if (prev && prev.pullDate && prev.dataStamp !== SAVED.dataStamp && prev.findings) {
-      var m = {};
-      prev.findings.forEach(function (f) { m[dqaFindingKey(f)] = f; });
-      SAVED.ledger[prev.pullDate] = m;
-      var keep = Object.keys(SAVED.ledger).sort().slice(-SAVE_KEEP_PULLS), trimmed = {};
-      keep.forEach(function (d) { trimmed[d] = SAVED.ledger[d]; });
-      SAVED.ledger = trimmed;
+  var pd = pullDate();
+  var tables = {};
+  var hasAny = false;
+  SAVE_TABLES.forEach(function (t) {
+    if (TABS[t] && TABS[t].rows && TABS[t].rows.length > 0) {
+      tables[t] = TABS[t];
+      hasAny = true;
     }
-    var tables = {};
-    SAVE_TABLES.forEach(function (t) { if (TABS[t]) tables[t] = TABS[t]; });
-    SAVED.current = {
-      pullDate: pd, savedAt: new Date().toISOString(), home: prefs().home || null, dataStamp: SAVED.dataStamp,
-      loaded: LOADED, tables: tables,
-      findings: (SNAP && SNAP.health) ? dqaFindings(SNAP.health, HH_LISTS) : []
-    };
-    savedApplyLedger();
-    Promise.all([savedPut('current', SAVED.current), savedPut('ledger', SAVED.ledger)])
-      .then(function () { renderSavedBar(); })
-      .catch(function (e) { savedUnavailable(e); });
-  }, 400);
+  });
+
+  if (!hasAny) return Promise.resolve();
+
+  var prev = SAVED.current;
+  if (prev && prev.pullDate && prev.dataStamp !== SAVED.dataStamp && prev.findings) {
+    var m = {};
+    prev.findings.forEach(function (f) {
+      if (typeof dqaFindingKey === 'function') m[dqaFindingKey(f)] = f;
+    });
+    SAVED.ledger[prev.pullDate] = m;
+    var keep = Object.keys(SAVED.ledger).sort().slice(-SAVE_KEEP_PULLS), trimmed = {};
+    keep.forEach(function (d) { trimmed[d] = SAVED.ledger[d]; });
+    SAVED.ledger = trimmed;
+  }
+
+  SAVED.current = {
+    pullDate: pd,
+    savedAt: new Date().toISOString(),
+    home: (typeof prefs === 'function' ? prefs().home : null) || null,
+    dataStamp: SAVED.dataStamp || ('s' + Date.now()),
+    loaded: LOADED,
+    tables: tables,
+    findings: (SNAP && SNAP.health && typeof dqaFindings === 'function') ? dqaFindings(SNAP.health, HH_LISTS) : []
+  };
+
+  savedApplyLedger();
+
+  return savedPutMany({
+    current: SAVED.current,
+    ledger: SAVED.ledger
+  }).then(function () {
+    renderSavedBar();
+  });
+}
+
+function savedAfterCompute() {
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(savedSaveCurrent, 100);
 }
 
 function savedUnavailable(e) {
   if (!SAVED.available) return;
-  SAVED.available = false;
-  toast('This browser could not keep the data (' + (e && e.message || 'storage blocked') + '). Use "Save to a file" instead.');
+  console.warn('[Saved] Storage issue detected:', e);
   renderSavedBar();
 }
 
 /** The verification tags, saved on their own: they outlive any one pull. */
 function savedPutTags() {
-  if (!SAVED.available) return Promise.resolve();
   return savedPut('tags', VERIFY.tags).then(renderSavedBar).catch(savedUnavailable);
 }
 
@@ -134,23 +259,73 @@ function savedRestore() {
     if (r[2]) VERIFY.tags = r[2];
     savedApplyLedger();
     var cur = r[0];
-    if (!cur || !cur.tables || !cur.tables.Raw_Participants) { renderSavedBar(); return false; }
+
+    // If session is locked by PIN, data is encrypted and cannot be restored until PIN is entered
+    if (cur && cur.encrypted) {
+      renderSavedBar();
+      return 'locked';
+    }
+
+    if (!cur || !cur.tables) {
+      renderSavedBar();
+      return false;
+    }
+
+    var tableKeys = Object.keys(cur.tables);
+    var hasAny = tableKeys.some(function (k) {
+      return cur.tables[k] && cur.tables[k].rows && cur.tables[k].rows.length > 0;
+    });
+
+    if (!hasAny) {
+      renderSavedBar();
+      return false;
+    }
+
     SAVED.current = cur;
     savedLoadCurrent(cur);
     return true;
-  }).catch(function (e) { savedUnavailable(e); return false; });
+  }).catch(function (e) {
+    console.warn('[Saved] Restore failed:', e);
+    renderSavedBar();
+    return false;
+  });
 }
 
 /** Put a saved pull back on screen, judged on its own pull date. */
 function savedLoadCurrent(cur) {
-  SAVE_TABLES.forEach(function (t) { delete TABS[t]; if (cur.tables[t]) TABS[t] = cur.tables[t]; });
+  SAVE_TABLES.forEach(function (t) {
+    delete TABS[t];
+    if (cur.tables && cur.tables[t]) TABS[t] = cur.tables[t];
+  });
   LOADED = cur.loaded || {};
   SAVED.dataStamp = cur.dataStamp || cur.savedAt || 'restored';
   var p = prefs();
-  if (!p.evalDate || p.evalDate !== cur.pullDate) { p.evalDate = cur.pullDate; p.evalDateFromSave = true; }
+  if (cur.pullDate && (!p.evalDate || p.evalDate !== cur.pullDate)) {
+    p.evalDate = cur.pullDate;
+    p.evalDateFromSave = true;
+  }
   if (cur.home && !p.home) p.home = cur.home;
   savePrefs(p);
-  computeAndShow('overview');
+
+  // Read saved active page so refresh does not throw the user back to settings
+  var savedPage = null;
+  try {
+    savedPage = sessionStorage.getItem('pcrp_active_page') || localStorage.getItem('pcrp_active_page');
+  } catch (e) {}
+
+  if (LOADED.participants && TABS.Raw_Participants && TABS.Raw_Participants.rows && TABS.Raw_Participants.rows.length > 0) {
+    computeAndShow(savedPage || 'overview');
+  } else {
+    // Only partial exports (e.g., Volunteers or Households)
+    setTabsEnabled(true);
+    renderStatus();
+    renderImport();
+    updateTabBadges();
+    renderSavedBar();
+    if (savedPage && savedPage !== 'settings' && savedPage !== 'import') {
+      go(savedPage);
+    }
+  }
 }
 
 /** A new participants export dropped in: a new pull, and a pull date taken from saved data no longer applies. */
@@ -164,7 +339,13 @@ function savedNewExports(kind) {
 /** Forget everything kept in this browser: exports, earlier findings and tags. */
 function savedForget() {
   if (!confirm('Remove the saved exports, the earlier pulls and the verification tags from this browser? Save to a file first if you still need them.')) return;
-  savedClear().then(function () { location.reload(); }).catch(function (e) { toast(e.message); });
+  savedClear().then(function () {
+    try {
+      localStorage.removeItem('pcrp_active_page');
+      sessionStorage.removeItem('pcrp_active_page');
+    } catch (e) {}
+    location.reload();
+  }).catch(function (e) { toast(e.message); });
 }
 
 // ---- one file -----------------------------------------------------------------

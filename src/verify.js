@@ -385,14 +385,19 @@ function renderVerify(keepScroll) {
   var body = $('vf-body');
   if (!body) return;
 
+  var subNav = '<div class="sub-nav-tabs">' +
+    '<button type="button" class="sub-nav-btn" data-go="health">' + (typeof icon === 'function' ? icon('gauge') : '<i data-lucide="gauge"></i>') + ' <span>DQA Audit &amp; Scorecard</span></button>' +
+    '<button type="button" class="sub-nav-btn active" data-go="verify">' + (typeof icon === 'function' ? icon('clipboard-check') : '<i data-lucide="clipboard-check"></i>') + ' <span>Field Form Verification</span></button>' +
+  '</div>';
+
   var prevWrap = body.querySelector('.table-wrap');
   var prevWrapScroll = prevWrap ? prevWrap.scrollTop : 0;
   var prevWinScroll = window.scrollY || document.documentElement.scrollTop || 0;
 
-  if (!STATE.computed) { body.innerHTML = '<div class="card"><p class="muted">Load the exports first.</p></div>'; return; }
+  if (!STATE.computed) { body.innerHTML = subNav + '<div class="card"><p class="muted">Load the exports first.</p></div>'; return; }
   var u = VERIFY.ui, F = VF_FORMS[u.form];
   if (u.open && vfFind(u.open)) {
-    body.innerHTML = vfRecordView(vfFind(u.open));
+    body.innerHTML = subNav + vfRecordView(vfFind(u.open));
     afterVerifyRender();
     if (keepScroll !== false) {
       var newWrap = body.querySelector('.table-wrap');
@@ -431,8 +436,8 @@ function renderVerify(keepScroll) {
     munis.map(function (m) { var k = m.province + '|' + m.municipality; return '<option value="' + attr(k) + '"' + (u.muni === k ? ' selected' : '') + '>' + esc(m.municipality + ' (' + m.province + ')') + '</option>'; }).join('') +
     '</select></label>' : '';
   var bySel = '<label class="field"><span>Checked by</span><input id="vf-by" data-act="vf-by" placeholder="Name and position, e.g. J. Cruz (PEA)" value="' + attr(vfVerifier()) + '" style="min-width:220px"></label>';
-  var head = '<div class="card"><div class="card-head"><div><h2>Verify against the forms</h2>' +
-    '<div class="muted">The Precision part of the DQA (SM7 Table 8): check what is encoded in KCIS against ' + esc(F.paper) + '.</div></div>' +
+  var head = '<div class="card"><div class="card-head"><div><h2>Field Form Verification (Precision Protocol)</h2>' +
+    '<div class="muted">The Precision dimension of the Data Quality Assessment (SM7 Table 8): check what is encoded in KCIS against ' + esc(F.paper) + '.</div></div>' +
     '<div class="row-actions" style="margin:0">' +
       '<button class="btn ghost btn-sm" data-act="vf-sample">' + icon('crosshair') + ' <span>Suggest sample</span></button>' +
       '<button class="btn ghost btn-sm" data-act="vf-csv">' + icon('download') + ' <span>CSV</span></button>' +
@@ -444,7 +449,7 @@ function renderVerify(keepScroll) {
 
   var recs = vfScoped();
   if (!recs) {
-    body.innerHTML = head + '<div class="empty-state">Load the Community Volunteer List to verify ' + esc(F.units) + '.</div></div>';
+    body.innerHTML = subNav + head + '<div class="empty-state">Load the Community Volunteer List to verify ' + esc(F.units) + '.</div></div>';
     afterVerifyRender(); return;
   }
   var t = vfTotals(recs);
@@ -528,7 +533,7 @@ function renderVerify(keepScroll) {
         th('by', 'Checked by') +
       '</tr></thead><tbody>' + rows + '</tbody></table></div>'
     : '<div class="empty-state">No records match these filters.</div>';
-  body.innerHTML = head + kpis +
+  body.innerHTML = subNav + head + kpis +
     '<div class="toolbar-row" style="margin-top:10px;margin-bottom:6px"><div class="filters" style="margin:0;flex:1"><label class="field" style="flex:1"><span>Search records</span><input data-act="vf-search" id="vf-search" placeholder="Barangay or activity…" value="' + attr(u.search) + '"></label>' +
     (u.search ? '<button type="button" class="btn ghost btn-sm" data-act="vf-search-reset">' + icon('rotate-ccw') + ' <span>Reset</span></button>' : '') +
     '</div><span class="tiny">Showing <strong>' + n(list.length) + '</strong> of <strong>' + n(recs.length) + '</strong></span></div>' +

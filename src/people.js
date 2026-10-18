@@ -25,6 +25,154 @@ function looseKey(first, last) {
   return f && l ? f + ' ' + l : '';
 }
 
+// ===================================================================
+// STAGE 2 COMMITTEES SPECIFICATION (2nd Barangay Assembly / BA2)
+// Per SM1 Section 4.2 (pp. 20-25 & Annex 4) & SM7 Section 1.5.1 (p. 15)
+// ===================================================================
+
+var STAGE2_BODIES = [
+  { id: 'CSPMC', short: 'CSPMC', name: 'Community Sub-Project Management Committee', label: 'CSPMC Officers', desc: 'Overarching executive officers (Chairperson, Vice-Chair, Secretary, Treasurer)', chairRequired: true },
+  { id: 'CMSC', short: 'CMSC', name: 'Community Monitoring Sub-Committee', label: 'CMSC (Monitoring)', desc: 'Independent community monitoring & safeguards (min. 3 CVs, BResT provenance encouraged)', chairRequired: true, minMembers: 3 },
+  { id: 'PPSC', short: 'PPSC', name: 'Proposal Preparation Sub-Committee', label: 'PPSC (Proposal)', desc: 'Prepares detailed sub-project proposal, engineering & cost estimates', chairRequired: true },
+  { id: 'PSC', short: 'PSC / BASC', name: 'Procurement & Bids/Awards Sub-Committee', label: 'PSC / BASC (Procurement)', desc: 'Community procurement, canvassing & contracting', chairRequired: true },
+  { id: 'PIT', short: 'SPISC / PIT', name: 'Sub-Project Implementation Team', label: 'SPISC / PIT (Implementation)', desc: 'Supervises civil works, materials and community labor', chairRequired: true },
+  { id: 'MISC', short: 'MISC', name: 'Monitoring & Inspection Sub-Committee', label: 'MISC (Inspection)', desc: 'Quality inspection of delivered materials & construction', chairRequired: true },
+  { id: 'AISC', short: 'AISC / AIT', name: 'Audit & Inventory Sub-Committee', label: 'AISC / AIT (Audit)', desc: 'Audits vouchers, books, disbursements and warehouse inventory', chairRequired: true },
+  { id: 'OMSC', short: 'O&MSC / OMT', name: 'Operations & Maintenance Sub-Committee', label: 'O&MSC / OMT (O&M)', desc: 'Formulates O&M Plan & organizes community user group', chairRequired: true },
+  { id: 'BOOKKEEPER', short: 'Bookkeeper', name: 'Community Bookkeeper / Assistant', label: 'Community Bookkeeper', desc: 'Custody of financial journals and books of accounts', chairRequired: false }
+];
+
+var STAGE2_BODY_MAP = {};
+STAGE2_BODIES.forEach(function (b) { STAGE2_BODY_MAP[b.id] = b; });
+
+function classifyStage2Committee(committee, position) {
+  var c = normAlpha(committee || '');
+  var p = normAlpha(position || '');
+  var text = (c + ' ' + p).trim();
+  if (!text) return null;
+
+  // Exclude Stage 1 & Municipal bodies (BResT, SFMSC, SFMC Municipal, MResT)
+  if (
+    c.indexOf('barangayresilienceteam') !== -1 || c === 'brest' ||
+    c.indexOf('municipalresilienceteam') !== -1 || c.indexOf('mrest') !== -1 ||
+    c.indexOf('sfmsc') !== -1 || c.indexOf('sfmc') !== -1 ||
+    c.indexOf('feedbackmechanism') !== -1
+  ) {
+    return null;
+  }
+
+  // Tokenize preserving CamelCase and punctuation word boundaries so short acronyms
+  // like 'bac' never match inside words like 'feedback'
+  var raw = String(committee || '') + ' ' + String(position || '');
+  var words = raw
+    .replace(/([a-z])([A-Z])/g, '$1 $2')
+    .replace(/([A-Z]+)([A-Z][a-z])/g, '$1 $2')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim()
+    .split(/\s+/);
+  var hasWord = function (w) { return words.indexOf(w) !== -1; };
+  var hasAnyWord = function (arr) { return arr.some(hasWord); };
+
+  // 1. CMSC: Community Monitoring Sub-Committee
+  if (hasWord('cmsc') || text.indexOf('communitymonitoring') !== -1 || (text.indexOf('monitoring') !== -1 && text.indexOf('inspection') === -1)) return 'CMSC';
+
+  // 2. MISC: Monitoring and Inspection Sub-Committee
+  if (hasWord('misc') || (text.indexOf('monitoring') !== -1 && text.indexOf('inspection') !== -1) || text.indexOf('inspection') !== -1) return 'MISC';
+
+  // 3. PPSC: Proposal Preparation Sub-Committee
+  if (hasWord('ppsc') || text.indexOf('proposalpreparation') !== -1 || text.indexOf('projectpreparation') !== -1 || text.indexOf('proposal') !== -1) return 'PPSC';
+
+  // 4. PSC / BASC: Procurement & Bids/Awards Sub-Committee
+  if (hasAnyWord(['psc', 'basc', 'bac']) || text.indexOf('procurement') !== -1 || text.indexOf('bidsandawards') !== -1 || text.indexOf('canvass') !== -1) return 'PSC';
+
+  // 5. SPISC / PIT: Sub-Project Implementation Sub-Committee / Project Implementation Team
+  if (hasAnyWord(['spisc', 'pit']) || text.indexOf('subprojectimplementation') !== -1 || text.indexOf('projectimplementation') !== -1 || text.indexOf('implementation') !== -1) return 'PIT';
+
+  // 6. AISC / AIT: Audit and Inventory Sub-Committee
+  if (hasAnyWord(['aisc', 'ait']) || text.indexOf('auditandinventory') !== -1 || text.indexOf('inventory') !== -1 || text.indexOf('audit') !== -1) return 'AISC';
+
+  // 7. O&MSC / OMT: Operations and Maintenance Sub-Committee / Group
+  if (hasAnyWord(['omsc', 'omg', 'omt']) || (hasWord('o') && hasWord('m')) || text.indexOf('operationandmaintenance') !== -1 || text.indexOf('operationsandmaintenance') !== -1 || text.indexOf('maintenance') !== -1) return 'OMSC';
+
+  // 8. Bookkeeper: Community Bookkeeper / Assistant Bookkeeper
+  if (text.indexOf('bookkeeper') !== -1 || text.indexOf('bookkeeping') !== -1) return 'BOOKKEEPER';
+
+  // 9. Generic CSPMC / Officers
+  if (hasWord('cspmc') || text.indexOf('subprojectmanagement') !== -1 || text.indexOf('communitysubproject') !== -1) return 'CSPMC';
+
+  return null;
+}
+
+function evaluateCspmcBarangay(b, s2Vols) {
+  var vols = s2Vols || [];
+  var bodies = {};
+  STAGE2_BODIES.forEach(function (body) { bodies[body.id] = []; });
+  vols.forEach(function (v) {
+    if (v.stage2Body && bodies[v.stage2Body]) {
+      bodies[v.stage2Body].push(v);
+    }
+  });
+
+  var cmscVols = bodies.CMSC || [];
+  var cmscCount = cmscVols.length;
+  var hasCmscLead = cmscVols.some(function (v) { return v.chair; });
+  var cmscBrestAlum = cmscVols.filter(function (v) { return v.wasBrest; }).length;
+
+  var cspmcVols = bodies.CSPMC || [];
+  var hasCspmcLead = cspmcVols.some(function (v) { return v.chair; }) || vols.some(function (v) { return v.chair; });
+
+  var women = vols.filter(function (v) { return v.sex === 'female'; }).length;
+  var marg = vols.filter(function (v) { return v.sex === 'female' || v.ip || v.pwd; }).length;
+  var womenPct = vols.length ? Math.round(women / vols.length * 100) : 0;
+  var margPct = vols.length ? Math.round(marg / vols.length * 100) : 0;
+
+  var activeBodies = STAGE2_BODIES.filter(function (body) {
+    return bodies[body.id] && bodies[body.id].length > 0;
+  });
+
+  var reasons = [];
+  if (vols.length === 0) {
+    reasons.push('No Stage 2 (CSPMC & Sub-Committees) volunteers encoded in KCIS');
+  } else {
+    // 1. CMSC quorum check: min 3 CVs (SM7 Section 1.5.1 p. 15)
+    if (cmscCount < 3) {
+      reasons.push('CMSC quorum lacking: requires at least 3 Community Volunteers (currently has ' + cmscCount + ')');
+    }
+    // 2. CMSC leadership check: elected Chairperson/Lead
+    if (cmscCount > 0 && !hasCmscLead) {
+      reasons.push('CMSC has no designated Chairperson / Lead');
+    }
+    // 3. CSPMC leadership check: Chairperson/Lead (SM1 Section 4.2)
+    if (!hasCspmcLead) {
+      reasons.push('CSPMC has no designated Chairperson / Lead');
+    }
+    // 4. Women quota check: min 30%
+    if (womenPct < 30) {
+      reasons.push('Women representation is ' + womenPct + '% (minimum 30% required across Stage 2)');
+    }
+  }
+
+  var status = vols.length === 0 ? 'Not encoded' : (reasons.length === 0 ? 'Encoded' : 'Needs fixing');
+
+  return {
+    b: b,
+    vols: vols,
+    bodies: bodies,
+    activeBodies: activeBodies,
+    cmscCount: cmscCount,
+    hasCmscLead: hasCmscLead,
+    cmscBrestAlum: cmscBrestAlum,
+    hasCspmcLead: hasCspmcLead,
+    women: women,
+    womenPct: womenPct,
+    marg: marg,
+    margPct: margPct,
+    reasons: reasons,
+    status: status
+  };
+}
+
 /** Index every named row of the three exports, matched to a monitored barangay. */
 function buildPeopleIndex() {
   var acts = readActivities(), index = buildActivityIndex(acts), bl = readBaseline();
@@ -118,12 +266,23 @@ function buildPeopleIndex() {
       if (!p) { out.unmatched.volunteers++; return; }
       var first = row[CV.first], middle = row[CV.middle], last = row[CV.last];
       var kind = cvCommitteeKind(row[CV.committee]);
+      var s2Body = (kind === 'BREST' || kind === 'SFMSC' || kind === 'SEQ1') ? null : classifyStage2Committee(row[CV.committee], row[CV.position]);
       var r = place(p, p.barangay);
       r.type = 'volunteer'; r.kind = kind;
       r.committee = normText(row[CV.committee]);
-      r.body = kind === 'BREST' ? 'BResT' : kind === 'SFMSC' ? 'SFMSC' : '';
       r.position = normText(row[CV.position]);
-      r.chair = /^chair/i.test(normAlpha(row[CV.position]));
+      r.chair = /^chair/i.test(normAlpha(row[CV.position])) || /lead/i.test(normAlpha(row[CV.position]));
+      if (s2Body) {
+        r.isStage2 = true;
+        r.stage2Body = s2Body;
+        r.stage2BodyLabel = STAGE2_BODY_MAP[s2Body] ? STAGE2_BODY_MAP[s2Body].label : s2Body;
+        r.body = r.stage2BodyLabel;
+      } else {
+        r.isStage2 = false;
+        r.stage2Body = '';
+        r.stage2BodyLabel = '';
+        r.body = kind === 'BREST' ? 'BResT' : kind === 'SFMSC' ? 'SFMSC' : '';
+      }
       r.name = personName(first, middle, last); r.key = personKey(first, middle, last); r.loose = looseKey(first, last);
       r.sex = normText(row[CV.sex]).toLowerCase();
       r.ip = CV.ip !== undefined && isTrue(row[CV.ip]);
@@ -155,6 +314,23 @@ function buildPeopleIndex() {
   });
   out.volunteers.forEach(function (v) { if (v.key) (vols[v.key] = vols[v.key] || []).push(v); });
 
+  // Map BResT volunteers to check BResT provenance of Stage 2 volunteers (SM7 p. 15 recommendation)
+  var brestKeys = {};
+  out.volunteers.forEach(function (v) {
+    if (v.kind === 'BREST' && v.key) {
+      brestKeys[bk(v) + '|' + v.key] = true;
+      if (v.loose) brestKeys[bk(v) + '|~' + v.loose] = true;
+    }
+  });
+
+  out.volunteers.forEach(function (v) {
+    if (v.isStage2) {
+      var k = bk(v) + '|' + v.key;
+      var lk = bk(v) + '|~' + v.loose;
+      v.wasBrest = !!(brestKeys[k] || (v.loose && brestKeys[lk]));
+    }
+  });
+
   out.attendees.forEach(function (a) {
     a.flags = [];
     if (!a.key) a.flags.push('noname');
@@ -172,10 +348,13 @@ function buildPeopleIndex() {
     v.flags = [];
     if (!v.key) { v.flags.push('noname'); return; }
     if (v.kind === 'NONE') v.flags.push('nocommittee');
-    else if (v.kind !== 'BREST' && v.kind !== 'SFMSC') v.flags.push('otherbody');
+    else if (v.kind !== 'BREST' && v.kind !== 'SFMSC' && !v.isStage2) v.flags.push('otherbody');
+    if (v.wasBrest) v.flags.push('frombrest');
     // Only a real check where the barangay's 1st BA attendance is encoded at all.
-    if (!ba1[bk(v)]) v.flags.push('noba1');
-    else if (!inBa1(v)) v.flags.push('notattendee');
+    if (!v.isStage2) {
+      if (!ba1[bk(v)]) v.flags.push('noba1');
+      else if (!inBa1(v)) v.flags.push('notattendee');
+    }
     if (v.sex !== 'male' && v.sex !== 'female') v.flags.push('nosex');
   });
   out.mrest.forEach(function (m) {
@@ -233,9 +412,19 @@ var PEOPLE_FLAGS = {
   ],
   volunteers: [
     { id: 'all', label: 'All Volunteers' },
-    { id: 'BREST', label: 'BResT', test: function (r) { return r.kind === 'BREST'; } },
-    { id: 'SFMSC', label: 'SFMSC', test: function (r) { return r.kind === 'SFMSC'; } },
-    { id: 'chair', label: 'Chairpersons', test: function (r) { return r.chair; } },
+    { id: 'BREST', label: 'BResT (Stage 1)', test: function (r) { return r.kind === 'BREST'; } },
+    { id: 'SFMSC', label: 'SFMSC (Stage 1/2)', test: function (r) { return r.kind === 'SFMSC'; } },
+    { id: 'STAGE2', label: 'All Stage 2 (CSPMC & Sub-Committees)', test: function (r) { return r.isStage2; } },
+    { id: 'CMSC', label: 'CMSC (Community Monitoring)', test: function (r) { return r.stage2Body === 'CMSC'; } },
+    { id: 'CSPMC', label: 'CSPMC Officers', test: function (r) { return r.stage2Body === 'CSPMC'; } },
+    { id: 'PSC', label: 'Procurement (PSC / BASC)', test: function (r) { return r.stage2Body === 'PSC'; } },
+    { id: 'PIT', label: 'Implementation (SPISC / PIT)', test: function (r) { return r.stage2Body === 'PIT'; } },
+    { id: 'AISC', label: 'Audit & Inventory (AISC)', test: function (r) { return r.stage2Body === 'AISC'; } },
+    { id: 'MISC', label: 'Inspection (MISC)', test: function (r) { return r.stage2Body === 'MISC'; } },
+    { id: 'PPSC', label: 'Proposal Prep (PPSC)', test: function (r) { return r.stage2Body === 'PPSC'; } },
+    { id: 'OMSC', label: 'O&M (O&MSC / OMT)', test: function (r) { return r.stage2Body === 'OMSC'; } },
+    { id: 'chair', label: 'Chairpersons / Leads', test: function (r) { return r.chair; } },
+    { id: 'frombrest', label: 'From BResT (Alum)', test: function (r) { return r.wasBrest; } },
     { id: 'women', label: 'Women', test: function (r) { return r.sex === 'female'; } },
     { id: 'ippwd', label: 'IP or PWD', test: function (r) { return r.ip || r.pwd; } },
     { id: 'notattendee', label: 'Not among 1st BA attendees' },
@@ -251,7 +440,8 @@ var FLAG_TEXT = {
   otherbrgy: ['warn', 'Head in another barangay'], notattendee: ['warn', 'Not among 1st BA attendees'],
   headnotattendee: ['idle', 'Head not among attendees'],
   noba1: ['idle', '1st BA attendance not encoded yet'],
-  nocommittee: ['warn', 'No committee'], otherbody: ['warn', 'Other activity\'s committee'], nosex: ['idle', 'Sex not recorded']
+  nocommittee: ['warn', 'No committee'], otherbody: ['warn', 'Other activity\'s committee'],
+  frombrest: ['good', '✓ From BResT'], nosex: ['idle', 'Sex not recorded']
 };
 
 function pScopeTest(overrideMuni) {
@@ -284,7 +474,7 @@ var ATT_STATE = { muni: '', brgy: '', act: '', sex: 'all', flag: 'all', search: 
 var HH_STATE = { tab: 'scorecard', muni: '', brgy: '', quorum: 'all', flag: 'all', search: '', limit: 100, sortCol: 'brgy', sortDir: 'asc' };
 var VOL_STATE = { muni: '', brgy: '', body: 'all', position: 'all', sex: 'all', marg: 'all', flag: 'all', search: '', limit: 100, sortCol: 'name', sortDir: 'asc' };
 var BRT_STATE = { muni: '', brgy: '', status: 'all', search: '', sortCol: 'brgy', sortDir: 'asc', teamSortCol: 'brgy', teamSortDir: 'asc' };
-var MRT_STATE = { muni: '', search: '', sortCol: 'name', sortDir: 'asc' };
+var MRT_STATE = { muni: '', search: '', clusterFilter: 'all', showOrgChart: true, viewMode: 'org', sortCol: 'name', sortDir: 'asc', matrixFilter: 'all' };
 var PSTATE = { view: 'attendees', scope: 'home', brgy: '', act: '', body: '', flag: 'all', search: '', limit: 100, sortCol: 0, sortDir: 'asc' };
 
 // ===================================================================
@@ -722,16 +912,26 @@ function renderVolunteers() {
     if (VOL_STATE.brgy && (v.province + '|' + v.municipality + '|' + v.barangay !== VOL_STATE.brgy)) return false;
     if (VOL_STATE.body === 'BREST' && v.kind !== 'BREST') return false;
     if (VOL_STATE.body === 'SFMSC' && v.kind !== 'SFMSC') return false;
-    if (VOL_STATE.body === 'OTHER' && (v.kind === 'BREST' || v.kind === 'SFMSC')) return false;
+    if (VOL_STATE.body === 'STAGE2' && !v.isStage2) return false;
+    if (VOL_STATE.body === 'CMSC' && v.stage2Body !== 'CMSC') return false;
+    if (VOL_STATE.body === 'CSPMC' && v.stage2Body !== 'CSPMC') return false;
+    if (VOL_STATE.body === 'OTHER' && (v.kind === 'BREST' || v.kind === 'SFMSC' || v.isStage2)) return false;
     if (VOL_STATE.position === 'chair' && !v.chair) return false;
     if (VOL_STATE.position === 'member' && v.chair) return false;
     if (VOL_STATE.sex !== 'all' && v.sex !== VOL_STATE.sex) return false;
     if (VOL_STATE.marg === 'women' && v.sex !== 'female') return false;
     if (VOL_STATE.marg === 'ip' && !v.ip) return false;
     if (VOL_STATE.marg === 'pwd' && !v.pwd) return false;
-    if (VOL_STATE.flag === 'notattendee' && v.flags.indexOf('notattendee') === -1) return false;
-    if (VOL_STATE.flag === 'nocommittee' && v.flags.indexOf('nocommittee') === -1) return false;
-    if (VOL_STATE.flag === 'nosex' && v.flags.indexOf('nosex') === -1) return false;
+    if (VOL_STATE.flag && VOL_STATE.flag !== 'all') {
+      var fDef = PEOPLE_FLAGS.volunteers.filter(function (f) { return f.id === VOL_STATE.flag; })[0];
+      if (fDef) {
+        if (typeof fDef.test === 'function') {
+          if (!fDef.test(v)) return false;
+        } else if ((v.flags || []).indexOf(VOL_STATE.flag) === -1) {
+          return false;
+        }
+      }
+    }
     if (q && v.q.indexOf(q) === -1) return false;
     return true;
   });
@@ -786,14 +986,26 @@ function renderVolunteers() {
     return true;
   });
 
+  var bodyMatches = function (r, code) {
+    if (code === 'all') return true;
+    if (code === 'BREST') return r.kind === 'BREST';
+    if (code === 'SFMSC') return r.kind === 'SFMSC';
+    if (code === 'STAGE2') return !!r.isStage2;
+    if (code === 'CMSC') return r.stage2Body === 'CMSC';
+    if (code === 'OTHER') return r.kind !== 'BREST' && r.kind !== 'SFMSC' && !r.isStage2;
+    return true;
+  };
+
   var bodyCards = [
     ['all', 'All Committees'],
-    ['BREST', 'BResT'],
+    ['BREST', 'BResT (Stage 1)'],
+    ['STAGE2', 'CSPMC & Sub-Comms'],
+    ['CMSC', 'CMSC (Monitoring)'],
     ['SFMSC', 'SFMSC'],
     ['OTHER', 'Other Bodies']
   ].map(function (b) {
     var cnt = baseVols.filter(function (r) {
-      if (b[0] !== 'all' && r.kind !== b[0]) return false;
+      if (!bodyMatches(r, b[0])) return false;
       if (VOL_STATE.position === 'chair' && !r.chair) return false;
       if (VOL_STATE.position === 'member' && r.chair) return false;
       return true;
@@ -806,11 +1018,11 @@ function renderVolunteers() {
 
   var posCards = [
     ['all', 'All Roles'],
-    ['chair', 'Chairpersons'],
+    ['chair', 'Chairpersons / Leads'],
     ['member', 'Members']
   ].map(function (p) {
     var cnt = baseVols.filter(function (r) {
-      if (VOL_STATE.body !== 'all' && r.kind !== VOL_STATE.body) return false;
+      if (!bodyMatches(r, VOL_STATE.body)) return false;
       if (p[0] === 'chair' && !r.chair) return false;
       if (p[0] === 'member' && r.chair) return false;
       return true;
@@ -829,6 +1041,7 @@ function renderVolunteers() {
   var subNav = '<div class="sub-nav-tabs">' +
     '<button type="button" class="sub-nav-btn active">' + icon('users') + ' <span>Community Volunteers</span></button>' +
     '<button type="button" class="sub-nav-btn" data-go="brest">' + icon('shield') + ' <span>BResT Teams</span></button>' +
+    '<button type="button" class="sub-nav-btn" data-go="cspmc">' + icon('layers') + ' <span>CSPMC &amp; Sub-Committees (Stage 2)</span></button>' +
   '</div>';
 
   body.innerHTML = subNav +
@@ -1080,6 +1293,7 @@ function renderBrest() {
   var subNav = '<div class="sub-nav-tabs">' +
     '<button type="button" class="sub-nav-btn" data-go="volunteers">' + icon('users') + ' <span>Community Volunteers</span></button>' +
     '<button type="button" class="sub-nav-btn active">' + icon('shield') + ' <span>BResT Teams</span></button>' +
+    '<button type="button" class="sub-nav-btn" data-go="cspmc">' + icon('layers') + ' <span>CSPMC &amp; Sub-Committees (Stage 2)</span></button>' +
   '</div>';
 
   body.innerHTML = subNav +
@@ -1141,8 +1355,993 @@ function renderBrest() {
 }
 
 // ===================================================================
-// MODULE 5: MResT (Municipal Resilience Team Dedicated Module)
+// MODULE 5: CSPMC & Sub-Committees (Stage 2 Dedicated Module)
+// Per SM1 Section 4.2 (pp. 20-25 & Annex 4) & SM7 Section 1.5.1 (p. 15)
+// Tracks: CSPMC, CMSC, PPSC, PSC, PIT, MISC, AISC, OMSC, Bookkeeper
 // ===================================================================
+
+var CSPMC_STATE = {
+  muni: '',
+  brgy: '',
+  search: '',
+  status: 'all',        // 'all' | 'encoded' | 'needs_fixing' | 'not_encoded'
+  subFilter: 'all',     // 'all' | 'CSPMC' | 'CMSC' | 'PPSC' | 'PSC' | 'PIT' | 'MISC' | 'AISC' | 'OMSC' | 'BOOKKEEPER'
+  showOrgChart: true,   // toggle interactive org chart on main CSPMC page
+  modalView: 'org',     // 'org' | 'cards' inside the barangay detail modal
+  modalBkey: '',
+  teamSortCol: 'brgy',
+  teamSortDir: 'asc',
+  volSortCol: 'brgy',
+  volSortDir: 'asc',
+  limit: 100
+};
+
+function buildBarangayOrgNodeHtml(bodyId, ev, interactive) {
+  var body = STAGE2_BODY_MAP[bodyId];
+  if (!body) return '';
+  var members = (ev && ev.bodies && ev.bodies[bodyId]) || [];
+  var isFormed = members.length > 0;
+  var leads = members.filter(function (v) { return v.chair; });
+  var others = members.filter(function (v) { return !v.chair; });
+  var hasLead = leads.length > 0;
+  var isCmsc = bodyId === 'CMSC';
+  var isExec = bodyId === 'CSPMC';
+  var isCmscLacking = isCmsc && (members.length < 3 || !hasLead);
+  var isLeadLacking = body.chairRequired && isFormed && !hasLead;
+
+  var accent = !isFormed ? 'accent-idle' : (isCmscLacking || isLeadLacking ? 'accent-warn' : (isExec ? 'accent-exec' : 'accent-good'));
+  var isActiveFilter = interactive && CSPMC_STATE.subFilter === bodyId;
+  var clickAttrs = interactive
+    ? ' data-act="cspmc-sub" data-v="' + attr(CSPMC_STATE.subFilter === bodyId ? 'all' : bodyId) + '" title="Click to filter Volunteer Directory by ' + attr(body.name) + '"'
+    : '';
+
+  var statusBadge = !isFormed
+    ? '<span class="pill idle tiny">Pending BA2</span>'
+    : (isCmscLacking || isLeadLacking
+        ? '<span class="pill warn tiny">⚠ ' + n(members.length) + ' CV' + (members.length === 1 ? '' : 's') + '</span>'
+        : '<span class="pill good tiny">✓ ' + n(members.length) + ' CV' + (members.length === 1 ? '' : 's') + '</span>');
+
+  var leadHtml = '';
+  if (body.chairRequired) {
+    if (hasLead) {
+      leadHtml = '<div class="org-lead-box">' +
+        '<span class="org-lead-label">' + (isExec ? 'CSPMC Chairperson / Lead' : 'Sub-Committee Chair / Lead') + '</span>' +
+        leads.map(function (v) {
+          var alum = (isCmsc && v.wasBrest) ? ' <span class="pill good tiny" title="Served in Stage 1 BResT">✓ BResT</span>' : '';
+          return '<div style="margin-top:2px">' + nameCell(v) + ' <span class="pill good tiny">' + esc(v.position || 'Chair') + '</span>' + alum + '</div>';
+        }).join('') +
+      '</div>';
+    } else if (isFormed) {
+      leadHtml = '<div class="org-lead-box" style="border-color:var(--warn)"><span class="org-lead-label" style="color:var(--warn-text)">⚠ No Chair / Lead Designated</span></div>';
+    } else {
+      leadHtml = '<div class="org-lead-box"><span class="org-lead-label">Chair / Lead</span><span class="tiny muted">Not yet elected</span></div>';
+    }
+  }
+
+  var rosterList = body.chairRequired ? others : members;
+  var membersHtml = '';
+  if (rosterList.length > 0) {
+    membersHtml = '<div class="org-member-stack">' +
+      rosterList.map(function (v) {
+        var posLabel = v.position ? esc(v.position) : 'Member';
+        var alum = (isCmsc && v.wasBrest) ? '<span class="pill good tiny" title="Served in Stage 1 BResT">✓ BResT</span>' : '';
+        return '<div class="org-member-row">' +
+          '<span>' + nameCell(v) + '</span>' +
+          '<span><span class="tiny muted">' + posLabel + '</span> ' + alum + '</span>' +
+        '</div>';
+      }).join('') +
+    '</div>';
+  } else if (!isFormed) {
+    membersHtml = '<div class="tiny muted" style="margin-top:2px">No volunteers encoded</div>';
+  }
+
+  var warnNote = '';
+  if (isCmsc && isFormed && members.length < 3) {
+    warnNote = '<div class="tiny" style="color:var(--warn-text);font-weight:700">⚠ Min. 3 CVs required (SM7 p. 15)</div>';
+  }
+
+  return '<div class="org-node ' + accent + (interactive ? ' clickable' : '') + (isActiveFilter ? ' active-filter' : '') + '"' + clickAttrs + '>' +
+    '<div class="org-node-top">' +
+      '<span class="org-node-code">' + esc(body.short) + '</span>' +
+      statusBadge +
+    '</div>' +
+    '<div class="org-node-name">' + esc(body.name) + '</div>' +
+    '<div class="org-node-mandate">' + esc(body.desc) + '</div>' +
+    leadHtml +
+    membersHtml +
+    warnNote +
+  '</div>';
+}
+
+function buildBarangayOrgChartHtml(ev, brgyName, muniLoc, interactive) {
+  var operationalIds = ['PPSC', 'PSC', 'PIT', 'MISC', 'AISC', 'OMSC'];
+  var subColsHtml = operationalIds.map(function (id) {
+    return '<div class="org-sub-col">' + buildBarangayOrgNodeHtml(id, ev, interactive) + '</div>';
+  }).join('');
+
+  return '<div class="cspmc-org-wrap">' +
+    '<div class="cspmc-org-legend">' +
+      '<div><strong>' + esc(brgyName) + ' · Stage 2 Community Organizational Chart</strong> <span class="muted">(' + esc(muniLoc) + ' · Formed at 2nd Barangay Assembly per SM1 Annex 4 &amp; SM7 Sec. 1.5.1)</span></div>' +
+      '<div class="cspmc-org-legend-items">' +
+        '<span><span class="org-legend-dot" style="background:var(--primary)"></span>Executive Core</span>' +
+        '<span><span class="org-legend-dot" style="background:var(--good)"></span>Formed &amp; Compliant</span>' +
+        '<span><span class="org-legend-dot" style="background:var(--warn)"></span>Needs Lead / Quorum</span>' +
+        '<span><span class="org-legend-dot" style="background:var(--border-strong)"></span>Pending BA2</span>' +
+      '</div>' +
+    '</div>' +
+    '<div class="cspmc-org-inner">' +
+      '<div class="org-tier-apex">' +
+        '<div class="org-node-apex">' +
+          '<div class="org-node-apex-title">' + icon('users') + ' <span>BARANGAY ASSEMBLY (BA)</span></div>' +
+          '<div class="org-node-apex-sub">Highest Decision-Making Body of the Community · Elects CSPMC &amp; 8 Specialized Sub-Committees during BA2</div>' +
+        '</div>' +
+      '</div>' +
+      '<div class="org-stem-down"></div>' +
+      '<div class="org-tier-middle">' +
+        '<div class="org-mid-col side-left">' +
+          '<div class="org-connector-tag">Independent M&amp;E &amp; Audit Arm (Reports to BA)</div>' +
+          buildBarangayOrgNodeHtml('CMSC', ev, interactive) +
+        '</div>' +
+        '<div class="org-mid-col center-core">' +
+          '<div class="org-connector-tag">Executive Management Body</div>' +
+          buildBarangayOrgNodeHtml('CSPMC', ev, interactive) +
+        '</div>' +
+        '<div class="org-mid-col side-right">' +
+          '<div class="org-connector-tag">Financial Records &amp; Books Support</div>' +
+          buildBarangayOrgNodeHtml('BOOKKEEPER', ev, interactive) +
+        '</div>' +
+      '</div>' +
+      '<div class="org-stem-down"></div>' +
+      '<div class="org-connector-tag" style="margin-bottom:4px">6 Specialized Operational Sub-Committees under CSPMC Supervision</div>' +
+      '<div class="org-tier-subcommittees">' +
+        subColsHtml +
+      '</div>' +
+    '</div>' +
+  '</div>';
+}
+
+function buildAggregateOrgNodeHtml(bodyId, brgys, evalMap, s2Vols) {
+  var body = STAGE2_BODY_MAP[bodyId];
+  if (!body) return '';
+  var totalBrgys = brgys.length;
+  var formedBrgys = 0;
+  var compliantLeadBrgys = 0;
+  var cmscQuorumBrgys = 0;
+  var brestAlumCount = 0;
+
+  brgys.forEach(function (b) {
+    var bkey = b.province + '|' + b.municipality + '|' + b.barangay;
+    var ev = evalMap[bkey];
+    if (!ev) return;
+    var members = ev.bodies[bodyId] || [];
+    if (members.length > 0) {
+      formedBrgys++;
+      if (members.some(function (v) { return v.chair; })) compliantLeadBrgys++;
+    }
+    if (bodyId === 'CMSC' && members.length >= 3 && members.some(function (v) { return v.chair; })) {
+      cmscQuorumBrgys++;
+    }
+  });
+
+  var bodyVols = s2Vols.filter(function (v) { return v.stage2Body === bodyId; });
+  if (bodyId === 'CMSC') {
+    brestAlumCount = bodyVols.filter(function (v) { return v.wasBrest; }).length;
+  }
+  var pct = totalBrgys > 0 ? Math.round(formedBrgys / totalBrgys * 100) : 0;
+  var isExec = bodyId === 'CSPMC';
+  var accent = formedBrgys === 0 ? 'accent-idle' : (formedBrgys === totalBrgys ? (isExec ? 'accent-exec' : 'accent-good') : 'accent-warn');
+  var isActiveFilter = CSPMC_STATE.subFilter === bodyId;
+  var nextFilter = isActiveFilter ? 'all' : bodyId;
+
+  var extraMeta = '';
+  if (bodyId === 'CMSC') {
+    extraMeta = '<div class="tiny" style="display:flex;justify-content:space-between"><span>Quorum (&ge;3 + Lead):</span><strong>' + n(cmscQuorumBrgys) + '/' + n(totalBrgys) + '</strong></div>' +
+      (brestAlumCount > 0 ? '<div class="tiny" style="color:var(--good-text)">✓ ' + n(brestAlumCount) + ' BResT alum(s)</div>' : '');
+  } else if (body.chairRequired) {
+    extraMeta = '<div class="tiny" style="display:flex;justify-content:space-between"><span>With Elected Lead:</span><strong>' + n(compliantLeadBrgys) + '/' + n(formedBrgys) + '</strong></div>';
+  }
+
+  return '<div class="org-node clickable ' + accent + (isActiveFilter ? ' active-filter' : '') + '" data-act="cspmc-sub" data-v="' + attr(nextFilter) + '" title="Click to filter table &amp; volunteers by ' + attr(body.name) + '">' +
+    '<div class="org-node-top">' +
+      '<span class="org-node-code">' + esc(body.short) + '</span>' +
+      '<span class="pill ' + (formedBrgys > 0 ? 'good' : 'idle') + ' tiny">' + n(bodyVols.length) + ' CVs</span>' +
+    '</div>' +
+    '<div class="org-node-name">' + esc(body.name) + '</div>' +
+    '<div class="org-node-mandate">' + esc(body.desc) + '</div>' +
+    '<div class="org-agg-stats">' +
+      '<div style="display:flex;justify-content:space-between;align-items:center"><span>Brgys Formed:</span><strong>' + n(formedBrgys) + ' / ' + n(totalBrgys) + ' (' + pct + '%)</strong></div>' +
+      '<div class="org-agg-bar"><span style="width:' + pct + '%"></span></div>' +
+      extraMeta +
+    '</div>' +
+  '</div>';
+}
+
+function buildAggregateOrgChartHtml(brgys, evalMap, s2Vols, scopeTitle) {
+  var operationalIds = ['PPSC', 'PSC', 'PIT', 'MISC', 'AISC', 'OMSC'];
+  var subColsHtml = operationalIds.map(function (id) {
+    return '<div class="org-sub-col">' + buildAggregateOrgNodeHtml(id, brgys, evalMap, s2Vols) + '</div>';
+  }).join('');
+
+  return '<div class="cspmc-org-wrap">' +
+    '<div class="cspmc-org-legend">' +
+      '<div><strong>Stage 2 Organizational Structure (' + esc(scopeTitle) + ')</strong> <span class="muted">· Click any committee box to filter barangays &amp; volunteers below, or select a Barangay to view its live personnel chart.</span></div>' +
+      '<div class="cspmc-org-legend-items">' +
+        (CSPMC_STATE.subFilter !== 'all' ? '<button type="button" class="btn ghost btn-xs" data-act="cspmc-sub" data-v="all">' + icon('x') + ' Clear Filter (' + esc(CSPMC_STATE.subFilter) + ')</button>' : '') +
+        '<span><span class="org-legend-dot" style="background:var(--primary)"></span>Executive Core</span>' +
+        '<span><span class="org-legend-dot" style="background:var(--good)"></span>100% Barangays Formed</span>' +
+        '<span><span class="org-legend-dot" style="background:var(--warn)"></span>Partial Formation</span>' +
+      '</div>' +
+    '</div>' +
+    '<div class="cspmc-org-inner">' +
+      '<div class="org-tier-apex">' +
+        '<div class="org-node-apex">' +
+          '<div class="org-node-apex-title">' + icon('users') + ' <span>BARANGAY ASSEMBLY (BA) · ' + n(brgys.length) + ' BARANGAY' + (brgys.length === 1 ? '' : 'S') + '</span></div>' +
+          '<div class="org-node-apex-sub">Sovereign Community Body · Approves Sub-Project Proposals &amp; Elects CSPMC + 8 Specialized Sub-Committees during 2nd BA</div>' +
+        '</div>' +
+      '</div>' +
+      '<div class="org-stem-down"></div>' +
+      '<div class="org-tier-middle">' +
+        '<div class="org-mid-col side-left">' +
+          '<div class="org-connector-tag">Independent M&amp;E &amp; Audit Arm (Reports to BA)</div>' +
+          buildAggregateOrgNodeHtml('CMSC', brgys, evalMap, s2Vols) +
+        '</div>' +
+        '<div class="org-mid-col center-core">' +
+          '<div class="org-connector-tag">Executive Management Body</div>' +
+          buildAggregateOrgNodeHtml('CSPMC', brgys, evalMap, s2Vols) +
+        '</div>' +
+        '<div class="org-mid-col side-right">' +
+          '<div class="org-connector-tag">Financial Records &amp; Books Support</div>' +
+          buildAggregateOrgNodeHtml('BOOKKEEPER', brgys, evalMap, s2Vols) +
+        '</div>' +
+      '</div>' +
+      '<div class="org-stem-down"></div>' +
+      '<div class="org-connector-tag" style="margin-bottom:4px">6 Specialized Operational Sub-Committees under CSPMC Supervision</div>' +
+      '<div class="org-tier-subcommittees">' +
+        subColsHtml +
+      '</div>' +
+    '</div>' +
+  '</div>';
+}
+
+function renderCspmc() {
+  var body = $('cspmc-body');
+  if (!body) return;
+  if (!STATE.computed) { body.innerHTML = '<div class="card"><p class="muted">Load the Community Volunteer List first.</p></div>'; return; }
+  var P = people(), isMuni = isMunicipalUser(), key = homeKey();
+  var activeMuni = isMuni ? key : (CSPMC_STATE.muni || key || '');
+  var brgys = (SNAP.barangayRows || []).filter(function (b) { return !activeMuni || b.province + '|' + b.municipality === activeMuni; });
+  var s2Vols = P.volunteers.filter(function (v) {
+    if (!v.isStage2) return false;
+    return !activeMuni || (v.province + '|' + v.municipality === activeMuni);
+  });
+
+  // Evaluate each barangay in scope
+  var evalMap = {};
+  brgys.forEach(function (b) {
+    var bkey = b.province + '|' + b.municipality + '|' + b.barangay;
+    var bv = s2Vols.filter(function (v) { return v.barangay === b.barangay && v.municipality === b.municipality; });
+    evalMap[bkey] = evaluateCspmcBarangay(b, bv);
+  });
+
+  // High-level KPIs
+  var totalBrgys = brgys.length;
+  var compliantBrgys = brgys.filter(function (b) { var ev = evalMap[b.province + '|' + b.municipality + '|' + b.barangay]; return ev && ev.status === 'Encoded'; }).length;
+  var needsFixBrgys = brgys.filter(function (b) { var ev = evalMap[b.province + '|' + b.municipality + '|' + b.barangay]; return ev && ev.status === 'Needs fixing'; }).length;
+  var notEncodedBrgys = totalBrgys - compliantBrgys - needsFixBrgys;
+  var formedBrgys = compliantBrgys + needsFixBrgys;
+
+  var cmscCompliant = brgys.filter(function (b) { var ev = evalMap[b.province + '|' + b.municipality + '|' + b.barangay]; return ev && ev.cmscCount >= 3 && ev.hasCmscLead; }).length;
+  var totalBrestAlums = s2Vols.filter(function (v) { return v.stage2Body === 'CMSC' && v.wasBrest; }).length;
+  var totalWomen = s2Vols.filter(function (v) { return v.sex === 'female'; }).length;
+  var womenPct = s2Vols.length ? Math.round(totalWomen / s2Vols.length * 100) : 0;
+
+  // Filter barangays
+  var selectedBkey = CSPMC_STATE.brgy;
+  var filteredBrgys = brgys.filter(function (b) {
+    var bkey = b.province + '|' + b.municipality + '|' + b.barangay;
+    var ev = evalMap[bkey];
+    var st = ev ? ev.status : 'Not encoded';
+    if (CSPMC_STATE.status === 'encoded' && st !== 'Encoded') return false;
+    if (CSPMC_STATE.status === 'needs_fixing' && st !== 'Needs fixing') return false;
+    if (CSPMC_STATE.status === 'not_encoded' && st !== 'Not encoded') return false;
+    if (CSPMC_STATE.subFilter !== 'all') {
+      var hasSub = ev && ev.bodies[CSPMC_STATE.subFilter] && ev.bodies[CSPMC_STATE.subFilter].length > 0;
+      if (!hasSub) return false;
+    }
+    if (CSPMC_STATE.search) {
+      var q = normSearch(CSPMC_STATE.search);
+      var text = b.barangay + ' ' + b.municipality + ' ' + (ev ? ev.vols.map(function (v) { return v.name + ' ' + (v.body || ''); }).join(' ') : '');
+      if (normSearch(text).indexOf(q) === -1) return false;
+    }
+    return true;
+  });
+
+  // Section 1: Barangay Teams Tabular Matrix
+  var curTeamCol = CSPMC_STATE.teamSortCol || 'brgy';
+  var curTeamDir = CSPMC_STATE.teamSortDir || 'asc';
+
+  var teamItems = filteredBrgys.map(function (b) {
+    var bkey = b.province + '|' + b.municipality + '|' + b.barangay;
+    var ev = evalMap[bkey];
+    var cspmcLead = (ev.bodies.CSPMC || []).filter(function (v) { return v.chair; })[0] || ev.vols.filter(function (v) { return v.chair; })[0] || null;
+    var cmscLead = (ev.bodies.CMSC || []).filter(function (v) { return v.chair; })[0] || null;
+    return {
+      b: b,
+      bkey: bkey,
+      ev: ev,
+      cspmcLead: cspmcLead ? cspmcLead.name : '',
+      cmscLead: cmscLead ? cmscLead.name : '',
+      cmscCount: ev.cmscCount,
+      cmscBrestAlum: ev.cmscBrestAlum,
+      activeBodiesCount: ev.activeBodies.length,
+      membersCount: ev.vols.length,
+      womenPct: ev.womenPct,
+      status: ev.status,
+      reasons: ev.reasons
+    };
+  });
+
+  var teamExt = {
+    brgy: function (t) { return t.b.barangay; },
+    muni: function (t) { return t.b.municipality; },
+    cspmcLead: function (t) { return t.cspmcLead; },
+    cmsc: function (t) { return t.cmscCount; },
+    activeBodies: function (t) { return t.activeBodiesCount; },
+    members: function (t) { return t.membersCount; },
+    womenPct: function (t) { return t.membersCount ? t.womenPct : -1; },
+    status: function (t) { return t.status === 'Encoded' ? 2 : (t.status === 'Needs fixing' ? 1 : 0); },
+    issues: function (t) { return t.reasons.length; }
+  };
+
+  var sortedTeams = tblSort(teamItems, curTeamCol, curTeamDir, teamExt);
+
+  var teamTh = function (col, label, num, sub, title, sticky) {
+    return sortTh({
+      col: col,
+      curCol: curTeamCol,
+      dir: curTeamDir,
+      label: label,
+      num: num,
+      sub: sub,
+      title: title,
+      sticky: sticky,
+      act: 'cspmc-team-sort'
+    });
+  };
+
+  var teamRowsHtml = sortedTeams.map(function (item) {
+    var b = item.b;
+    var bkey = item.bkey;
+    var ev = item.ev;
+    var isSelected = selectedBkey === bkey;
+
+    var statusPill = ev.status === 'Encoded'
+      ? '<span class="pill good">✓ Compliant</span>'
+      : (ev.status === 'Needs fixing' ? '<span class="pill warn">⚠ Needs Fixing</span>' : '<span class="pill bad">○ Not Encoded</span>');
+
+    var issuesCell = ev.reasons.length > 0
+      ? '<button type="button" class="btn bad btn-xs lacking-btn" data-act="open-cspmc-issues" data-brgy="' + attr(bkey) + '" title="Click to view all ' + ev.reasons.length + ' validation issues">' +
+          icon('alert-circle') + ' <span>' + n(ev.reasons.length) + ' lacking</span>' +
+        '</button>'
+      : '<span class="pill good tiny" title="All Stage 2 requirements met">✓ None</span>';
+
+    var leadCell = item.cspmcLead
+      ? '<strong>' + esc(item.cspmcLead) + '</strong> <span class="pill good tiny">Lead</span>'
+      : (ev.vols.length ? '<span class="tiny warn-text">⚠ No Lead designated</span>' : '<span class="tiny muted">—</span>');
+
+    var cmscCell = '';
+    if (ev.cmscCount === 0) {
+      cmscCell = ev.vols.length ? '<span class="tiny warn-text">⚠ 0 members (min. 3)</span>' : '<span class="tiny muted">—</span>';
+    } else {
+      var cmscBadge = ev.cmscCount >= 3 ? '<span class="pill good tiny">✓ ' + n(ev.cmscCount) + ' CVs</span>' : '<span class="pill warn tiny">⚠ ' + n(ev.cmscCount) + '/3 CVs</span>';
+      var alumBadge = item.cmscBrestAlum ? ' <span class="pill good tiny" title="' + item.cmscBrestAlum + ' member(s) previously served in BResT (encouraged by SM7 p. 15)">✓ ' + item.cmscBrestAlum + ' from BResT</span>' : '';
+      var leadInfo = item.cmscLead ? '<div class="tiny muted">Lead: ' + esc(item.cmscLead) + '</div>' : '<div class="tiny warn-text">⚠ No Chair/Lead</div>';
+      cmscCell = '<div>' + cmscBadge + alumBadge + leadInfo + '</div>';
+    }
+
+    var activeBadges = ev.activeBodies.length
+      ? ev.activeBodies.map(function (body) {
+          var cnt = (ev.bodies[body.id] || []).length;
+          var isFiltered = CSPMC_STATE.subFilter === body.id;
+          return '<span class="pill ' + (isFiltered ? 'good' : 'idle') + ' tiny" style="margin:1px 2px" title="' + attr(body.name) + ': ' + cnt + ' member(s)">' + esc(body.short) + ' (' + cnt + ')</span>';
+        }).join('')
+      : '<span class="tiny muted">No sub-committees encoded</span>';
+
+    var membersCell = ev.vols.length
+      ? '<strong>' + n(ev.vols.length) + '</strong> <span class="tiny muted">(' + ev.womenPct + '% F)</span>'
+      : '<span class="tiny muted">0</span>';
+
+    return '<tr class="' + (isSelected ? 'active-row ' : '') + (ev.status === 'Needs fixing' ? 'row-warn' : '') + '">' +
+      '<td class="sticky"><strong>' + esc(b.barangay) + '</strong>' +
+        (isSelected ? ' <span class="pill good tiny">Viewing</span>' : '') +
+      '</td>' +
+      (!isMuni ? '<td>' + esc(b.municipality) + '</td>' : '') +
+      '<td>' + leadCell + '</td>' +
+      '<td>' + cmscCell + '</td>' +
+      '<td>' + activeBadges + '</td>' +
+      '<td class="num">' + membersCell + '</td>' +
+      '<td>' + statusPill + '</td>' +
+      '<td>' + issuesCell + '</td>' +
+      '<td><button type="button" class="btn ghost btn-xs" data-act="open-cspmc-detail" data-brgy="' + attr(bkey) + '" title="Open Stage 2 Organizational Chart &amp; 8 Sub-Committees">' +
+        icon('layers') + ' <span>Org Chart ›</span>' +
+      '</button></td>' +
+    '</tr>';
+  }).join('');
+
+  // Section 2: Volunteer Directory for Stage 2
+  var displayVols = s2Vols.filter(function (v) {
+    if (selectedBkey && (v.province + '|' + v.municipality + '|' + v.barangay !== selectedBkey)) return false;
+    if (CSPMC_STATE.subFilter !== 'all' && v.stage2Body !== CSPMC_STATE.subFilter) return false;
+    if (CSPMC_STATE.search) {
+      var q = normSearch(CSPMC_STATE.search);
+      if (v.q.indexOf(q) === -1) return false;
+    }
+    return true;
+  });
+
+  var curVolCol = CSPMC_STATE.volSortCol || 'brgy';
+  var curVolDir = CSPMC_STATE.volSortDir || 'asc';
+  var s2VolExt = {
+    brgy: function (v) { return v.barangay; },
+    muni: function (v) { return v.municipality; },
+    name: function (v) { return v.name; },
+    sub: function (v) { return v.stage2Body || ''; },
+    position: function (v) { return v.chair ? 2 : (v.position ? 1 : 0); },
+    sex: function (v) { return v.sex; },
+    ippwd: function (v) { return [v.ip ? 'IP' : '', v.pwd ? 'PWD' : ''].filter(Boolean).join(', '); },
+    frombrest: function (v) { return v.wasBrest ? 1 : 0; },
+    start: function (v) { return v.start || ''; }
+  };
+  var sortedVols = tblSort(displayVols, curVolCol, curVolDir, s2VolExt);
+  var shownVols = sortedVols.slice(0, CSPMC_STATE.limit);
+
+  var volRowsHtml = shownVols.map(function (v) {
+    var bodyObj = STAGE2_BODY_MAP[v.stage2Body] || null;
+    var bodyLabel = bodyObj ? bodyObj.label : (v.body || v.committee);
+    var alumBadge = v.wasBrest
+      ? '<span class="pill good tiny" title="Volunteer previously served in Barangay Resilience Team (BResT) in Stage 1">✓ From BResT</span>'
+      : '<span class="tiny muted">—</span>';
+
+    return '<tr>' +
+      '<td><strong>' + esc(v.barangay) + '</strong></td>' +
+      (!isMuni ? '<td>' + esc(v.municipality) + '</td>' : '') +
+      '<td>' + nameCell(v) + '</td>' +
+      '<td><span class="pill idle tiny"><strong>' + esc(v.stage2Body || 'CSPMC') + '</strong></span> <span class="tiny">' + esc(bodyLabel) + '</span></td>' +
+      '<td>' + (v.chair ? '<span class="pill good">' + esc(v.position) + '</span>' : esc(v.position || 'Member')) + '</td>' +
+      '<td>' + esc(v.sex || '—') + '</td>' +
+      '<td>' + (v.ip ? '<span class="pill idle">IP</span> ' : '') + (v.pwd ? '<span class="pill idle">PWD</span>' : (!v.ip ? '—' : '')) + '</td>' +
+      '<td>' + alumBadge + '</td>' +
+      '<td>' + esc(v.start || '—') + '</td>' +
+      '<td>' + flagPills(v) + '</td>' +
+    '</tr>';
+  }).join('');
+
+  var volTh = function (col, label, num) {
+    return sortTh({ col: col, curCol: curVolCol, dir: curVolDir, label: label, num: num, act: 'cspmc-vol-sort' });
+  };
+
+  // Status Filter Cards counts
+  var cTotal = brgys.length;
+  var cEnc = compliantBrgys;
+  var cFix = needsFixBrgys;
+  var cNot = notEncodedBrgys;
+
+  var statusCards = [
+    ['all', 'All Teams', cTotal, ''],
+    ['encoded', 'Compliant', cEnc, 'fc-good'],
+    ['needs_fixing', 'Needs Fixing', cFix, 'fc-warn'],
+    ['not_encoded', 'Not Encoded', cNot, 'fc-bad']
+  ].map(function (s) {
+    return '<button type="button" class="filter-card' + (s[3] ? ' ' + s[3] : '') + (CSPMC_STATE.status === s[0] ? ' active' : '') + '" data-act="cspmc-status" data-v="' + s[0] + '">' +
+      '<span class="fc-label">' + esc(s[1]) + '</span>' +
+      '<span class="fc-count">' + n(s[2]) + '</span>' +
+    '</button>';
+  }).join('');
+
+  // Sub-committee quick filters
+  var subCards = [['all', 'All Bodies', s2Vols.length]].concat(
+    STAGE2_BODIES.map(function (body) {
+      var cnt = s2Vols.filter(function (v) { return v.stage2Body === body.id; }).length;
+      return [body.id, body.short, cnt];
+    })
+  ).map(function (sb) {
+    return '<button type="button" class="filter-card' + (CSPMC_STATE.subFilter === sb[0] ? ' active' : '') + '" data-act="cspmc-sub" data-v="' + sb[0] + '">' +
+      '<span class="fc-label">' + esc(sb[1]) + '</span>' +
+      '<span class="fc-count">' + n(sb[2]) + '</span>' +
+    '</button>';
+  }).join('');
+
+  // Municipalities dropdown (for RPMO)
+  var munis = baselineMunis();
+  var mOpts = '<option value="">All Municipalities</option>';
+  munis.forEach(function (m) {
+    var v = m.province + '|' + m.municipality;
+    mOpts += '<option value="' + attr(v) + '"' + (activeMuni === v ? ' selected' : '') + '>' + esc(m.municipality) + ' (' + esc(m.province) + ')</option>';
+  });
+
+  var bOpts = '<option value="">All Barangays</option>' + brgys.map(function (b) {
+    var v = b.province + '|' + b.municipality + '|' + b.barangay;
+    return '<option value="' + attr(v) + '"' + (selectedBkey === v ? ' selected' : '') + '>' + esc(b.barangay) + '</option>';
+  }).join('');
+
+  var subNav = '<div class="sub-nav-tabs">' +
+    '<button type="button" class="sub-nav-btn" data-go="volunteers">' + icon('users') + ' <span>Community Volunteers</span></button>' +
+    '<button type="button" class="sub-nav-btn" data-go="brest">' + icon('shield') + ' <span>BResT Teams</span></button>' +
+    '<button type="button" class="sub-nav-btn active">' + icon('layers') + ' <span>CSPMC &amp; Sub-Committees (Stage 2)</span></button>' +
+  '</div>';
+
+  var scopeBanner = isMuni
+    ? '<div class="static-val">' + icon('map-pin') + ' <span>Municipality: <strong>' + esc(home().municipality) + '</strong> (' + esc(home().province) + ')</span> <span class="role-badge field">PEA / MDM Scope</span></div>'
+    : '<label class="field"><span>Municipality</span><select data-act="cspmc-muni">' + mOpts + '</select></label>';
+
+  // Build Organizational Chart visualization (single barangay if selected, otherwise aggregate scope)
+  var orgChartSectionHtml = '';
+  if (CSPMC_STATE.showOrgChart) {
+    if (selectedBkey && evalMap[selectedBkey]) {
+      var selParts = selectedBkey.split('|');
+      orgChartSectionHtml = buildBarangayOrgChartHtml(evalMap[selectedBkey], selParts[2], selParts[1] + ', ' + selParts[0], true);
+    } else {
+      var scopeTitle = activeMuni ? activeMuni.split('|')[1] : 'All Monitored Municipalities';
+      orgChartSectionHtml = buildAggregateOrgChartHtml(brgys, evalMap, s2Vols, scopeTitle);
+    }
+  }
+
+  body.innerHTML = subNav +
+    '<div class="card">' +
+      '<div class="card-head">' +
+        '<div>' +
+          '<h2>CSPMC &amp; Specialized Sub-Committees (Stage 2)</h2>' +
+          '<div class="muted">' + (isMuni ? 'Stage 2 committee management for <strong>' + esc(home().municipality) + '</strong>.' : 'Region-wide Stage 2 committee monitoring.') + ' Tracks all 8 specialized sub-committees formed during the 2nd Barangay Assembly (BA2) per Project Manuals (SM1 &amp; SM7).</div>' +
+        '</div>' +
+        '<div class="row-actions" style="margin:0">' +
+          '<button type="button" class="btn ' + (CSPMC_STATE.showOrgChart ? 'primary' : 'ghost') + ' btn-sm" data-act="cspmc-toggle-org">' + icon('layers') + ' <span>' + (CSPMC_STATE.showOrgChart ? 'Hide Org Chart' : 'Show Org Chart') + '</span></button>' +
+          '<button class="btn ghost btn-sm" data-act="cspmc-teams-export">' + icon('download') + ' <span>Export Teams CSV</span></button>' +
+          '<button class="btn ghost btn-sm" data-act="cspmc-vols-export">' + icon('download') + ' <span>Export Volunteers CSV</span></button>' +
+        '</div>' +
+      '</div>' +
+      '<div class="grid-kpi">' +
+        '<div class="kpi ' + (compliantBrgys === totalBrgys && totalBrgys > 0 ? 'accent-good' : (formedBrgys > 0 ? 'accent-warn' : 'accent-bad')) + '">' +
+          '<div class="kpi-label">CSPMC Formation Rate</div>' +
+          '<div class="kpi-value">' + n(formedBrgys) + ' <span class="tiny">of ' + n(totalBrgys) + '</span></div>' +
+          '<div class="kpi-sub">' + (totalBrgys ? Math.round(formedBrgys / totalBrgys * 100) + '% teams organized in KCIS' : '') + '</div>' +
+        '</div>' +
+        '<div class="kpi ' + (cmscCompliant === totalBrgys && totalBrgys > 0 ? 'accent-good' : 'accent-warn') + '">' +
+          '<div class="kpi-label">CMSC Monitoring Quorum</div>' +
+          '<div class="kpi-value">' + n(cmscCompliant) + ' <span class="tiny">barangays</span></div>' +
+          '<div class="kpi-sub">&ge;3 CVs + elected Lead (SM7 p. 15)</div>' +
+        '</div>' +
+        '<div class="kpi accent-good">' +
+          '<div class="kpi-label">BResT to CMSC Transition</div>' +
+          '<div class="kpi-value">' + n(totalBrestAlums) + ' <span class="tiny">alums</span></div>' +
+          '<div class="kpi-sub">Encouraged selection from BResT</div>' +
+        '</div>' +
+        '<div class="kpi ' + (womenPct >= 30 ? 'accent-good' : 'accent-warn') + '">' +
+          '<div class="kpi-label">Women Representation</div>' +
+          '<div class="kpi-value">' + womenPct + '%</div>' +
+          '<div class="kpi-sub">' + n(totalWomen) + ' women (&ge;30% quota)</div>' +
+        '</div>' +
+        '<div class="kpi">' +
+          '<div class="kpi-label">Active Sub-Committee Seats</div>' +
+          '<div class="kpi-value">' + n(s2Vols.length) + '</div>' +
+          '<div class="kpi-sub">Across 8 sub-committees + Bookkeeper</div>' +
+        '</div>' +
+      '</div>' +
+      orgChartSectionHtml +
+      '<div class="filter-cards" style="margin-top:14px">' + statusCards + '</div>' +
+      '<div class="card-head" style="margin-top:14px;margin-bottom:6px">' +
+        '<div><h3 style="margin:0;font-size:13px;text-transform:uppercase;letter-spacing:0.04em;color:var(--text-muted)">Filter by Sub-Committee</h3></div>' +
+      '</div>' +
+      '<div class="filter-cards" style="margin-bottom:14px">' + subCards + '</div>' +
+      '<div class="toolbar-row"><div class="filters" style="margin:0">' +
+        scopeBanner +
+        '<label class="field"><span>Barangay</span><select data-act="cspmc-brgy">' + bOpts + '</select></label>' +
+        '<label class="field" style="min-width:240px;flex:1"><span>Search Barangay / Volunteer / Sub-Committee</span><input type="search" id="cspmc-search" value="' + attr(CSPMC_STATE.search) + '" placeholder="Search…"></label>' +
+        (CSPMC_STATE.status !== 'all' || CSPMC_STATE.subFilter !== 'all' || CSPMC_STATE.brgy || CSPMC_STATE.search ? '<button type="button" class="btn ghost btn-sm" data-act="cspmc-reset">' + icon('rotate-ccw') + ' <span>Reset</span></button>' : '') +
+      '</div></div>' +
+      '<div class="table-wrap" style="margin-top:12px"><table class="grid"><thead><tr>' +
+        teamTh('brgy', 'Barangay (' + sortedTeams.length + ')', false, null, null, true) +
+        (!isMuni ? teamTh('muni', 'Municipality') : '') +
+        teamTh('cspmcLead', 'CSPMC Lead') +
+        teamTh('cmsc', 'CMSC (Monitoring)', true, 'Min. 3 CVs + Lead') +
+        teamTh('activeBodies', 'Active Sub-Committees', true, 'Formed Bodies') +
+        teamTh('members', 'Total Members', true, 'Count (% Women)') +
+        teamTh('status', 'Compliance') +
+        teamTh('issues', 'Lacking / Issues') +
+        '<th>Actions</th>' +
+      '</tr></thead><tbody>' + (teamRowsHtml || '<tr><td colspan="9" class="empty-state">No barangays match this filter.</td></tr>') + '</tbody></table></div>' +
+      '<hr style="border:0;border-top:1px solid var(--border-subtle);margin:24px 0 16px">' +
+      '<div class="card-head" style="margin-bottom:8px">' +
+        '<div><h3>Stage 2 Volunteer Directory</h3><div class="tiny">' + (selectedBkey ? 'Showing volunteers for selected barangay' : 'All encoded Stage 2 volunteers across monitored barangays') + '</div></div>' +
+        '<div class="filters" style="margin:0"><span class="tiny">Showing <strong>' + n(shownVols.length) + '</strong> of <strong>' + n(sortedVols.length) + '</strong></span></div>' +
+      '</div>' +
+      '<div class="table-wrap"><table class="grid"><thead><tr>' +
+        volTh('brgy', 'Barangay') +
+        (!isMuni ? volTh('muni', 'Municipality') : '') +
+        volTh('name', 'Volunteer Name') +
+        volTh('sub', 'Sub-Committee') +
+        volTh('position', 'Position') +
+        volTh('sex', 'Sex') +
+        volTh('ippwd', 'IP / PWD') +
+        volTh('frombrest', 'BResT Alum') +
+        volTh('start', 'Term Start') +
+        '<th>Cross-check</th>' +
+      '</tr></thead><tbody>' + (volRowsHtml || '<tr><td colspan="10" class="empty-state">No Stage 2 volunteers encoded for this selection.</td></tr>') + '</tbody></table></div>' +
+      (shownVols.length < sortedVols.length ? '<div class="row-actions" style="margin-top:12px"><button class="btn ghost btn-sm" data-act="cspmc-more">Show ' + Math.min(100, sortedVols.length - shownVols.length) + ' more</button></div>' : '') +
+    '</div>';
+
+  bindSearch('cspmc-search', function (v) { CSPMC_STATE.search = v; renderCspmc(); });
+}
+
+function openCspmcDetail(bkey) {
+  CSPMC_STATE.modalBkey = bkey;
+  var parts = bkey.split('|'), P = people();
+  var b = (SNAP.barangayRows || []).filter(function (x) { return x.province === parts[0] && x.municipality === parts[1] && x.barangay === parts[2]; })[0];
+  var s2Vols = P.volunteers.filter(function (v) { return v.isStage2 && v.province + '|' + v.municipality + '|' + v.barangay === bkey; });
+  var ev = evaluateCspmcBarangay(b, s2Vols);
+
+  var statusPill = ev.status === 'Encoded'
+    ? '<span class="pill good">✓ Compliant</span>'
+    : (ev.status === 'Needs fixing' ? '<span class="pill warn">⚠ Needs Fixing</span>' : '<span class="pill bad">○ Not Encoded</span>');
+
+  var cardsHtml = STAGE2_BODIES.map(function (body) {
+    var members = ev.bodies[body.id] || [];
+    var isFormed = members.length > 0;
+    var hasLead = members.some(function (v) { return v.chair; });
+    var isCmsc = body.id === 'CMSC';
+    var isCmscLacking = isCmsc && (members.length < 3 || !hasLead);
+    var isLeadLacking = body.chairRequired && isFormed && !hasLead;
+
+    var cardAccent = !isFormed ? 'accent-idle' : (isCmscLacking || isLeadLacking ? 'accent-warn' : 'accent-good');
+    var badge = isFormed
+      ? '<span class="pill good tiny">✓ Formed (' + n(members.length) + ')</span>'
+      : '<span class="pill idle tiny">Pending BA2</span>';
+
+    var membersList = members.length
+      ? '<ol class="cspmc-member-list">' + members.map(function (v) {
+          var alumBadge = (isCmsc && v.wasBrest)
+            ? ' <span class="pill good tiny" title="Volunteer previously served in BResT (Stage 1)">✓ From BResT</span>'
+            : '';
+          return '<li class="cspmc-member-item">' +
+            nameCell(v) +
+            (v.chair ? ' <span class="pill good tiny">' + esc(v.position) + '</span>' : (v.position ? ' <span class="tiny">' + esc(v.position) + '</span>' : ' <span class="tiny muted">Member</span>')) +
+            alumBadge +
+          '</li>';
+        }).join('') + '</ol>'
+      : '<div class="tiny muted" style="margin-top:6px">No volunteer encoded for this sub-committee yet.</div>';
+
+    var warnMsg = '';
+    if (isCmsc && isFormed && members.length < 3) {
+      warnMsg += '<div class="tiny" style="color:var(--warn-text);font-weight:700;margin-top:4px">⚠ Quorum lacking: SM7 Section 1.5.1 mandates at least 3 CVs (currently has ' + members.length + ').</div>';
+    }
+    if (body.chairRequired && isFormed && !hasLead) {
+      warnMsg += '<div class="tiny" style="color:var(--warn-text);font-weight:700;margin-top:4px">⚠ No designated Chairperson / Lead tagged.</div>';
+    }
+
+    return '<div class="cspmc-card ' + (isFormed ? 'formed ' : '') + cardAccent + '">' +
+      '<div class="cspmc-card-head">' +
+        '<div>' +
+          '<div class="cspmc-card-title">' + esc(body.short) + ' · ' + esc(body.name) + '</div>' +
+          '<div class="cspmc-card-desc">' + esc(body.desc) + '</div>' +
+        '</div>' +
+        '<div>' + badge + '</div>' +
+      '</div>' +
+      warnMsg +
+      membersList +
+    '</div>';
+  }).join('');
+
+  var isOrgView = CSPMC_STATE.modalView !== 'cards';
+  var viewContent = isOrgView
+    ? buildBarangayOrgChartHtml(ev, parts[2], parts[1] + ', ' + parts[0], false)
+    : '<div class="cspmc-grid">' + cardsHtml + '</div>';
+
+  var dlgBody = $('cspmc-dialog-body');
+  if (!dlgBody) return;
+
+  dlgBody.innerHTML =
+    '<div class="dialog-head">' +
+      '<div>' +
+        '<h2>' + esc(parts[2]) + ' · Stage 2 CSPMC &amp; Sub-Committees</h2>' +
+        '<div class="muted">' + esc(parts[1]) + ', ' + esc(parts[0]) + ' · Kalahi-CIDSS PCRP Stage 2 Organization</div>' +
+      '</div>' +
+      '<div class="row-actions" style="margin:0">' +
+        '<button type="button" class="btn ' + (isOrgView ? 'primary' : 'ghost') + ' btn-xs" data-act="cspmc-modal-view" data-v="org">' + icon('layers') + ' <span>Org Chart</span></button>' +
+        '<button type="button" class="btn ' + (!isOrgView ? 'primary' : 'ghost') + ' btn-xs" data-act="cspmc-modal-view" data-v="cards">' + icon('grid') + ' <span>Grid Cards</span></button>' +
+        statusPill +
+        '<button class="btn ghost icon-btn" value="close" aria-label="Close dialog" title="Close (Esc)">' + icon('x') + '</button>' +
+      '</div>' +
+    '</div>' +
+    (ev.reasons.length ? '<div class="msg warn" style="margin-top:12px">' + icon('alert-triangle') + ' <div><strong>Stage 2 Validation Items</strong><ul style="margin:4px 0 0;padding-left:18px">' + ev.reasons.map(function (r) { return '<li>' + esc(r) + '</li>'; }).join('') + '</ul></div></div>' : '') +
+    viewContent +
+    '<div class="row-actions dialog-foot">' +
+      '<button class="btn ghost" value="close">Close</button>' +
+    '</div>';
+
+  var dlg = $('cspmc-dialog');
+  if (dlg && !dlg.open) {
+    if (typeof openModalAnimated === 'function') openModalAnimated(dlg);
+    else dlg.showModal();
+  }
+}
+
+// ===================================================================
+// MODULE 6: MResT (Municipal Resilience Team Dedicated Module)
+// Per SM1 Section 3.1 (pp. 13-15) & SM7 Section 1.5.1
+// Mandates: Mayor Chair, MPDC/MDRRMO Leads, All Barangay Captains
+// with Community Wing comprising not less than 50% of membership.
+// ===================================================================
+
+var MREST_CLUSTERS = [
+  { id: 'CAPTAINS', name: 'Barangay Captains (Punong Barangays)', short: 'Punong Barangays', desc: 'All Barangay Captains in the municipality (mandated ≥50% of MResT quorum per SM1 Para 13)', wing: 'community', isCommunity: true },
+  { id: 'IPMR', name: 'Indigenous Peoples Mandatory Rep', short: 'IPMR', desc: 'Mandatory representation for ancestral domains & IP communities', wing: 'community', isCommunity: true },
+  { id: 'CSO', name: 'Civil Society & NGOs', short: 'CSO / NGO', desc: 'Accredited CSOs, NGOs, and Peoples Organizations (min. 2 reps)', wing: 'community', isCommunity: true },
+  { id: 'INFRA', name: 'Engineering & Infrastructure', short: 'Engineering (MEO)', desc: 'Municipal Engineering Office, technical inspections, & sub-project design review', wing: 'technical', isCommunity: false },
+  { id: 'SOCIAL', name: 'Social Protection & Health', short: 'Social & Health', desc: 'MSWDO & Municipal Health Office (MHO) ensuring community safeguards', wing: 'technical', isCommunity: false },
+  { id: 'CLIMATE', name: 'Environment & Agriculture', short: 'Climate & Agri', desc: 'MENRO (climate action/forestry) and MAO (agriculture & food resilience)', wing: 'technical', isCommunity: false },
+  { id: 'FINANCE', name: 'Finance, Budget & Enterprise', short: 'Finance & Budget', desc: 'MBO, Municipal Accountant, MTO, MEEDO, and PESO for LCC counterparting', wing: 'technical', isCommunity: false }
+];
+var MREST_CLUSTER_MAP = {};
+MREST_CLUSTERS.forEach(function (c) { MREST_CLUSTER_MAP[c.id] = c; });
+
+function classifyMrestRole(pos, com) {
+  var p = normAlpha(pos || '');
+  var c = normAlpha(com || '');
+
+  // 1. Local Chief Executive / Mayor
+  if (p.indexOf('mayor') !== -1 || p.indexOf('lce') !== -1 || p.indexOf('localchiefexecutive') !== -1) {
+    if (p.indexOf('vice') === -1) return 'LCE';
+  }
+  if ((p === 'chair' || p === 'chairperson' || p === 'chairman' || p === 'head') && p.indexOf('vice') === -1 && p.indexOf('co') === -1) {
+    return 'LCE';
+  }
+
+  // 2. Planning & Operational Lead (Co-Chair)
+  if (p.indexOf('mpdc') !== -1 || p.indexOf('mpdo') !== -1 || p.indexOf('planninganddevelopment') !== -1 || p.indexOf('planningcoordinator') !== -1 || p.indexOf('cochair') !== -1 || p.indexOf('vicechair') !== -1) {
+    return 'LEAD';
+  }
+  if (p.indexOf('mdrrm') !== -1 || p.indexOf('disaster') !== -1) {
+    return 'LEAD';
+  }
+
+  // 3. Barangay Captains (Punong Barangays)
+  if (p.indexOf('captain') !== -1 || p.indexOf('punongbarangay') !== -1 || p.indexOf('pb') !== -1 || p.indexOf('brgycaptain') !== -1 || p.indexOf('barangaychair') !== -1 || p.indexOf('liga') !== -1 || p.indexOf('lnb') !== -1 || p.indexOf('abc') !== -1) {
+    return 'CAPTAINS';
+  }
+
+  // 4. Legislative & DILG Oversight
+  if (p.indexOf('sangguniangbayan') !== -1 || p.indexOf('sbmember') !== -1 || p.indexOf('sb') !== -1 || p.indexOf('councilor') !== -1 || p.indexOf('mlgoo') !== -1 || p.indexOf('dilg') !== -1) {
+    return 'SB_DILG';
+  }
+
+  // 5. Indigenous Peoples Mandatory Representative
+  if (p.indexOf('ipmr') !== -1 || p.indexOf('indigenous') !== -1 || p.indexOf('tribal') !== -1) {
+    return 'IPMR';
+  }
+
+  // 6. Engineering & Infrastructure
+  if (p.indexOf('engineer') !== -1 || p.indexOf('meo') !== -1 || p.indexOf('building') !== -1 || p.indexOf('infra') !== -1 || p === 'me') {
+    return 'INFRA';
+  }
+
+  // 7. Social Protection & Health
+  if (p.indexOf('mswdo') !== -1 || p.indexOf('socialwelfare') !== -1 || p.indexOf('socialworker') !== -1 || p.indexOf('health') !== -1 || p.indexOf('mho') !== -1 || p.indexOf('doctor') !== -1 || p.indexOf('nurse') !== -1 || p.indexOf('rhu') !== -1) {
+    return 'SOCIAL';
+  }
+
+  // 8. Environment & Agriculture
+  if (p.indexOf('menro') !== -1 || p.indexOf('environment') !== -1 || p.indexOf('naturalresource') !== -1 || p.indexOf('mao') !== -1 || p.indexOf('agricultur') !== -1 || p.indexOf('fisher') !== -1) {
+    return 'CLIMATE';
+  }
+
+  // 9. Finance, Budget, Accounting & Enterprise
+  if (p.indexOf('budget') !== -1 || p.indexOf('mbo') !== -1 || p.indexOf('account') !== -1 || p.indexOf('treasur') !== -1 || p.indexOf('mto') !== -1 || p.indexOf('meedo') !== -1 || p.indexOf('enterprise') !== -1 || p.indexOf('peso') !== -1 || p.indexOf('employment') !== -1) {
+    return 'FINANCE';
+  }
+
+  // 10. Civil Society & Non-Government Organizations
+  if (p.indexOf('cso') !== -1 || p.indexOf('ngo') !== -1 || p.indexOf('civilsociety') !== -1 || p.indexOf('po') !== -1 || p.indexOf('peoplesorg') !== -1 || p.indexOf('private') !== -1 || p.indexOf('sector') !== -1) {
+    return 'CSO';
+  }
+
+  // 11. External Technical Linkage (ACT / MCT)
+  if (p.indexOf('act') !== -1 || p.indexOf('mct') !== -1 || p.indexOf('areacoordinator') !== -1 || p.indexOf('communityfacilitator') !== -1 || p.indexOf('facilitator') !== -1) {
+    return 'ACT_MCT';
+  }
+
+  return 'OTHER';
+}
+
+function buildMrestOrgChartHtml(muniName, provName, muniVols, totalBarangays, eoTag, isVerified, eoCount) {
+  var byRole = {
+    LCE: [], LEAD: [], SB_DILG: [], ACT_MCT: [],
+    CAPTAINS: [], IPMR: [], CSO: [],
+    INFRA: [], SOCIAL: [], CLIMATE: [], FINANCE: [], OTHER: []
+  };
+
+  muniVols.forEach(function (v) {
+    var r = classifyMrestRole(v.position, v.committee);
+    if (!byRole[r]) byRole[r] = [];
+    byRole[r].push(v);
+  });
+
+  var communityVols = byRole.CAPTAINS.concat(byRole.IPMR).concat(byRole.CSO);
+  var technicalVols = byRole.INFRA.concat(byRole.SOCIAL).concat(byRole.CLIMATE).concat(byRole.FINANCE);
+  var internalTotal = muniVols.filter(function (v) { return classifyMrestRole(v.position, v.committee) !== 'ACT_MCT'; }).length;
+  var communityPct = internalTotal > 0 ? Math.round(communityVols.length / internalTotal * 100) : 0;
+  var isQuorumMet = communityPct >= 50;
+
+  var mayorVols = byRole.LCE;
+  var leadVols = byRole.LEAD;
+  var sbVols = byRole.SB_DILG;
+  var actVols = byRole.ACT_MCT;
+  var captains = byRole.CAPTAINS;
+
+  function renderMemberStack(list) {
+    if (!list || !list.length) return '<div class="tiny muted" style="margin-top:2px">No members encoded</div>';
+    return '<div class="org-member-stack">' + list.map(function (v) {
+      var rowTag = (eoTag && eoTag.rows && eoTag.rows[v.key]) || null;
+      var tagPill = !rowTag ? '' : (rowTag.s === 'match' ? ' <span class="pill good tiny" title="Verified against Mayor\'s EO">✓ EO</span>' : ' <span class="pill warn tiny" title="Differs from Mayor\'s EO">⚠ EO</span>');
+      return '<div class="org-member-row">' +
+        '<span>' + nameCell(v) + tagPill + '</span>' +
+        '<span class="tiny muted">' + esc(v.position || 'Member') + '</span>' +
+      '</div>';
+    }).join('') + '</div>';
+  }
+
+  function renderClusterBox(clusterId, title, desc, vols, req) {
+    var isFilterActive = MRT_STATE.clusterFilter === clusterId;
+    var count = vols.length;
+    var ok = req ? count >= req : count > 0;
+    var accent = count === 0 ? 'accent-idle' : (ok ? 'accent-good' : 'accent-warn');
+    return '<div class="org-node clickable ' + accent + (isFilterActive ? ' active-filter' : '') + '" data-act="mrt-cluster" data-v="' + attr(isFilterActive ? 'all' : clusterId) + '" title="Click to filter member roster by ' + attr(title) + '">' +
+      '<div class="org-node-top">' +
+        '<span class="org-node-code">' + esc(title) + '</span>' +
+        '<span class="pill ' + (ok ? 'good' : (count > 0 ? 'warn' : 'idle')) + ' tiny">' + n(count) + ' Encoded</span>' +
+      '</div>' +
+      '<div class="org-node-mandate">' + esc(desc) + '</div>' +
+      renderMemberStack(vols) +
+    '</div>';
+  }
+
+  // Punong Barangays Stack
+  var captainsRosterHtml = '';
+  if (captains.length > 0) {
+    captainsRosterHtml = '<div class="mrest-captains-roster">' +
+      captains.map(function (v) {
+        var rowTag = (eoTag && eoTag.rows && eoTag.rows[v.key]) || null;
+        var tagPill = !rowTag ? '' : (rowTag.s === 'match' ? ' <span class="pill good tiny">✓ EO</span>' : ' <span class="pill warn tiny">⚠ EO</span>');
+        var posLabel = v.position ? esc(v.position) : 'Punong Barangay';
+        return '<div class="mrest-captain-card">' +
+          '<div>' + nameCell(v) + tagPill + '</div>' +
+          '<div class="tiny"><span class="mrest-pb-badge">PB</span> <span class="muted">' + posLabel + '</span></div>' +
+        '</div>';
+      }).join('') +
+    '</div>';
+  } else {
+    captainsRosterHtml = '<div class="tiny warn-text" style="margin-top:6px;line-height:1.4">' +
+      '⚠ No Punong Barangays encoded in KCIS yet. SM1 Section 3.1 mandates that all Barangay Captains (or cluster reps if &gt;30 brgys) must participate and comprise ≥50% of MResT.' +
+    '</div>';
+  }
+
+  var isCaptainsFilter = MRT_STATE.clusterFilter === 'CAPTAINS';
+  var captainsNode = '<div class="org-node clickable ' + (captains.length > 0 ? 'accent-good' : 'accent-warn') + (isCaptainsFilter ? ' active-filter' : '') + '" data-act="mrt-cluster" data-v="' + attr(isCaptainsFilter ? 'all' : 'CAPTAINS') + '" title="Click to filter roster for Barangay Captains">' +
+    '<div class="org-node-top">' +
+      '<span class="org-node-code">ALL BARANGAY CAPTAINS (PUNONG BARANGAYS)</span>' +
+      '<span class="pill ' + (captains.length >= totalBarangays && totalBarangays > 0 ? 'good' : (captains.length > 0 ? 'warn' : 'bad')) + ' tiny">' +
+        n(captains.length) + ' / ' + n(totalBarangays) + ' Barangays' +
+      '</span>' +
+    '</div>' +
+    '<div class="org-node-name">Direct Barangay &amp; Community Executive Representation</div>' +
+    '<div class="org-node-mandate">Mandated by SM1 Section 3.1: All Punong Barangays represent their communities in municipal risk profiling, PRVA integration, and LCC prioritization.' + (totalBarangays > 30 ? ' (Eligible for ecosystem clustering per SM1 Para 12).' : '') + '</div>' +
+    captainsRosterHtml +
+  '</div>';
+
+  var mayorContent = mayorVols.length > 0
+    ? renderMemberStack(mayorVols)
+    : '<div class="org-lead-box"><span class="org-lead-label">Municipal Mayor / LCE</span><span class="tiny warn-text">⚠ No Mayor designated in KCIS</span></div>';
+
+  var leadContent = leadVols.length > 0
+    ? renderMemberStack(leadVols)
+    : '<div class="org-lead-box"><span class="org-lead-label">MPDC &amp; MDRRMO Leads</span><span class="tiny warn-text">⚠ No Planning / DRRM lead tagged</span></div>';
+
+  var sbContent = sbVols.length > 0
+    ? renderMemberStack(sbVols)
+    : '<div class="tiny muted" style="margin-top:4px">Sangguniang Bayan &amp; MLGOO (DILG)</div>';
+
+  var actContent = actVols.length > 0
+    ? renderMemberStack(actVols)
+    : '<div class="tiny muted" style="margin-top:4px">DSWD Kalahi-CIDSS Area Coordinating Team (ACT) &amp; Municipal Coordinating Team (MCT) Operations Support</div>';
+
+  var communityQuotaBadge = isQuorumMet
+    ? '<span class="pill good">✓ 50% Quota Met (' + communityPct + '% Community Voice)</span>'
+    : '<span class="pill warn">⚠ Below 50% Quota (' + communityPct + '% Community Voice)</span>';
+
+  return '<div class="cspmc-org-wrap">' +
+    '<div class="cspmc-org-legend">' +
+      '<div><strong>' + esc(muniName) + ' · Municipal Resilience Team (MResT) Co-Governance Chart</strong> <span class="muted">(Province of ' + esc(provName) + ' · Organized via Mayor\'s Executive Order per SM1 Section 3.1)</span></div>' +
+      '<div class="cspmc-org-legend-items">' +
+        (MRT_STATE.clusterFilter !== 'all' ? '<button type="button" class="btn ghost btn-xs" data-act="mrt-cluster" data-v="all">' + icon('x') + ' Clear Filter (' + esc(MRT_STATE.clusterFilter) + ')</button>' : '') +
+        '<span><span class="org-legend-dot" style="background:var(--primary)"></span>Executive Core</span>' +
+        '<span><span class="org-legend-dot" style="background:var(--good)"></span>Community Wing (≥50% Mandate)</span>' +
+        '<span><span class="org-legend-dot" style="background:#6366f1"></span>MLGU Technical Wing</span>' +
+      '</div>' +
+    '</div>' +
+    '<div class="cspmc-org-inner">' +
+      '<!-- Tier 1 Apex: Office of the Municipal Mayor -->' +
+      '<div class="org-tier-apex">' +
+        '<div class="org-node-apex">' +
+          '<div class="org-node-apex-title">' + icon('award') + ' <span>OFFICE OF THE MUNICIPAL MAYOR (CHAIRPERSON)</span></div>' +
+          '<div class="org-node-apex-sub">Local Chief Executive · Legally Convenes MResT via Executive Order (EO)</div>' +
+          mayorContent +
+        '</div>' +
+      '</div>' +
+      '<div class="org-stem-down"></div>' +
+      '<!-- Tier 2 Middle: Legislative Oversight, Operational Steering, Technical Link -->' +
+      '<div class="org-tier-middle">' +
+        '<div class="org-mid-col side-left">' +
+          '<div class="org-connector-tag">Legislative &amp; DILG Oversight (Reports to SB/Mayor)</div>' +
+          '<div class="org-node accent-idle" data-act="mrt-cluster" data-v="' + attr(MRT_STATE.clusterFilter === 'SB_DILG' ? 'all' : 'SB_DILG') + '" style="cursor:pointer">' +
+            '<div class="org-node-top"><span class="org-node-code">SB &amp; MLGOO (DILG)</span><span class="pill ' + (sbVols.length >= 2 ? 'good' : 'idle') + ' tiny">' + n(sbVols.length) + ' Encoded</span></div>' +
+            '<div class="org-node-mandate">SB Committee on Appropriations &amp; Social Welfare; MLGOO ensuring local policy alignment</div>' +
+            sbContent +
+          '</div>' +
+        '</div>' +
+        '<div class="org-mid-col center-core">' +
+          '<div class="org-connector-tag">Operational Steering &amp; Secretariat</div>' +
+          '<div class="org-node accent-exec" data-act="mrt-cluster" data-v="' + attr(MRT_STATE.clusterFilter === 'LEAD' ? 'all' : 'LEAD') + '" style="cursor:pointer">' +
+            '<div class="org-node-top"><span class="org-node-code">MPDC &amp; MDRRMO LEADS</span><span class="pill ' + (leadVols.length > 0 ? 'good' : 'warn') + ' tiny">' + (leadVols.length > 0 ? '✓ Designated' : 'Pending') + '</span></div>' +
+            '<div class="org-node-mandate">Designated Co-Chairpersons · Steers CRIP, MRP Workshop, and Inter-Departmental Work</div>' +
+            leadContent +
+          '</div>' +
+        '</div>' +
+        '<div class="org-mid-col side-right">' +
+          '<div class="org-connector-tag">Field Technical Guidance &amp; Coaching</div>' +
+          '<div class="org-node accent-idle">' +
+            '<div class="org-node-top"><span class="org-node-code">DSWD KALAHI-CIDSS</span><span class="pill idle tiny">Field Support</span></div>' +
+            '<div class="org-node-mandate">Area Coordinating Team (ACT) &amp; Municipal Coordinating Team (MCT) technical facilitators</div>' +
+            actContent +
+          '</div>' +
+        '</div>' +
+      '</div>' +
+      '<div class="org-stem-down"></div>' +
+      '<div class="org-connector-tag" style="margin-bottom:6px">Balanced Co-Governance Architecture: Community Voice &amp; MLGU Technical Operations</div>' +
+      '<!-- Tier 3 Dual Wings: Community (≥50%) vs MLGU Technical Departments -->' +
+      '<div class="mrest-dual-wings">' +
+        '<!-- Left Wing: Community & Barangay Leadership Wing -->' +
+        '<div class="mrest-wing-box community-wing">' +
+          '<div class="mrest-wing-head">' +
+            '<div>' +
+              '<div class="mrest-wing-title">' + icon('users') + ' <span>Community &amp; Barangay Leadership Wing</span></div>' +
+              '<div class="mrest-wing-sub">Mandated by SM1 Section 3.1 Para 13 to comprise not less than 50% of MResT membership</div>' +
+            '</div>' +
+            '<div>' + communityQuotaBadge + '</div>' +
+          '</div>' +
+          captainsNode +
+          '<div class="mrest-sub-grid">' +
+            renderClusterBox('IPMR', 'IP MANDATORY REP (IPMR)', 'Representation for Ancestral Domains and Indigenous Communities per IPRA', byRole.IPMR, 0) +
+            renderClusterBox('CSO', 'ACCREDITED CSOS / NGOS', 'Civil Society, NGOs, &amp; Sectoral PO Leaders (min. 2 reps per SM1 Para 11)', byRole.CSO, 2) +
+          '</div>' +
+        '</div>' +
+        '<!-- Right Wing: MLGU Technical & Sectoral Wing -->' +
+        '<div class="mrest-wing-box technical-wing">' +
+          '<div class="mrest-wing-head">' +
+            '<div>' +
+              '<div class="mrest-wing-title">' + icon('building-2') + ' <span>MLGU Technical &amp; Sectoral Wing</span></div>' +
+              '<div class="mrest-wing-sub">Hazard integration, technical review, engineering verification, &amp; LCC budgeting</div>' +
+            '</div>' +
+            '<div><span class="pill idle tiny">' + n(technicalVols.length) + ' Encoded</span></div>' +
+          '</div>' +
+          '<div class="mrest-sub-grid">' +
+            renderClusterBox('INFRA', 'ENGINEERING (MEO)', 'Municipal Engineering Office, technical inspections, &amp; sub-project feasibility', byRole.INFRA, 1) +
+            renderClusterBox('SOCIAL', 'SOCIAL WELFARE &amp; HEALTH', 'MSWDO &amp; Municipal Health Office (MHO) ensuring community safeguards', byRole.SOCIAL, 1) +
+            renderClusterBox('CLIMATE', 'ENVIRONMENT &amp; AGRI', 'MENRO (climate resilience) &amp; MAO (food security/fisherfolk)', byRole.CLIMATE, 1) +
+            renderClusterBox('FINANCE', 'FINANCE &amp; ENTERPRISE', 'Budget (MBO), Accountant, Treasury (MTO), MEEDO, &amp; PESO for LCC counterparting', byRole.FINANCE, 1) +
+          '</div>' +
+        '</div>' +
+      '</div>' +
+    '</div>' +
+  '</div>';
+}
 
 function renderMrest() {
   var body = $('mrt-body');
@@ -1156,6 +2355,9 @@ function renderMrest() {
   var parts = activeMuni ? activeMuni.split('|') : ['', ''];
   var provName = parts[0], muniName = parts[1];
 
+  var muniBase = munis.filter(function (m) { return m.province === provName && m.municipality === muniName; })[0];
+  var totalBarangays = muniBase ? muniBase.barangays : 0;
+
   var muniVols = allMrest.filter(function (r) {
     return r.province === provName && r.municipality === muniName;
   });
@@ -1166,10 +2368,25 @@ function renderMrest() {
   var isVerified = eoTag && eoTag.rows && Object.keys(eoTag.rows).length > 0;
   var eoCount = eoTag && typeof eoTag.formCount === 'number' ? eoTag.formCount : null;
 
+  // Classify volunteers by cluster
+  var communityVols = muniVols.filter(function (v) {
+    var r = classifyMrestRole(v.position, v.committee);
+    return r === 'CAPTAINS' || r === 'IPMR' || r === 'CSO';
+  });
+  var captainsVols = muniVols.filter(function (v) {
+    return classifyMrestRole(v.position, v.committee) === 'CAPTAINS';
+  });
+  var internalTotal = muniVols.filter(function (v) {
+    return classifyMrestRole(v.position, v.committee) !== 'ACT_MCT';
+  }).length;
+  var communityPct = internalTotal > 0 ? Math.round(communityVols.length / internalTotal * 100) : 0;
+  var isQuorumMet = communityPct >= 50;
+
   // KPIs
   var isEncoded = muniVols.length > 0;
   var femaleCount = muniVols.filter(function (r) { return r.sex === 'female'; }).length;
-  var chair = muniVols.filter(function (r) { return /^chair/i.test(r.position) || /head/i.test(r.position) || /lead/i.test(r.position); })[0];
+  var chair = muniVols.filter(function (r) { return classifyMrestRole(r.position, r.committee) === 'LCE'; })[0];
+  var leads = muniVols.filter(function (r) { return classifyMrestRole(r.position, r.committee) === 'LEAD'; });
 
   // Offices / Sectors represented
   var offices = {};
@@ -1222,7 +2439,8 @@ function renderMrest() {
     var matrixRowsHtml = filteredMunis.map(function (m) {
       var mKey = m.province + '|' + m.municipality;
       var mVols = allMrest.filter(function (r) { return r.province === m.province && r.municipality === m.municipality; });
-      var mChair = mVols.filter(function (r) { return /^chair/i.test(r.position) || /lead/i.test(r.position); })[0];
+      var mChair = mVols.filter(function (r) { return classifyMrestRole(r.position, r.committee) === 'LCE'; })[0];
+      var mCaptains = mVols.filter(function (r) { return classifyMrestRole(r.position, r.committee) === 'CAPTAINS'; });
       var mRecKey = 'mrest|' + m.province + '|' + m.municipality + '||MREST';
       var mTag = (typeof vfTag === 'function') ? vfTag(mRecKey) : null;
       var mVer = mTag && mTag.rows && Object.keys(mTag.rows).length > 0;
@@ -1232,8 +2450,9 @@ function renderMrest() {
         '<td>' + esc(m.province) + '</td>' +
         '<td>' + (mVols.length ? '<span class="pill good">✓ ' + mVols.length + ' encoded</span>' : '<span class="pill bad">○ Not in KCIS</span>') + '</td>' +
         '<td>' + (mChair ? esc(mChair.name) : '<span class="tiny text-dim">No lead tagged</span>') + '</td>' +
+        '<td>' + (mCaptains.length ? '<span class="pill ' + (mCaptains.length >= m.barangays ? 'good' : 'warn') + ' tiny">' + mCaptains.length + '/' + m.barangays + ' PBs</span>' : '<span class="tiny text-dim">0 PBs</span>') + '</td>' +
         '<td>' + (mVer ? '<span class="pill good">✓ EO Verified</span>' : '<span class="pill idle">Pending EO</span>') + '</td>' +
-        '<td><button type="button" class="btn ghost btn-sm" data-act="mrt-pick-muni" data-v="' + attr(mKey) + '">' + icon('award') + ' <span>View Roster</span></button></td>' +
+        '<td><button type="button" class="btn ghost btn-sm" data-act="mrt-pick-muni" data-v="' + attr(mKey) + '">' + icon('award') + ' <span>View Org Chart ›</span></button></td>' +
       '</tr>';
     }).join('');
 
@@ -1241,13 +2460,17 @@ function renderMrest() {
       '<div class="card-head"><div><h3>Regional MResT Compliance Matrix</h3><div class="tiny">Cross-municipality comparison of Executive Order &amp; MResT formation across Caraga Region</div></div></div>' +
       '<div class="filter-cards" style="margin-bottom:12px">' + matrixCards + '</div>' +
       '<div class="table-wrap"><table class="grid"><thead><tr>' +
-        '<th>Municipality</th><th>Province</th><th>MResT Status</th><th>Designated Lead</th><th>EO Verification</th><th>Action</th>' +
-      '</tr></thead><tbody>' + (matrixRowsHtml || '<tr><td colspan="6" class="empty-state">No municipalities match these filters.</td></tr>') + '</tbody></table></div></div>';
+        '<th>Municipality</th><th>Province</th><th>MResT Status</th><th>Designated Lead</th><th>Barangay Captains</th><th>EO Verification</th><th>Action</th>' +
+      '</tr></thead><tbody>' + (matrixRowsHtml || '<tr><td colspan="7" class="empty-state">No municipalities match these filters.</td></tr>') + '</tbody></table></div></div>';
   }
 
-  // Filter Roster
+  // Filter Roster by search and cluster
   var q = normSearch(MRT_STATE.search.trim());
   var filteredRoster = muniVols.filter(function (r) {
+    if (MRT_STATE.clusterFilter !== 'all') {
+      var role = classifyMrestRole(r.position, r.committee);
+      if (role !== MRT_STATE.clusterFilter) return false;
+    }
     if (q && normSearch(r.name + ' ' + r.position + ' ' + (r.committee || '')).indexOf(q) === -1) return false;
     return true;
   });
@@ -1258,17 +2481,24 @@ function renderMrest() {
     name: function (r) { return r.name; },
     sex: function (r) { return r.sex; },
     position: function (r) { return r.position || ''; },
+    cluster: function (r) { return classifyMrestRole(r.position, r.committee); },
     committee: function (r) { return r.committee || ''; }
   };
   var sortedRoster = tblSort(filteredRoster, curCol, curDir, mExt);
 
   var rosterRows = sortedRoster.map(function (r) {
+    var role = classifyMrestRole(r.position, r.committee);
+    var clusterObj = MREST_CLUSTER_MAP[role] || null;
+    var clusterName = clusterObj ? clusterObj.short : (role === 'LCE' ? 'Municipal Mayor' : (role === 'LEAD' ? 'Operational Lead' : (role === 'SB_DILG' ? 'SB & DILG' : 'Other Member')));
     var rowTag = (eoTag && eoTag.rows && eoTag.rows[r.key]) || null;
-    var tagPill = !rowTag ? '<span class="tiny">Not verified</span>' : (rowTag.s === 'match' ? '<span class="pill good">✓ Matches EO</span>' : '<span class="pill warn">⚠ Differs from EO</span>');
+    var tagPill = !rowTag ? '<span class="tiny muted">Not verified</span>' : (rowTag.s === 'match' ? '<span class="pill good">✓ Matches EO</span>' : '<span class="pill warn">⚠ Differs from EO</span>');
+    var isPB = role === 'CAPTAINS';
+
     return '<tr>' +
-      '<td>' + nameCell(r) + '</td>' +
+      '<td>' + nameCell(r) + (isPB ? ' <span class="mrest-pb-badge">Punong Barangay</span>' : '') + '</td>' +
       '<td>' + esc(r.sex || '—') + '</td>' +
       '<td><strong>' + esc(r.position || 'Member') + '</strong></td>' +
+      '<td><span class="pill idle tiny">' + esc(clusterName) + '</span></td>' +
       '<td><span class="tiny">' + esc(r.committee || 'MResT') + '</span></td>' +
       '<td>' + tagPill + '</td>' +
     '</tr>';
@@ -1278,22 +2508,62 @@ function renderMrest() {
     return sortTh({ col: col, curCol: curCol, dir: curDir, label: label, num: num, act: 'mrt-sort' });
   };
 
+  // Municipalities dropdown (for RPMO)
+  var mOpts = '<option value="">Select Municipality</option>';
+  munis.forEach(function (m) {
+    var v = m.province + '|' + m.municipality;
+    mOpts += '<option value="' + attr(v) + '"' + (activeMuni === v ? ' selected' : '') + '>' + esc(m.municipality) + ' (' + esc(m.province) + ' · ' + m.barangays + ' brgys)</option>';
+  });
+
+  var scopeBanner = isMuni
+    ? '<div class="static-val">' + icon('map-pin') + ' <span>Municipality: <strong>' + esc(muniName) + '</strong> (' + esc(provName) + ') · <strong>' + n(totalBarangays) + ' Barangays</strong></span> <span class="role-badge field">PEA / MDM Scope</span></div>'
+    : '<label class="field" style="margin:0"><span>Active Municipality</span><select data-act="mrt-muni">' + mOpts + '</select></label>';
+
+  // Build Org Chart section if enabled
+  var orgChartHtml = '';
+  if (MRT_STATE.showOrgChart) {
+    orgChartHtml = buildMrestOrgChartHtml(muniName, provName, muniVols, totalBarangays, eoTag, isVerified, eoCount);
+  }
+
+  // Quick Cluster Filter Buttons
+  var clusterPills = [
+    ['all', 'All Members', muniVols.length],
+    ['CAPTAINS', 'Punong Barangays', captainsVols.length],
+    ['LEAD', 'MPDC & MDRRMO Leads', leads.length],
+    ['INFRA', 'Engineering (MEO)', muniVols.filter(function (v) { return classifyMrestRole(v.position, v.committee) === 'INFRA'; }).length],
+    ['SOCIAL', 'Social & Health', muniVols.filter(function (v) { return classifyMrestRole(v.position, v.committee) === 'SOCIAL'; }).length],
+    ['CLIMATE', 'Climate & Agri', muniVols.filter(function (v) { return classifyMrestRole(v.position, v.committee) === 'CLIMATE'; }).length],
+    ['FINANCE', 'Finance & Budget', muniVols.filter(function (v) { return classifyMrestRole(v.position, v.committee) === 'FINANCE'; }).length],
+    ['CSO', 'CSOs & NGOs', muniVols.filter(function (v) { return classifyMrestRole(v.position, v.committee) === 'CSO'; }).length],
+    ['SB_DILG', 'SB & DILG', muniVols.filter(function (v) { return classifyMrestRole(v.position, v.committee) === 'SB_DILG'; }).length]
+  ].map(function (c) {
+    var isActive = MRT_STATE.clusterFilter === c[0];
+    return '<button type="button" class="filter-card' + (isActive ? ' active' : '') + '" data-act="mrt-cluster" data-v="' + c[0] + '">' +
+      '<span class="fc-label">' + esc(c[1]) + '</span>' +
+      '<span class="fc-count">' + n(c[2]) + '</span>' +
+    '</button>';
+  }).join('');
+
   body.innerHTML =
     '<div class="card">' +
       '<div class="card-head">' +
         '<div>' +
           '<h2>Municipal Resilience Team (MResT)</h2>' +
-          '<div class="muted">Tracks the multi-sectoral LGU team organized under the Mayor\'s Executive Order for <strong>' + esc(muniName) + ' (' + esc(provName) + ')</strong>.</div>' +
+          '<div class="muted">Tracks the multi-sectoral LGU and community co-governance team organized under the Mayor\'s Executive Order for <strong>' + esc(muniName) + ' (' + esc(provName) + ')</strong> per SM1 Section 3.1.</div>' +
         '</div>' +
-        '<div class="row-actions" style="margin:0"><button class="btn ghost btn-sm" data-act="mrt-export">' + icon('download') + ' <span>Export MResT Roster CSV</span></button></div>' +
+        '<div class="row-actions" style="margin:0">' +
+          '<button type="button" class="btn ' + (MRT_STATE.showOrgChart ? 'primary' : 'ghost') + ' btn-sm" data-act="mrt-toggle-org">' + icon('layers') + ' <span>' + (MRT_STATE.showOrgChart ? 'Hide Org Chart' : 'Show Org Chart') + '</span></button>' +
+          '<button class="btn ghost btn-sm" data-act="mrt-export">' + icon('download') + ' <span>Export MResT Roster CSV</span></button>' +
+        '</div>' +
       '</div>' +
       '<div class="mrest-hero">' +
         '<div class="mrest-hero-info">' +
           '<h3>' + esc(muniName) + ' Municipal Resilience Team</h3>' +
-          '<div class="muted">Province of ' + esc(provName) + ' · Kalahi-CIDSS PCRP LGU Operations</div>' +
+          '<div class="muted">Province of ' + esc(provName) + ' · ' + n(totalBarangays) + ' Participating Barangays · Kalahi-CIDSS PCRP LGU Operations</div>' +
         '</div>' +
         '<div class="mrest-hero-badges">' +
-          (isEncoded ? '<span class="pill good" style="font-size:13px;padding:4px 10px">✓ ' + n(muniVols.length) + ' Members Encoded</span>' : '<span class="pill bad">○ Not Encoded in KCIS</span>') +
+          (isEncoded ? '<span class="pill good" style="font-size:13px;padding:4px 10px">✓ ' + n(muniVols.length) + ' Members Encoded</span>' : '<span class="pill bad" style="font-size:13px;padding:4px 10px">○ Not Encoded in KCIS</span>') +
+          (isQuorumMet ? '<span class="pill good" style="font-size:13px;padding:4px 10px">✓ ' + communityPct + '% Community Quota</span>' : '<span class="pill warn" style="font-size:13px;padding:4px 10px">⚠ ' + communityPct + '% Community Voice (&lt;50%)</span>') +
           (isVerified ? '<span class="pill good" style="font-size:13px;padding:4px 10px">✓ EO Verified (' + (eoCount !== null ? eoCount + ' on paper' : 'verified') + ')</span>' : '<span class="pill idle" style="font-size:13px;padding:4px 10px">Pending EO Verification</span>') +
         '</div>' +
       '</div>' +
@@ -1303,25 +2573,45 @@ function renderMrest() {
           '<div class="kpi-value">' + (isEncoded ? '✓ Encoded' : '○ Pending') + '</div>' +
           '<div class="kpi-sub">' + (isEncoded ? n(muniVols.length) + ' members listed in KCIS' : 'No volunteer records with MResT committee') + '</div>' +
         '</div>' +
+        '<div class="kpi ' + (isQuorumMet ? 'accent-good' : 'accent-warn') + '">' +
+          '<div class="kpi-label">Community Representation Quota</div>' +
+          '<div class="kpi-value">' + communityPct + '%</div>' +
+          '<div class="kpi-sub">&ge;50% quota per SM1 Para 13 (' + n(communityVols.length) + ' CVs)</div>' +
+        '</div>' +
+        '<div class="kpi ' + (captainsVols.length >= totalBarangays && totalBarangays > 0 ? 'accent-good' : (captainsVols.length > 0 ? 'accent-warn' : 'accent-bad')) + '">' +
+          '<div class="kpi-label">Barangay Captains Coverage</div>' +
+          '<div class="kpi-value">' + n(captainsVols.length) + ' <span class="tiny">of ' + n(totalBarangays) + '</span></div>' +
+          '<div class="kpi-sub">Punong Barangays encoded in KCIS</div>' +
+        '</div>' +
+        '<div class="kpi ' + (chair && leads.length ? 'accent-good' : 'accent-warn') + '">' +
+          '<div class="kpi-label">Executive Steering</div>' +
+          '<div class="kpi-value">' + (chair ? 'Mayor Tagged' : 'No Mayor') + '</div>' +
+          '<div class="kpi-sub">' + (leads.length ? n(leads.length) + ' Co-Chair / Lead(s)' : 'No MPDC/MDRRMO lead') + '</div>' +
+        '</div>' +
         '<div class="kpi ' + (isVerified ? 'accent-good' : 'accent-idle') + '">' +
           '<div class="kpi-label">Executive Order (EO) Precision</div>' +
           '<div class="kpi-value">' + (isVerified ? 'Verified' : 'Unchecked') + '</div>' +
           '<div class="kpi-sub">' + (isVerified ? 'Checked against signed Mayor\'s Executive Order' : 'Tag on the Verify page (MResT form)') + '</div>' +
         '</div>' +
-        '<div class="kpi accent-good"><div class="kpi-label">Gender Balance</div><div class="kpi-value">' + pctText(pctOf(femaleCount, muniVols.length)) + '</div><div class="kpi-sub">' + n(femaleCount) + ' female members</div></div>' +
-        '<div class="kpi"><div class="kpi-label">Offices Represented</div><div class="kpi-value">' + Object.keys(offices).length + '</div><div class="kpi-sub">LGU departments &amp; stakeholders</div></div>' +
       '</div>' +
-      '<div class="card-head" style="margin-top:20px;margin-bottom:8px">' +
-        '<div><h3>MResT Member Roster</h3><div class="tiny">Officers and department representatives designated in the Executive Order</div></div>' +
-        '<div class="filters" style="margin:0"><label class="field" style="min-width:240px"><span>Search Member / Office</span><input type="search" id="mrt-search" value="' + attr(MRT_STATE.search) + '" placeholder="Search…"></label></div>' +
+      orgChartHtml +
+      '<div class="card-head" style="margin-top:20px;margin-bottom:6px">' +
+        '<div><h3 style="margin:0;font-size:13px;text-transform:uppercase;letter-spacing:0.04em;color:var(--text-muted)">Filter by Functional Cluster</h3></div>' +
       '</div>' +
-      '<div class="table-wrap"><table class="grid"><thead><tr>' +
-        th('name', 'Name') +
+      '<div class="filter-cards" style="margin-bottom:14px">' + clusterPills + '</div>' +
+      '<div class="toolbar-row"><div class="filters" style="margin:0">' +
+        scopeBanner +
+        '<label class="field" style="min-width:260px;flex:1"><span>Search Member / Office / Committee</span><input type="search" id="mrt-search" value="' + attr(MRT_STATE.search) + '" placeholder="Search…"></label>' +
+        (MRT_STATE.clusterFilter !== 'all' || MRT_STATE.search ? '<button type="button" class="btn ghost btn-sm" data-act="mrt-reset">' + icon('rotate-ccw') + ' <span>Reset Filter</span></button>' : '') +
+      '</div></div>' +
+      '<div class="table-wrap" style="margin-top:12px"><table class="grid"><thead><tr>' +
+        th('name', 'Name (' + sortedRoster.length + ')') +
         th('sex', 'Sex') +
         th('position', 'Position / Office in LGU') +
-        th('committee', 'Committee') +
+        th('cluster', 'Functional Cluster') +
+        th('committee', 'Committee Tag') +
         '<th>EO Verification</th>' +
-      '</tr></thead><tbody>' + (rosterRows || '<tr><td colspan="5" class="empty-state">No MResT members encoded for ' + esc(muniName) + '. Volunteer export Seq 1 committee rows for MResT are tracked here.</td></tr>') + '</tbody></table></div>' +
+      '</tr></thead><tbody>' + (rosterRows || '<tr><td colspan="6" class="empty-state">No MResT members match this filter for ' + esc(muniName) + '.</td></tr>') + '</tbody></table></div>' +
       matrixHtml +
     '</div>';
 
@@ -1342,7 +2632,8 @@ function renderPeople() {
       '<button type="button" class="kpi clickable" data-act="go" data-v="attendees"><div class="kpi-label">Attendees</div><div class="kpi-value">' + icon('calendar-check') + '</div><div class="kpi-sub">Open Attendees Module ›</div></button>' +
       '<button type="button" class="kpi clickable" data-act="go" data-v="households"><div class="kpi-label">Household Participation</div><div class="kpi-value">' + icon('home') + '</div><div class="kpi-sub">Open K2 Quorum &amp; Roster ›</div></button>' +
       '<button type="button" class="kpi clickable" data-act="go" data-v="volunteers"><div class="kpi-label">Community Volunteers</div><div class="kpi-value">' + icon('users') + '</div><div class="kpi-sub">Open Volunteers Module ›</div></button>' +
-      '<button type="button" class="kpi clickable" data-act="go" data-v="brest"><div class="kpi-label">BResT</div><div class="kpi-value">' + icon('shield') + '</div><div class="kpi-sub">Open BResT Module ›</div></button>' +
+      '<button type="button" class="kpi clickable" data-act="go" data-v="brest"><div class="kpi-label">BResT</div><div class="kpi-value">' + icon('shield') + '</div><div class="kpi-sub">Open BResT (Stage 1) ›</div></button>' +
+      '<button type="button" class="kpi clickable" data-act="go" data-v="cspmc"><div class="kpi-label">CSPMC &amp; Sub-Committees</div><div class="kpi-value">' + icon('layers') + '</div><div class="kpi-sub">Open Stage 2 Committees ›</div></button>' +
       '<button type="button" class="kpi clickable" data-act="go" data-v="mrest"><div class="kpi-label">MResT</div><div class="kpi-value">' + icon('award') + '</div><div class="kpi-sub">Open MResT Module ›</div></button>' +
     '</div>' +
   '</div>';
@@ -1369,9 +2660,26 @@ function committeeCards(bkey) {
         : '<div class="tiny">No volunteer in KCIS for this body yet. This does not mean it was not organized.</div>') +
     '</div>';
   };
-  var others = list.filter(function (v) { return v.kind !== 'BREST' && v.kind !== 'SFMSC'; });
+  var s2Vols = list.filter(function (v) { return v.isStage2; });
+  var s2Card = '';
+  if (s2Vols.length) {
+    var s2Ev = evaluateCspmcBarangay(b, s2Vols);
+    var s2Cls = s2Ev.status === 'Encoded' ? 'good' : (s2Ev.status === 'Needs fixing' ? 'warn' : 'bad');
+    var s2Accent = s2Cls === 'good' ? 'accent-good' : (s2Cls === 'warn' ? 'accent-warn' : 'accent-bad');
+    var s2Badges = s2Ev.activeBodies.map(function (body) {
+      return '<span class="pill idle tiny" style="margin:2px">' + esc(body.short) + ' (' + s2Ev.bodies[body.id].length + ')</span>';
+    }).join(' ');
+    s2Card = '<div class="kpi ' + s2Accent + '"><div class="card-head" style="margin:0 0 6px"><strong>Stage 2: CSPMC &amp; Sub-Committees</strong><span class="pill ' + s2Cls + '">' + esc(s2Ev.status) + '</span></div>' +
+      (s2Ev.reasons.length ? '<div class="tiny" style="color:var(--warn-text);font-weight:700;margin-bottom:4px">⚠ ' + esc(s2Ev.reasons.join(' · ')) + '</div>' : '') +
+      '<div class="tiny">' + n(s2Vols.length) + ' volunteers in ' + s2Ev.activeBodies.length + ' sub-committees · women: <strong>' + s2Ev.womenPct + '%</strong>' +
+      (s2Ev.cmscBrestAlum ? ' · <strong>' + s2Ev.cmscBrestAlum + ' from BResT</strong>' : '') + '</div>' +
+      '<div style="margin:8px 0 6px">' + s2Badges + '</div>' +
+      '<button type="button" class="btn ghost btn-xs" data-act="open-cspmc-detail" data-brgy="' + attr(bkey) + '">' + icon('layers') + ' <span>View All 8 Sub-Committees ›</span></button>' +
+      '</div>';
+  }
+  var others = list.filter(function (v) { return v.kind !== 'BREST' && v.kind !== 'SFMSC' && !v.isStage2; });
   return '<h3 style="margin-top:6px">Committees of ' + esc(parts[2]) + '</h3><div class="grid-kpi">' +
-    card('BREST', 'BResT', 'Barangay Resilience Team (BResT)') + card('SFMSC', 'SFMSC', 'Stakeholder and Feedback Mechanism Sub-Committee (SFMSC)') + '</div>' +
+    card('BREST', 'BResT', 'Barangay Resilience Team (BResT)') + card('SFMSC', 'SFMSC', 'Stakeholder and Feedback Mechanism Sub-Committee (SFMSC)') + s2Card + '</div>' +
     (others.length ? '<p class="tiny">' + n(others.length) + ' more volunteer row' + (others.length === 1 ? '' : 's') + ' in this barangay with no committee, or a committee of another activity (listed below).</p>' : '');
 }
 
@@ -1525,6 +2833,73 @@ function exportBrestCsv() {
   downloadCsv('PCRP_BResT_directory_' + (activeMuni ? activeMuni.replace(/[^A-Za-z0-9]+/g, '_') : 'region') + '_' + stamp() + '.csv', csvOf([head].concat(rows)));
 }
 
+function exportCspmcTeamsCsv() {
+  var P = people(), isMuni = isMunicipalUser(), key = homeKey();
+  var activeMuni = isMuni ? key : (CSPMC_STATE.muni || key || '');
+  var brgys = (SNAP.barangayRows || []).filter(function (b) { return !activeMuni || b.province + '|' + b.municipality === activeMuni; });
+  var s2Vols = P.volunteers.filter(function (v) {
+    if (!v.isStage2) return false;
+    return !activeMuni || (v.province + '|' + v.municipality === activeMuni);
+  });
+  var head = ['Barangay', 'Municipality', 'Province', 'CSPMC Lead', 'CMSC Members', 'CMSC Lead', 'CMSC Quorum Status', 'CMSC BResT Alums', 'Active Sub-Committees', 'Total Members', 'Women Count', 'Women Pct', 'Marginalized Count', 'Marginalized Pct', 'Compliance Status', 'Validation Issues'];
+  var rows = brgys.map(function (b) {
+    var bv = s2Vols.filter(function (v) { return v.barangay === b.barangay && v.municipality === b.municipality; });
+    var ev = evaluateCspmcBarangay(b, bv);
+    var cspmcLead = (ev.bodies.CSPMC || []).filter(function (v) { return v.chair; })[0] || ev.vols.filter(function (v) { return v.chair; })[0] || null;
+    var cmscLead = (ev.bodies.CMSC || []).filter(function (v) { return v.chair; })[0] || null;
+    var activeBodiesStr = ev.activeBodies.map(function (body) { return body.short + ' (' + ev.bodies[body.id].length + ')'; }).join('; ');
+    return [
+      b.barangay,
+      b.municipality,
+      b.province,
+      cspmcLead ? cspmcLead.name : 'No lead',
+      ev.cmscCount,
+      cmscLead ? cmscLead.name : 'No lead',
+      ev.cmscCount >= 3 ? 'Quorum Met' : 'Lacking (<3)',
+      ev.cmscBrestAlum,
+      activeBodiesStr || 'None',
+      ev.vols.length,
+      ev.women,
+      ev.womenPct + '%',
+      ev.marg,
+      ev.margPct + '%',
+      ev.status,
+      ev.reasons.join('; ')
+    ];
+  });
+  downloadCsv('PCRP_Stage2_CSPMC_teams_' + (activeMuni ? activeMuni.replace(/[^A-Za-z0-9]+/g, '_') : 'region') + '_' + stamp() + '.csv', csvOf([head].concat(rows)));
+}
+
+function exportCspmcVolunteersCsv() {
+  var P = people(), isMuni = isMunicipalUser(), key = homeKey();
+  var activeMuni = isMuni ? key : (CSPMC_STATE.muni || key || '');
+  var list = P.volunteers.filter(function (v) {
+    if (!v.isStage2) return false;
+    return !activeMuni || (v.province + '|' + v.municipality === activeMuni);
+  });
+  var head = ['Barangay', 'Municipality', 'Province', 'Volunteer Name', 'Sub-Committee Code', 'Sub-Committee Name', 'Position', 'Is Chair', 'Sex', 'IP', 'PWD', 'From BResT Alum', 'Term Start', 'Cross-check Flags'];
+  var rows = list.map(function (v) {
+    var bodyObj = STAGE2_BODY_MAP[v.stage2Body] || null;
+    return [
+      v.barangay,
+      v.municipality,
+      v.province,
+      v.name,
+      v.stage2Body,
+      bodyObj ? bodyObj.name : v.committee,
+      v.position,
+      v.chair ? 'Yes' : 'No',
+      v.sex,
+      v.ip ? 'Yes' : 'No',
+      v.pwd ? 'Yes' : 'No',
+      v.wasBrest ? 'Yes' : 'No',
+      v.start,
+      (v.flags || []).join('; ')
+    ];
+  });
+  downloadCsv('PCRP_Stage2_CSPMC_volunteers_' + (activeMuni ? activeMuni.replace(/[^A-Za-z0-9]+/g, '_') : 'region') + '_' + stamp() + '.csv', csvOf([head].concat(rows)));
+}
+
 function exportMrestCsv() {
   var P = people(), isMuni = isMunicipalUser(), key = homeKey();
   var activeMuni = isMuni ? key : (MRT_STATE.muni || key || '');
@@ -1539,7 +2914,7 @@ function exportMrestCsv() {
   downloadCsv('PCRP_MResT_roster_' + (activeMuni ? activeMuni.replace(/[^A-Za-z0-9]+/g, '_') : 'region') + '_' + stamp() + '.csv', csvOf([head].concat(rows)));
 }
 
-// Global click & change delegates for the 5 modules
+// Global click & change delegates for the 6 modules
 document.addEventListener('click', function (ev) {
   var t = ev.target.closest('[data-act]');
   if (!t || t.tagName === 'SELECT') return;
@@ -1616,9 +2991,52 @@ document.addEventListener('click', function (ev) {
   else if (act === 'brt-teams-export') exportBrestTeamsCsv();
   else if (act === 'brt-export') exportBrestCsv();
 
+  // CSPMC (Stage 2)
+  else if (act === 'cspmc-status') { CSPMC_STATE.status = v; renderCspmc(); }
+  else if (act === 'cspmc-sub') { CSPMC_STATE.subFilter = v; renderCspmc(); }
+  else if (act === 'cspmc-toggle-org') { CSPMC_STATE.showOrgChart = !CSPMC_STATE.showOrgChart; renderCspmc(); }
+  else if (act === 'cspmc-modal-view') {
+    CSPMC_STATE.modalView = v || 'org';
+    if (CSPMC_STATE.modalBkey) openCspmcDetail(CSPMC_STATE.modalBkey);
+  }
+  else if (act === 'cspmc-reset') { CSPMC_STATE.status = 'all'; CSPMC_STATE.subFilter = 'all'; CSPMC_STATE.brgy = ''; CSPMC_STATE.search = ''; renderCspmc(); }
+  else if (act === 'cspmc-team-sort') {
+    var cCol = t.getAttribute('data-col');
+    if (CSPMC_STATE.teamSortCol === cCol) CSPMC_STATE.teamSortDir = CSPMC_STATE.teamSortDir === 'asc' ? 'desc' : 'asc';
+    else { CSPMC_STATE.teamSortCol = cCol; CSPMC_STATE.teamSortDir = (cCol === 'brgy' || cCol === 'muni') ? 'asc' : 'desc'; }
+    renderCspmc();
+  }
+  else if (act === 'cspmc-vol-sort') {
+    var vCol = t.getAttribute('data-col');
+    if (CSPMC_STATE.volSortCol === vCol) CSPMC_STATE.volSortDir = CSPMC_STATE.volSortDir === 'asc' ? 'desc' : 'asc';
+    else { CSPMC_STATE.volSortCol = vCol; CSPMC_STATE.volSortDir = 'asc'; }
+    renderCspmc();
+  }
+  else if (act === 'cspmc-more') { CSPMC_STATE.limit += 100; renderCspmc(); }
+  else if (act === 'open-cspmc-detail') {
+    var bkey = t.getAttribute('data-brgy') || (t.closest('[data-brgy]') && t.closest('[data-brgy]').getAttribute('data-brgy'));
+    if (bkey) openCspmcDetail(bkey);
+  }
+  else if (act === 'open-cspmc-issues') {
+    var bkey = t.getAttribute('data-brgy') || (t.closest('[data-brgy]') && t.closest('[data-brgy]').getAttribute('data-brgy'));
+    var b = (SNAP.barangayRows || []).filter(function (x) { return (x.province + '|' + x.municipality + '|' + x.barangay) === bkey; })[0];
+    var P = people();
+    var bv = P.volunteers.filter(function (v) { return v.isStage2 && (v.province + '|' + v.municipality + '|' + v.barangay === bkey); });
+    var evObj = evaluateCspmcBarangay(b, bv);
+    var issues = evObj.reasons;
+    var brgyName = b ? b.barangay : 'Barangay';
+    var muniLoc = b ? (b.municipality + ', ' + b.province) : '';
+    openLackingModal(bkey, issues, brgyName + ' · CSPMC & Sub-Committees Issues', muniLoc + ' · ' + issues.length + ' validation issue' + (issues.length === 1 ? '' : 's'));
+  }
+  else if (act === 'cspmc-teams-export') exportCspmcTeamsCsv();
+  else if (act === 'cspmc-vols-export') exportCspmcVolunteersCsv();
+
   // MResT
   else if (act === 'mrt-matrix-filter') { MRT_STATE.matrixFilter = v; renderMrest(); }
   else if (act === 'mrt-pick-muni') { MRT_STATE.muni = v; renderMrest(); }
+  else if (act === 'mrt-toggle-org') { MRT_STATE.showOrgChart = !MRT_STATE.showOrgChart; renderMrest(); }
+  else if (act === 'mrt-cluster') { MRT_STATE.clusterFilter = v; renderMrest(); }
+  else if (act === 'mrt-reset') { MRT_STATE.clusterFilter = 'all'; MRT_STATE.search = ''; renderMrest(); }
   else if (act === 'mrt-sort') {
     var mCol = t.getAttribute('data-col');
     if (MRT_STATE.sortCol === mCol) MRT_STATE.sortDir = MRT_STATE.sortDir === 'asc' ? 'desc' : 'asc';
@@ -1637,4 +3055,7 @@ document.addEventListener('change', function (ev) {
   else if (act === 'vol-muni') { VOL_STATE.muni = t.value; VOL_STATE.brgy = ''; renderVolunteers(); }
   else if (act === 'vol-brgy') { VOL_STATE.brgy = t.value; renderVolunteers(); }
   else if (act === 'brt-brgy') { BRT_STATE.brgy = t.value; renderBrest(); }
+  else if (act === 'cspmc-muni') { CSPMC_STATE.muni = t.value; CSPMC_STATE.brgy = ''; renderCspmc(); }
+  else if (act === 'cspmc-brgy') { CSPMC_STATE.brgy = t.value; renderCspmc(); }
+  else if (act === 'mrt-muni') { MRT_STATE.muni = t.value; renderMrest(); }
 });
