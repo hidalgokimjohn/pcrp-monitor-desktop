@@ -433,8 +433,12 @@ function renderVerify(keepScroll) {
   var bySel = '<label class="field"><span>Checked by</span><input id="vf-by" data-act="vf-by" placeholder="Name and position, e.g. J. Cruz (PEA)" value="' + attr(vfVerifier()) + '" style="min-width:220px"></label>';
   var head = '<div class="card"><div class="card-head"><div><h2>Verify against the forms</h2>' +
     '<div class="muted">The Precision part of the DQA (SM7 Table 8): check what is encoded in KCIS against ' + esc(F.paper) + '.</div></div>' +
-    '<div class="row-actions" style="margin:0"><button class="btn ghost btn-sm" data-act="vf-sample">' + icon('crosshair') + ' <span>Suggest a sample</span></button>' +
-    '<button class="btn ghost btn-sm" data-act="vf-csv">' + icon('download') + ' <span>CSV of the results</span></button></div></div>' +
+    '<div class="row-actions" style="margin:0">' +
+      '<button class="btn ghost btn-sm" data-act="vf-sample">' + icon('crosshair') + ' <span>Suggest sample</span></button>' +
+      '<button class="btn ghost btn-sm" data-act="vf-csv">' + icon('download') + ' <span>CSV</span></button>' +
+      '<button class="btn ghost btn-sm" data-act="vf-export-delta" title="Export small 15KB verification packet (.pcrpd) for RPMO">' + icon('upload-cloud') + ' <span>Export Delta (.pcrpd)</span></button>' +
+      '<button class="btn ghost btn-sm" data-act="vf-import-delta" title="Merge municipal .pcrpd delta packets into regional dataset">' + icon('git-merge') + ' <span>Merge Deltas</span></button>' +
+    '</div></div>' +
     formCards +
     '<div class="toolbar-row"><div class="filters" style="margin:0">' + formSel + muniSel + bySel + '</div></div>';
 
@@ -760,9 +764,102 @@ document.addEventListener('click', function (ev) {
   else if (act === 'vf-rest') vfMarkRest(el.getAttribute('data-v'));
   else if (act === 'vf-sample') vfSuggestSample();
   else if (act === 'vf-csv') vfCsv();
+  else if (act === 'vf-export-delta') vfExportDelta();
+  else if (act === 'vf-import-delta') vfPromptImportDelta();
   else if (act === 'save-file') savedToFile();
   else if (act === 'saved-forget') savedForget();
   else if (act === 'open-verify') openVerify();
+});
+
+function vfExportDelta() {
+  if (typeof PCRP_DELTA === 'undefined') { toast('Delta module not loaded.'); return; }
+  var p = prefs();
+  var h = home() || {};
+  var recs = (VERIFY.tags && VERIFY.tags.records) || {};
+  if (!Object.keys(recs).length) {
+    toast('No verification tags to export yet. Verify some rows first.');
+    return;
+  }
+  var packet = PCRP_DELTA.createDeltaPacket({
+    authorName: p.verifier || (typeof homeLabel === 'function' ? homeLabel() : 'Evaluator'),
+    role: typeof userRole === 'function' ? userRole() : 'pea_mdm',
+    province: h.province || '',
+    municipality: h.municipality || '',
+    pullDate: typeof pullDate === 'function' ? pullDate() : '',
+    verifyRecords: recs
+  });
+  PCRP_DELTA.downloadDelta(packet);
+  toast('Verification delta packet (.pcrpd) exported.');
+}
+
+function vfPromptImportDelta() {
+  var inp = document.createElement('input');
+  inp.type = 'file';
+  inp.accept = '.pcrpd,.json';
+  inp.onchange = function () {
+    var f = inp.files && inp.files[0];
+    if (!f) return;
+    f.text().then(function (text) {
+      var delta = PCRP_DELTA.parseDelta(text);
+      openDeltaMergeModal(delta);
+    }).catch(function (e) {
+      toast('Could not open delta packet: ' + e.message);
+    });
+  };
+  inp.click();
+}
+
+var _pendingDelta = null;
+function openDeltaMergeModal(delta) {
+  _pendingDelta = delta;
+  var dlg = $('delta-dialog');
+  var body = $('delta-dialog-body');
+  if (!dlg || !body) return;
+
+  var auth = delta.author || {};
+  var stats = delta.stats || {};
+  var recCount = Object.keys(delta.records || {}).length;
+
+  body.innerHTML =
+    '<div class="delta-summary-box">' +
+      '<div class="delta-stat-row"><strong>Submitted By:</strong> <span>' + esc(auth.name || 'Anonymous') + ' (' + esc(auth.role || 'Evaluator') + ')</span></div>' +
+      '<div class="delta-stat-row"><strong>Scope / LGU:</strong> <span>' + esc(auth.municipality ? (auth.municipality + ', ' + auth.province) : 'Regional Master') + '</span></div>' +
+      '<div class="delta-stat-row"><strong>Created At:</strong> <span>' + esc(new Date(delta.createdAt).toLocaleString()) + '</span></div>' +
+      '<div class="delta-stat-row"><strong>KCIS Pull Date:</strong> <span>' + esc(delta.pullDate || 'N/A') + '</span></div>' +
+      '<hr style="border:none;border-top:1px dashed var(--border-subtle);margin:8px 0">' +
+      '<div class="delta-stat-row"><strong>Total Audit Tags:</strong> <span class="pill good">' + n(recCount) + ' tags</span></div>' +
+      '<div class="delta-stat-row"><span class="tiny muted">Match: ' + n(stats.match || 0) + ' · Differs: ' + n(stats.differ || 0) + ' · Not on Sheet: ' + n(stats.notOnSheet || 0) + '</span></div>' +
+    '</div>' +
+    '<div class="filters" style="margin-top:12px">' +
+      '<label class="field" style="width:100%"><span>Merge Conflict Strategy</span>' +
+        '<select id="delta-strategy-select">' +
+          '<option value="newer" selected>Keep Newer (compare timestamp per tag)</option>' +
+          '<option value="incoming">Overwrite Existing with Incoming Delta</option>' +
+          '<option value="existing">Keep Existing (only add new tags)</option>' +
+        '</select>' +
+      '</label>' +
+    '</div>';
+
+  var btn = $('btn-confirm-delta-merge');
+  if (btn) btn.disabled = false;
+  openModalAnimated(dlg);
+}
+
+document.addEventListener('click', function (ev) {
+  if (ev.target && (ev.target.id === 'btn-confirm-delta-merge' || ev.target.closest('#btn-confirm-delta-merge'))) {
+    if (!_pendingDelta) return;
+    var strat = $('delta-strategy-select') ? $('delta-strategy-select').value : 'newer';
+    var exist = (VERIFY.tags && VERIFY.tags.records) || {};
+    var res = PCRP_DELTA.mergeDelta(exist, _pendingDelta, { strategy: strat });
+    VERIFY.tags.records = res.mergedRecords;
+    savedPutTags();
+    if (typeof updateTabBadges === 'function') updateTabBadges();
+    if (typeof renderVerify === 'function') renderVerify();
+    var dlg = $('delta-dialog');
+    if (dlg) dlg.close();
+    toast('Merged ' + n(res.stats.added) + ' new and updated ' + n(res.stats.updated) + ' tags from ' + esc(_pendingDelta.author.municipality || 'delta') + '.');
+    _pendingDelta = null;
+  }
 });
 document.addEventListener('keydown', function (ev) {
   if (ev.key === 'Enter') {

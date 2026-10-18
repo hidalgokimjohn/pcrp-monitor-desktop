@@ -15,8 +15,10 @@ Thumbs.db
 # saved data files from the app hold names and birthdates
 *.pcrp
 
-# local knowledge-graph output
-graphify-out/
+# local knowledge-graph output (root)
+/graphify-out/
+manuals/graphify-out/cache/
+manuals/graphify-out/.*
 
 # media binaries
 *.mp4

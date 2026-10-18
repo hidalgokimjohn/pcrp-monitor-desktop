@@ -38,8 +38,22 @@ function savedTx(mode, fn) {
     });
   });
 }
-function savedGet(key) { return savedTx('readonly', function (s) { return s.get(key); }); }
-function savedPut(key, val) { return savedTx('readwrite', function (s) { s.put(val, key); }); }
+function savedGet(key) {
+  return savedTx('readonly', function (s) { return s.get(key); }).then(function (res) {
+    if (res && typeof PCRP_CRYPTO !== 'undefined' && typeof PCRP_CRYPTO.decrypt === 'function') {
+      return PCRP_CRYPTO.decrypt(res);
+    }
+    return res;
+  });
+}
+function savedPut(key, val) {
+  if (typeof PCRP_CRYPTO !== 'undefined' && typeof PCRP_CRYPTO.encrypt === 'function') {
+    return PCRP_CRYPTO.encrypt(val).then(function (encVal) {
+      return savedTx('readwrite', function (s) { s.put(encVal, key); });
+    });
+  }
+  return savedTx('readwrite', function (s) { s.put(val, key); });
+}
 function savedClear() { return savedTx('readwrite', function (s) { s.clear(); }); }
 
 /** The pull date of the data on screen: the Settings date, else today. */
@@ -187,8 +201,18 @@ function savedToFile() {
   }).catch(function (e) { setProgress(''); toast(e.message); });
 }
 
-/** A .pcrp file dropped in: its pull, its earlier findings and its tags replace what is on screen. */
+/** A .pcrp or .pcrpd file dropped in */
 function savedFromFile(file) {
+  if (file.name.toLowerCase().endsWith('.pcrpd')) {
+    return file.text().then(function (text) {
+      if (typeof openDeltaMergeModal === 'function') {
+        var delta = PCRP_DELTA.parseDelta(text);
+        openDeltaMergeModal(delta);
+      } else {
+        toast('Verification delta packet received.');
+      }
+    });
+  }
   return file.arrayBuffer().then(gunzipBuf).then(function (text) {
     var d = JSON.parse(text);
     if (!d || d.format !== SAVE_FORMAT || !d.tables || !d.tables.Raw_Participants) throw new Error(file.name + ' is not a PCRP Encoding and Data Quality Assessment Tool save file.');

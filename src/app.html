@@ -20,19 +20,17 @@
       <div class="brand-sub"><span class="brand-tag">KALAHI-CIDSS PCRP</span> <span>Offline Field Console · Monitor v@@VERSION@@</span></div>
     </div>
   </div>
-  <div class="top-status" id="top-status"></div>
   <button class="home-chip" id="home-chip" type="button" title="Change active municipality scope" hidden></button>
   <div class="top-actions">
     <button class="btn ghost icon-btn" id="btn-theme" type="button" title="Toggle light / dark theme" aria-label="Toggle light or dark theme">
       <i data-lucide="sun"></i>
     </button>
-    <button class="btn ghost" id="btn-import-top" type="button"><i data-lucide="upload-cloud"></i> <span>Import files</span></button>
+    <button class="btn ghost on" id="btn-import-top" type="button" title="Settings &amp; Setup"><i data-lucide="settings"></i> <span>Settings &amp; Setup</span> <span class="tab-badge" id="badge-settings" hidden></span></button>
     <button class="btn primary" id="btn-export" type="button" disabled><i data-lucide="download"></i> <span>Export to Excel</span></button>
   </div>
 </header>
 
 <nav class="tabs" id="tabs" role="tablist" aria-label="Pages">
-  <button role="tab" data-page="import" class="on"><i data-lucide="upload-cloud"></i> <span>Import</span> <span class="tab-badge" id="badge-import" hidden></span></button>
   <button role="tab" data-page="overview" disabled><i data-lucide="layout-dashboard"></i> <span>Overview</span></button>
   <button role="tab" data-page="kpisummary" id="tab-kpisummary" disabled><i data-lucide="gauge"></i> <span>KPI Summary</span> <span class="tab-badge" id="badge-kpisummary" hidden></span></button>
   <button role="tab" data-page="munis" id="tab-munis" disabled><i data-lucide="building-2"></i> <span>Municipalities</span> <span class="tab-badge" id="badge-munis" hidden></span></button>
@@ -93,61 +91,143 @@
   <button role="tab" data-page="mrest" id="tab-mrest" disabled><i data-lucide="award"></i> <span>MResT</span> <span class="tab-badge" id="badge-mrest" hidden></span></button>
   <button role="tab" data-page="verify" disabled><i data-lucide="clipboard-check"></i> <span>Verify</span> <span class="tab-badge" id="badge-verify" hidden></span></button>
   <button role="tab" data-page="health" disabled><i data-lucide="shield-check"></i> <span>Data Health</span> <span class="tab-badge" id="badge-health" hidden></span></button>
-  <button role="tab" data-page="settings" id="tab-settings"><i data-lucide="settings"></i> <span>Settings</span> <span class="tab-badge" id="badge-settings" hidden></span></button>
 </nav>
 
 <main>
-  <section class="page on" id="page-import">
-    <div id="saved-bar"></div>
-    <div class="card step-card" id="home-card"></div>
-    <div class="card step-card" id="import-card">
-      <div class="card-head" style="margin-bottom:4px">
-        <div>
-          <h2><span class="step-no">2</span> Import KCIS exports</h2>
-          <p class="muted" style="margin:4px 0 0">Drop the files here, all at once or one by one. The app recognises each file from its column headers. Files are read on this computer only; nothing is uploaded.</p>
+  <section class="page on" id="page-settings">
+    <div class="settings-layout">
+      <!-- Sticky Sidebar Menu ("menu besides") -->
+      <aside class="settings-sidebar">
+        <div class="settings-sidebar-header">
+          <div>
+            <div class="settings-sidebar-title">Settings &amp; Setup</div>
+            <div class="tiny muted">Workspace Configuration</div>
+          </div>
+          <span class="pill-chip good tiny">100% Offline</span>
         </div>
-        <span class="pill good"><i data-lucide="lock"></i> 100% Offline &amp; Local</span>
-      </div>
-      <label class="drop" id="drop">
-        <input type="file" id="file-input" multiple accept=".xlsx,.csv,.pcrp" hidden>
-        <div class="drop-icon"><i data-lucide="upload-cloud"></i></div>
-        <span class="drop-title">Drop .xlsx, .csv, or .pcrp files here, or click to browse</span>
-        <span class="drop-sub">Participants export · Households export · Community Volunteer List · the whole monitor workbook · or a saved .pcrp session file</span>
-        <div class="drop-badges">
-          <span class="drop-badge">.xlsx Workbook</span>
-          <span class="drop-badge">.csv Export</span>
-          <span class="drop-badge">.pcrp Session</span>
+        <nav class="settings-menu" id="settings-menu" role="tablist" aria-label="Settings navigation">
+          <a class="settings-nav-item active" href="#sec-import" data-target="sec-import">
+            <span class="sni-icon"><i data-lucide="upload-cloud"></i></span>
+            <div class="sni-text">
+              <span class="sni-title">Data Import</span>
+              <span class="sni-sub">KCIS exports &amp; status</span>
+            </div>
+            <span class="tab-badge" id="sni-badge-import" hidden></span>
+          </a>
+          <a class="settings-nav-item" href="#sec-scope" data-target="sec-scope">
+            <span class="sni-icon"><i data-lucide="map-pin"></i></span>
+            <div class="sni-text">
+              <span class="sni-title">Municipal Scope</span>
+              <span class="sni-sub">PEA / MDM or RPMO</span>
+            </div>
+          </a>
+          <a class="settings-nav-item" href="#sec-baseline" data-target="sec-baseline">
+            <span class="sni-icon"><i data-lucide="database"></i></span>
+            <div class="sni-text">
+              <span class="sni-title">Baseline Reference</span>
+              <span class="sni-sub">Barangay masterlist</span>
+            </div>
+          </a>
+          <a class="settings-nav-item" href="#sec-conduct" data-target="sec-conduct">
+            <span class="sni-icon"><i data-lucide="list-todo"></i></span>
+            <div class="sni-text">
+              <span class="sni-title">Field Conduct</span>
+              <span class="sni-sub">Per-activity status</span>
+            </div>
+          </a>
+          <a class="settings-nav-item" href="#sec-pulldate" data-target="sec-pulldate">
+            <span class="sni-icon"><i data-lucide="calendar-check"></i></span>
+            <div class="sni-text">
+              <span class="sni-title">KCIS Pull Date</span>
+              <span class="sni-sub">Attendance window</span>
+            </div>
+          </a>
+          <a class="settings-nav-item" href="#sec-updates" data-target="sec-updates">
+            <span class="sni-icon"><i data-lucide="rotate-ccw"></i></span>
+            <div class="sni-text">
+              <span class="sni-title">App Updates</span>
+              <span class="sni-sub">Release &amp; feed status</span>
+            </div>
+            <span class="tab-badge" id="sni-badge-updates" hidden></span>
+          </a>
+          <a class="settings-nav-item" href="#sec-about" data-target="sec-about">
+            <span class="sni-icon"><i data-lucide="info"></i></span>
+            <div class="sni-text">
+              <span class="sni-title">About &amp; Privacy</span>
+              <span class="sni-sub">Rules &amp; data safety</span>
+            </div>
+          </a>
+        </nav>
+        <div class="settings-sidebar-footer">
+          <button class="btn primary w-full" id="btn-compute-side" type="button" disabled>
+            <i data-lucide="layout-dashboard"></i> <span>Show findings</span>
+          </button>
         </div>
-      </label>
-      <div id="import-progress" class="progress-line" hidden></div>
-      <div id="import-list"></div>
-      <div class="row-actions import-actions">
-        <button class="btn primary btn-lg" id="btn-compute" type="button" disabled><i data-lucide="layout-dashboard"></i> <span>Show findings</span></button>
-        <button class="btn ghost" id="btn-clear" type="button"><i data-lucide="trash-2"></i> <span>Clear loaded files</span></button>
-      </div>
-    </div>
-    <div class="card note-card">
-      <div class="note-card-head">
-        <span class="note-icon"><i data-lucide="info"></i></span>
-        <h3>How the findings are counted</h3>
-      </div>
-      <div class="note-grid">
-        <div class="note-item">
-          <strong>Exact Web Monitor Parity</strong>
-          <p>Runs the exact rules of the web Encoding Monitor (v@@VERSION@@): every figure matches it for the same files.</p>
-        </div>
-        <div class="note-item">
-          <strong>Not Encoded ≠ Not Conducted</strong>
-          <p>A missing record means it is not in KCIS yet. Unencoded activities only count as lacking when marked Completed in the field.</p>
-        </div>
-        <div class="note-item">
-          <strong>Built-in 516-Barangay Baseline</strong>
-          <p>The monitored barangay baseline is built in and ready offline; you can load a newer baseline anytime in Settings.</p>
-        </div>
-        <div class="note-item">
-          <strong>Pull Date &amp; 3-Day Window</strong>
-          <p>Field conduct per activity and the KCIS pull date (for the 3-day attendance sheet window) are configurable in Settings.</p>
-        </div>
+      </aside>
+
+      <!-- Main Content ("everything displayed right away") -->
+      <div class="settings-content">
+        <div id="saved-bar"></div>
+
+        <!-- Section 1: Data Import -->
+        <section class="settings-section" id="sec-import">
+          <div class="card step-card" id="import-card">
+            <div class="card-head" style="margin-bottom:4px">
+              <div>
+                <h2><span class="step-no">1</span> Import KCIS exports</h2>
+                <p class="muted" style="margin:4px 0 0">Drop files here all at once or one by one. Files are read locally on this PC; nothing is uploaded.</p>
+              </div>
+              <span class="pill good"><i data-lucide="lock"></i> 100% Offline &amp; Local</span>
+            </div>
+            <label class="drop" id="drop">
+              <input type="file" id="file-input" multiple accept=".xlsx,.csv,.pcrp" hidden>
+              <div class="drop-icon"><i data-lucide="upload-cloud"></i></div>
+              <span class="drop-title">Drop .xlsx, .csv, or .pcrp files here, or click to browse</span>
+              <span class="drop-sub">Participants export · Households export · Community Volunteer List · or a saved .pcrp session file</span>
+              <div class="drop-badges">
+                <span class="drop-badge">.xlsx Workbook</span>
+                <span class="drop-badge">.csv Export</span>
+                <span class="drop-badge">.pcrp Session</span>
+              </div>
+            </label>
+            <div id="import-progress" class="progress-line" hidden></div>
+            <div id="import-list"></div>
+            <div class="row-actions import-actions">
+              <button class="btn primary btn-lg" id="btn-compute" type="button" disabled><i data-lucide="layout-dashboard"></i> <span>Show findings</span></button>
+              <button class="btn ghost" id="btn-clear" type="button"><i data-lucide="trash-2"></i> <span>Clear loaded files</span></button>
+            </div>
+          </div>
+        </section>
+
+        <!-- Section 2: Role & Municipal Scope -->
+        <section class="settings-section" id="sec-scope">
+          <div class="card step-card" id="home-card"></div>
+        </section>
+
+        <!-- Section 3: Baseline Reference -->
+        <section class="settings-section" id="sec-baseline">
+          <div id="st-baseline-container"></div>
+        </section>
+
+        <!-- Section 4: Field Conduct -->
+        <section class="settings-section" id="sec-conduct">
+          <div id="st-conduct-container"></div>
+        </section>
+
+        <!-- Section 5: KCIS Pull Date -->
+        <section class="settings-section" id="sec-pulldate">
+          <div id="st-pulldate-container"></div>
+        </section>
+
+        <!-- Section 6: App Updates -->
+        <section class="settings-section" id="sec-updates">
+          <div id="st-updates-container"></div>
+        </section>
+
+        <!-- Section 7: About & Privacy -->
+        <section class="settings-section" id="sec-about">
+          <div id="st-about-container"></div>
+        </section>
       </div>
     </div>
   </section>
@@ -164,7 +244,6 @@
   <section class="page" id="page-people"><div id="pp-body"></div></section>
   <section class="page" id="page-verify"><div id="vf-body"></div></section>
   <section class="page" id="page-health"><div id="he-body" class="dh-page"></div></section>
-  <section class="page" id="page-settings"><div id="st-body"></div></section>
 </main>
 
 <dialog id="scope-dialog" class="memo scope-dialog">
@@ -205,12 +284,68 @@
   </form>
 </dialog>
 
+<dialog id="delta-dialog" class="memo delta-dialog">
+  <form method="dialog">
+    <div class="dialog-head">
+      <div>
+        <h2>Verification Delta Package Sync</h2>
+        <div class="tiny">Merge physical verification audit tags (.pcrpd) from municipal evaluators.</div>
+      </div>
+      <button class="btn ghost icon-btn" value="close" aria-label="Close dialog" title="Close (Esc)"><i data-lucide="x"></i></button>
+    </div>
+    <div id="delta-dialog-body" class="delta-dialog-body"></div>
+    <div class="row-actions dialog-foot">
+      <button class="btn primary" type="button" id="btn-confirm-delta-merge" disabled><i data-lucide="git-merge"></i> <span>Confirm &amp; Merge Tags</span></button>
+      <button class="btn ghost" value="close">Cancel</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="lacking-dialog" class="memo lacking-dialog">
+  <form method="dialog">
+    <div class="dialog-head">
+      <div>
+        <h2 id="lacking-dialog-title">Barangay Lacking Findings</h2>
+        <div class="tiny" id="lacking-dialog-sub">Items requiring field conduct, attendance sheet upload, or verification</div>
+      </div>
+      <button class="btn ghost icon-btn" value="close" aria-label="Close dialog" title="Close (Esc)"><i data-lucide="x"></i></button>
+    </div>
+    <div id="lacking-dialog-body" class="lacking-dialog-body"></div>
+    <div class="row-actions dialog-foot">
+      <button class="btn ghost" type="button" id="lacking-copy"><i data-lucide="copy"></i> <span>Copy findings</span></button>
+      <button class="btn ghost" value="close">Close</button>
+    </div>
+  </form>
+</dialog>
+
+<div id="lock-overlay" class="lock-overlay" aria-modal="true" role="dialog" aria-label="Session Locked">
+  <div class="lock-card">
+    <div class="lock-icon"><i data-lucide="shield-alert"></i></div>
+    <h2>Workstation Session Locked</h2>
+    <p class="muted" id="lock-reason">This tool holds personal data under the Data Privacy Act. Enter your PIN to unlock.</p>
+    <form id="lock-form" onsubmit="event.preventDefault();">
+      <div class="filters" style="justify-content:center;margin:16px 0">
+        <input type="password" id="lock-pin-input" maxlength="8" placeholder="••••" autocomplete="current-password" style="font-size:22px;text-align:center;letter-spacing:0.25em;width:180px;padding:8px">
+      </div>
+      <div id="lock-error" class="msg bad" style="display:none;margin-bottom:12px"></div>
+      <button type="button" class="btn primary btn-block" id="btn-unlock-session"><i data-lucide="unlock"></i> <span>Unlock Workspace</span></button>
+    </form>
+  </div>
+</div>
+
 <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
 
 <script>
 /*@@BUILT_IN@@*/
 var S = { overview: null, matrix: null, activeStage: 1 };
 function $(id) { return document.getElementById(id); }
+</script>
+<script>
+/*@@STORE@@*/
+/*@@CRYPTO@@*/
+/*@@DELTA@@*/
+/*@@VIRTUAL_TABLE@@*/
+/*@@WORKER@@*/
 </script>
 <script>
 /*@@MONITOR@@*/

@@ -1,0 +1,696 @@
+{
+  "nodes": [
+    {
+      "id": "g0",
+      "type": "group",
+      "label": "BResT Composition & PRVA Planning",
+      "x": 0,
+      "y": 0,
+      "width": 660,
+      "height": 420,
+      "color": "1"
+    },
+    {
+      "id": "n_Assembly:BA2",
+      "type": "file",
+      "file": "2nd Barangay Assembly (BA2) PRVA Validation & Committee Formation.md",
+      "x": 20,
+      "y": 80,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_Assembly:BA4_BAR",
+      "type": "file",
+      "file": "4th Barangay Assembly  Barangay Accountability Reporting (BAR).md",
+      "x": 220,
+      "y": 80,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_Stage:Stage4_Monitoring_Review",
+      "type": "file",
+      "file": "CRIP Stage 4 Community-Based Monitoring & Review.md",
+      "x": 420,
+      "y": 80,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_Team:CMSC",
+      "type": "file",
+      "file": "Community Monitoring Sub-Committee (CMSC).md",
+      "x": 20,
+      "y": 160,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_ME:Community_Monitoring_Toolkit",
+      "type": "file",
+      "file": "Community Monitoring Toolkit (Annex L).md",
+      "x": 220,
+      "y": 160,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_Team:OMT",
+      "type": "file",
+      "file": "Operations & Maintenance Team (O&MT).md",
+      "x": 420,
+      "y": 160,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_ME:Results_Framework",
+      "type": "file",
+      "file": "PCRP M&E Results Framework & Theory of Change.md",
+      "x": 20,
+      "y": 240,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_Doc:SM7_Monitoring_Evaluation",
+      "type": "file",
+      "file": "SM7 Monitoring & Evaluation Sub-Manual.md",
+      "x": 220,
+      "y": 240,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "g1",
+      "type": "group",
+      "label": "Monitoring, Evaluation & Data Quality",
+      "x": 740,
+      "y": 0,
+      "width": 660,
+      "height": 420,
+      "color": "2"
+    },
+    {
+      "id": "n_Team:ACT",
+      "type": "file",
+      "file": "Area Coordinating Team (ACT).md",
+      "x": 760,
+      "y": 80,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_Process:BDC_Endorsement",
+      "type": "file",
+      "file": "Barangay Development Council (BDC) Endorsement.md",
+      "x": 960,
+      "y": 80,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_ME:DQA_Protocols",
+      "type": "file",
+      "file": "Data Quality Assessment (DQA) & Verification Protocols.md",
+      "x": 1160,
+      "y": 80,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_System:KCIS",
+      "type": "file",
+      "file": "KALAHI-CIDSS Comprehensive Information System (KCIS).md",
+      "x": 760,
+      "y": 160,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_Team:MCT",
+      "type": "file",
+      "file": "Municipal Coordinating Team (MCT).md",
+      "x": 960,
+      "y": 160,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_Process:MRP_Workshop",
+      "type": "file",
+      "file": "Municipal Resilience Planning (MRP) Workshop.md",
+      "x": 1160,
+      "y": 160,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_Team:MResT",
+      "type": "file",
+      "file": "Municipal Resilience Team (MResT).md",
+      "x": 760,
+      "y": 240,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "g2",
+      "type": "group",
+      "label": "BResT Composition & PRVA Planning",
+      "x": 1480,
+      "y": 0,
+      "width": 660,
+      "height": 420,
+      "color": "3"
+    },
+    {
+      "id": "n_Rule:BResT_Marginalized_Quota",
+      "type": "file",
+      "file": "BResT 30% Marginalized Quota Rule.md",
+      "x": 1500,
+      "y": 80,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_Rule:BResT_No_Chairperson",
+      "type": "file",
+      "file": "BResT Composition Rule No Chairperson Needed.md",
+      "x": 1700,
+      "y": 80,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_Process:BPRVA_Workshop",
+      "type": "file",
+      "file": "Barangay PRVA Workshop.md",
+      "x": 1900,
+      "y": 80,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_Team:BResT",
+      "type": "file",
+      "file": "Barangay Resilience Team (BResT).md",
+      "x": 1500,
+      "y": 160,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_Process:FGD_Series",
+      "type": "file",
+      "file": "Focused Group Discussions (FGDs) with Sectors.md",
+      "x": 1700,
+      "y": 160,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_Process:PRVA",
+      "type": "file",
+      "file": "Participatory Risk & Vulnerability Assessment (PRVA).md",
+      "x": 1900,
+      "y": 160,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_Process:Walkthrough_Mapping",
+      "type": "file",
+      "file": "Risk & Vulnerability Walk-Through and Spot Mapping.md",
+      "x": 1500,
+      "y": 240,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "g3",
+      "type": "group",
+      "label": "Sub-Project Development & Implementation",
+      "x": 0,
+      "y": 500,
+      "width": 660,
+      "height": 420,
+      "color": "4"
+    },
+    {
+      "id": "n_Team:AIT",
+      "type": "file",
+      "file": "Audit & Inventory Team (AIT).md",
+      "x": 20,
+      "y": 580,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_Stage:Stage3_Implementation",
+      "type": "file",
+      "file": "CRIP Stage 3 Community-Managed Sub-Project Implementation.md",
+      "x": 220,
+      "y": 580,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_Team:Procurement_Team",
+      "type": "file",
+      "file": "Community Procurement Team (PT).md",
+      "x": 420,
+      "y": 580,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_Team:CRSPMC",
+      "type": "file",
+      "file": "Community Resilience Sub-Project Management Committee (CRSPMC  CSPMC).md",
+      "x": 20,
+      "y": 660,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_Standard:ESMP",
+      "type": "file",
+      "file": "Environmental and Social Management Plan (ESMP).md",
+      "x": 220,
+      "y": 660,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_Team:PIT",
+      "type": "file",
+      "file": "Project Implementation Team (PIT).md",
+      "x": 420,
+      "y": 660,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_Process:SPDW",
+      "type": "file",
+      "file": "Sub-Project Development Workshop (SPDW).md",
+      "x": 20,
+      "y": 740,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "g4",
+      "type": "group",
+      "label": "Sub-Project Development & Implementation",
+      "x": 740,
+      "y": 500,
+      "width": 660,
+      "height": 400,
+      "color": "5"
+    },
+    {
+      "id": "n_Assembly:BA3",
+      "type": "file",
+      "file": "3rd Barangay Assembly (BA3) Sub-Project Proposal Approval.md",
+      "x": 760,
+      "y": 580,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_Stage:Stage1_Assessment_Planning",
+      "type": "file",
+      "file": "CRIP Stage 1 Participatory Assessment & Resilience Planning.md",
+      "x": 960,
+      "y": 580,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_Stage:Stage2_SubProject_Development",
+      "type": "file",
+      "file": "CRIP Stage 2 Community Resilience Sub-Project Development.md",
+      "x": 1160,
+      "y": 580,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_Stage:CRIP_Overview",
+      "type": "file",
+      "file": "Community Resilience Implementation Process (CRIP).md",
+      "x": 760,
+      "y": 660,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_Doc:SM1_Social_Mobilization",
+      "type": "file",
+      "file": "SM1 Social Mobilization Sub-Manual.md",
+      "x": 960,
+      "y": 660,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_Process:TDR_Appraisal",
+      "type": "file",
+      "file": "Technical Desk Review (TDR) & RPMO Appraisal.md",
+      "x": 1160,
+      "y": 660,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "g5",
+      "type": "group",
+      "label": "Community Cluster 5",
+      "x": 1480,
+      "y": 500,
+      "width": 600,
+      "height": 400,
+      "color": "6"
+    },
+    {
+      "id": "n_Assembly:BA1",
+      "type": "file",
+      "file": "1st Barangay Assembly (BA1) Project Orientation & Team Selection.md",
+      "x": 1500,
+      "y": 580,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_Standard:K2_Quorum",
+      "type": "file",
+      "file": "Household Quorum Standard (K2 Standard).md",
+      "x": 1700,
+      "y": 580,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_Team:SFMSC",
+      "type": "file",
+      "file": "Stakeholder & Feedback Mechanism Sub-Committee (SFMSC).md",
+      "x": 1500,
+      "y": 660,
+      "width": 180,
+      "height": 60
+    }
+  ],
+  "edges": [
+    {
+      "id": "e_Doc:SM1_Social_Mobilization_Stage:CRIP_Overview",
+      "fromNode": "n_Doc:SM1_Social_Mobilization",
+      "toNode": "n_Stage:CRIP_Overview",
+      "label": "defines [EXTRACTED]"
+    },
+    {
+      "id": "e_Doc:SM1_Social_Mobilization_Stage:Stage1_Assessment_Planning",
+      "fromNode": "n_Doc:SM1_Social_Mobilization",
+      "toNode": "n_Stage:Stage1_Assessment_Planning",
+      "label": "specifies_procedures [EXTRACTED]"
+    },
+    {
+      "id": "e_Doc:SM1_Social_Mobilization_Stage:Stage2_SubProject_Development",
+      "fromNode": "n_Doc:SM1_Social_Mobilization",
+      "toNode": "n_Stage:Stage2_SubProject_Development",
+      "label": "specifies_procedures [EXTRACTED]"
+    },
+    {
+      "id": "e_Doc:SM1_Social_Mobilization_Stage:Stage3_Implementation",
+      "fromNode": "n_Doc:SM1_Social_Mobilization",
+      "toNode": "n_Stage:Stage3_Implementation",
+      "label": "specifies_procedures [EXTRACTED]"
+    },
+    {
+      "id": "e_Doc:SM7_Monitoring_Evaluation_ME:Community_Monitoring_Toolkit",
+      "fromNode": "n_Doc:SM7_Monitoring_Evaluation",
+      "toNode": "n_ME:Community_Monitoring_Toolkit",
+      "label": "provides [EXTRACTED]"
+    },
+    {
+      "id": "e_Doc:SM7_Monitoring_Evaluation_ME:DQA_Protocols",
+      "fromNode": "n_Doc:SM7_Monitoring_Evaluation",
+      "toNode": "n_ME:DQA_Protocols",
+      "label": "mandates [EXTRACTED]"
+    },
+    {
+      "id": "e_Doc:SM7_Monitoring_Evaluation_ME:Results_Framework",
+      "fromNode": "n_Doc:SM7_Monitoring_Evaluation",
+      "toNode": "n_ME:Results_Framework",
+      "label": "establishes [EXTRACTED]"
+    },
+    {
+      "id": "e_Doc:SM7_Monitoring_Evaluation_Stage:Stage4_Monitoring_Review",
+      "fromNode": "n_Doc:SM7_Monitoring_Evaluation",
+      "toNode": "n_Stage:Stage4_Monitoring_Review",
+      "label": "specifies_procedures [EXTRACTED]"
+    },
+    {
+      "id": "e_Team:BResT_Process:BPRVA_Workshop",
+      "fromNode": "n_Team:BResT",
+      "toNode": "n_Process:BPRVA_Workshop",
+      "label": "participates_in [EXTRACTED]"
+    },
+    {
+      "id": "e_Team:BResT_Process:FGD_Series",
+      "fromNode": "n_Team:BResT",
+      "toNode": "n_Process:FGD_Series",
+      "label": "mobilizes [EXTRACTED]"
+    },
+    {
+      "id": "e_Team:BResT_Process:PRVA",
+      "fromNode": "n_Team:BResT",
+      "toNode": "n_Process:PRVA",
+      "label": "executes [EXTRACTED]"
+    },
+    {
+      "id": "e_Team:BResT_Process:Walkthrough_Mapping",
+      "fromNode": "n_Team:BResT",
+      "toNode": "n_Process:Walkthrough_Mapping",
+      "label": "conducts [EXTRACTED]"
+    },
+    {
+      "id": "e_Team:BResT_Rule:BResT_Marginalized_Quota",
+      "fromNode": "n_Team:BResT",
+      "toNode": "n_Rule:BResT_Marginalized_Quota",
+      "label": "must_comply_with [EXTRACTED]"
+    },
+    {
+      "id": "e_Team:BResT_Rule:BResT_No_Chairperson",
+      "fromNode": "n_Team:BResT",
+      "toNode": "n_Rule:BResT_No_Chairperson",
+      "label": "governed_by [EXTRACTED]"
+    },
+    {
+      "id": "e_Team:BResT_Team:CMSC",
+      "fromNode": "n_Team:BResT",
+      "toNode": "n_Team:CMSC",
+      "label": "provides_candidates_for [EXTRACTED]"
+    },
+    {
+      "id": "e_Team:MResT_Process:BDC_Endorsement",
+      "fromNode": "n_Team:MResT",
+      "toNode": "n_Process:BDC_Endorsement",
+      "label": "coordinates_with [EXTRACTED]"
+    },
+    {
+      "id": "e_Team:MResT_Process:MRP_Workshop",
+      "fromNode": "n_Team:MResT",
+      "toNode": "n_Process:MRP_Workshop",
+      "label": "leads [EXTRACTED]"
+    },
+    {
+      "id": "e_Team:MResT_Team:ACT",
+      "fromNode": "n_Team:MResT",
+      "toNode": "n_Team:ACT",
+      "label": "partners_with [EXTRACTED]"
+    },
+    {
+      "id": "e_Team:MResT_Team:MCT",
+      "fromNode": "n_Team:MResT",
+      "toNode": "n_Team:MCT",
+      "label": "oversees [EXTRACTED]"
+    },
+    {
+      "id": "e_Team:CRSPMC_Process:SPDW",
+      "fromNode": "n_Team:CRSPMC",
+      "toNode": "n_Process:SPDW",
+      "label": "attends [EXTRACTED]"
+    },
+    {
+      "id": "e_Team:CRSPMC_Team:AIT",
+      "fromNode": "n_Team:CRSPMC",
+      "toNode": "n_Team:AIT",
+      "label": "coordinates_with [EXTRACTED]"
+    },
+    {
+      "id": "e_Team:CRSPMC_Team:OMT",
+      "fromNode": "n_Team:CRSPMC",
+      "toNode": "n_Team:OMT",
+      "label": "prepares [EXTRACTED]"
+    },
+    {
+      "id": "e_Team:CRSPMC_Team:PIT",
+      "fromNode": "n_Team:CRSPMC",
+      "toNode": "n_Team:PIT",
+      "label": "supervises [EXTRACTED]"
+    },
+    {
+      "id": "e_Team:CRSPMC_Team:Procurement_Team",
+      "fromNode": "n_Team:CRSPMC",
+      "toNode": "n_Team:Procurement_Team",
+      "label": "supervises [EXTRACTED]"
+    },
+    {
+      "id": "e_Team:CMSC_Assembly:BA4_BAR",
+      "fromNode": "n_Team:CMSC",
+      "toNode": "n_Assembly:BA4_BAR",
+      "label": "presents_findings_at [EXTRACTED]"
+    },
+    {
+      "id": "e_Team:CMSC_ME:Community_Monitoring_Toolkit",
+      "fromNode": "n_Team:CMSC",
+      "toNode": "n_ME:Community_Monitoring_Toolkit",
+      "label": "utilizes [EXTRACTED]"
+    },
+    {
+      "id": "e_Team:CMSC_Stage:Stage4_Monitoring_Review",
+      "fromNode": "n_Team:CMSC",
+      "toNode": "n_Stage:Stage4_Monitoring_Review",
+      "label": "conducts_monitoring_in [EXTRACTED]"
+    },
+    {
+      "id": "e_Team:PIT_Stage:Stage3_Implementation",
+      "fromNode": "n_Team:PIT",
+      "toNode": "n_Stage:Stage3_Implementation",
+      "label": "manages_civil_works_in [EXTRACTED]"
+    },
+    {
+      "id": "e_Team:Procurement_Team_Stage:Stage3_Implementation",
+      "fromNode": "n_Team:Procurement_Team",
+      "toNode": "n_Stage:Stage3_Implementation",
+      "label": "procures_materials_in [EXTRACTED]"
+    },
+    {
+      "id": "e_Team:ACT_System:KCIS",
+      "fromNode": "n_Team:ACT",
+      "toNode": "n_System:KCIS",
+      "label": "encodes_data_into [EXTRACTED]"
+    },
+    {
+      "id": "e_Stage:Stage1_Assessment_Planning_Assembly:BA1",
+      "fromNode": "n_Stage:Stage1_Assessment_Planning",
+      "toNode": "n_Assembly:BA1",
+      "label": "includes [EXTRACTED]"
+    },
+    {
+      "id": "e_Stage:Stage1_Assessment_Planning_Stage:Stage2_SubProject_Development",
+      "fromNode": "n_Stage:Stage1_Assessment_Planning",
+      "toNode": "n_Stage:Stage2_SubProject_Development",
+      "label": "precedes [EXTRACTED]"
+    },
+    {
+      "id": "e_Stage:Stage2_SubProject_Development_Assembly:BA2",
+      "fromNode": "n_Stage:Stage2_SubProject_Development",
+      "toNode": "n_Assembly:BA2",
+      "label": "includes [EXTRACTED]"
+    },
+    {
+      "id": "e_Stage:Stage2_SubProject_Development_Assembly:BA3",
+      "fromNode": "n_Stage:Stage2_SubProject_Development",
+      "toNode": "n_Assembly:BA3",
+      "label": "culminates_in [EXTRACTED]"
+    },
+    {
+      "id": "e_Stage:Stage2_SubProject_Development_Stage:Stage3_Implementation",
+      "fromNode": "n_Stage:Stage2_SubProject_Development",
+      "toNode": "n_Stage:Stage3_Implementation",
+      "label": "precedes [EXTRACTED]"
+    },
+    {
+      "id": "e_Stage:Stage3_Implementation_Stage:Stage4_Monitoring_Review",
+      "fromNode": "n_Stage:Stage3_Implementation",
+      "toNode": "n_Stage:Stage4_Monitoring_Review",
+      "label": "precedes [EXTRACTED]"
+    },
+    {
+      "id": "e_Stage:Stage3_Implementation_Standard:ESMP",
+      "fromNode": "n_Stage:Stage3_Implementation",
+      "toNode": "n_Standard:ESMP",
+      "label": "enforces [EXTRACTED]"
+    },
+    {
+      "id": "e_Assembly:BA1_Standard:K2_Quorum",
+      "fromNode": "n_Assembly:BA1",
+      "toNode": "n_Standard:K2_Quorum",
+      "label": "governed_by [EXTRACTED]"
+    },
+    {
+      "id": "e_Assembly:BA1_Team:BResT",
+      "fromNode": "n_Assembly:BA1",
+      "toNode": "n_Team:BResT",
+      "label": "selects_volunteers_for [EXTRACTED]"
+    },
+    {
+      "id": "e_Assembly:BA1_Team:SFMSC",
+      "fromNode": "n_Assembly:BA1",
+      "toNode": "n_Team:SFMSC",
+      "label": "organizes [EXTRACTED]"
+    },
+    {
+      "id": "e_Assembly:BA2_Team:CMSC",
+      "fromNode": "n_Assembly:BA2",
+      "toNode": "n_Team:CMSC",
+      "label": "elects_members_of [EXTRACTED]"
+    },
+    {
+      "id": "e_Assembly:BA2_Team:CRSPMC",
+      "fromNode": "n_Assembly:BA2",
+      "toNode": "n_Team:CRSPMC",
+      "label": "elects_officers_of [EXTRACTED]"
+    },
+    {
+      "id": "e_Assembly:BA3_Process:TDR_Appraisal",
+      "fromNode": "n_Assembly:BA3",
+      "toNode": "n_Process:TDR_Appraisal",
+      "label": "submits_proposal_for [EXTRACTED]"
+    },
+    {
+      "id": "e_Assembly:BA4_BAR_Team:OMT",
+      "fromNode": "n_Assembly:BA4_BAR",
+      "toNode": "n_Team:OMT",
+      "label": "hands_over_completed_asset_to [EXTRACTED]"
+    },
+    {
+      "id": "e_ME:DQA_Protocols_Assembly:BA1",
+      "fromNode": "n_ME:DQA_Protocols",
+      "toNode": "n_Assembly:BA1",
+      "label": "verifies_attendance_sheets_of [EXTRACTED]"
+    },
+    {
+      "id": "e_ME:DQA_Protocols_System:KCIS",
+      "fromNode": "n_ME:DQA_Protocols",
+      "toNode": "n_System:KCIS",
+      "label": "verifies_records_in [EXTRACTED]"
+    },
+    {
+      "id": "e_ME:DQA_Protocols_Team:BResT",
+      "fromNode": "n_ME:DQA_Protocols",
+      "toNode": "n_Team:BResT",
+      "label": "cross_checks_profiles_of [EXTRACTED]"
+    },
+    {
+      "id": "e_ME:DQA_Protocols_Team:MResT",
+      "fromNode": "n_ME:DQA_Protocols",
+      "toNode": "n_Team:MResT",
+      "label": "cross_checks_executive_order_of [EXTRACTED]"
+    }
+  ]
+}

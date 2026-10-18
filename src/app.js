@@ -6,7 +6,7 @@
 var PREFS_KEY = 'pcrp-desktop:v1';
 var LOADED = {};          // kind -> { file, sheet, rows }
 var IMPORT_ERRORS = [];   // { file, error }
-var STATE = { page: 'import', stage: 1, prov: '', muniSearch: '', muniSort: { col: 'muni', dir: 'asc' }, muni: '', brgySearch: '', brgyFilter: 'all', brgySort: { col: 'brgy', dir: 'asc' }, ovSearch: '', ovSort: { col: 'seq', dir: 'asc' }, settingsSearch: '', settingsSort: { col: 'seq', dir: 'asc' }, computed: false, computedAt: null, ms: 0 };
+var STATE = { page: 'settings', stage: 1, prov: '', muniSearch: '', muniSort: { col: 'muni', dir: 'asc' }, muni: '', brgySearch: '', brgyFilter: 'all', brgySort: { col: 'brgy', dir: 'asc' }, ovSearch: '', ovSort: { col: 'seq', dir: 'asc' }, settingsSearch: '', settingsSort: { col: 'seq', dir: 'asc' }, computed: false, computedAt: null, ms: 0 };
 var FIELD_VALUES = ['Not started', 'On-going', 'Completed'];
 
 var APP_VERSION = '@@VERSION@@';
@@ -224,6 +224,7 @@ function sortTh(opts) {
   var cls = ['sortable'];
   if (opts.num) cls.push('num');
   if (opts.sticky) cls.push('sticky');
+  if (opts.extraClass) cls.push(opts.extraClass);
   if (isSorted) cls.push(opts.dir === 'asc' ? 'sorted-asc' : 'sorted-desc');
   var icoName = isSorted ? (opts.dir === 'asc' ? 'arrow-up' : 'arrow-down') : 'chevrons-up-down';
   return '<th class="' + cls.join(' ') + '" data-act="' + attr(opts.act) + '" data-col="' + attr(opts.col) + '"' +
@@ -364,6 +365,78 @@ function openModalAnimated(dlg) {
   }
 }
 
+function openLackingModal(bkey, customFindings, customTitle, customSub) {
+  var dlg = $('lacking-dialog');
+  if (!dlg) return;
+  var titleEl = $('lacking-dialog-title');
+  var subEl = $('lacking-dialog-sub');
+  var bodyEl = $('lacking-dialog-body');
+  var copyBtn = $('lacking-copy');
+
+  var findings = customFindings || [];
+  var brgyRow = null;
+  if (!customFindings && bkey) {
+    brgyRow = (SNAP.barangayRows || []).filter(function (x) {
+      return (x.province + '|' + x.municipality + '|' + x.barangay) === bkey;
+    })[0];
+    if (brgyRow) {
+      findings = brgyRow.todo || [];
+    }
+  }
+
+  var title = customTitle || (brgyRow ? brgyRow.barangay + ' · Lacking Findings' : 'Lacking Findings');
+  var sub = customSub || (brgyRow ? brgyRow.municipality + ', ' + brgyRow.province + ' · ' + findings.length + ' lacking finding' + (findings.length === 1 ? '' : 's') : (findings.length + ' item' + (findings.length === 1 ? '' : 's')));
+
+  if (titleEl) titleEl.textContent = title;
+  if (subEl) subEl.textContent = sub;
+
+  if (!findings || findings.length === 0) {
+    bodyEl.innerHTML =
+      '<div class="empty-state" style="padding:28px 16px;text-align:center;">' +
+        '<div style="font-size:32px;margin-bottom:8px">🎉</div>' +
+        '<strong>No lacking findings!</strong>' +
+        '<div class="muted tiny" style="margin-top:4px">All monitored activities have encoded data or attendance sheets.</div>' +
+      '</div>';
+    if (copyBtn) copyBtn.style.display = 'none';
+  } else {
+    var itemsHtml = findings.map(function (f, idx) {
+      var parts = String(f).split(': ');
+      var actPart = parts.length > 1 ? parts[0] : '';
+      var issuePart = parts.length > 1 ? parts.slice(1).join(': ') : String(f);
+      var isWarn = issuePart.toLowerCase().indexOf('window') !== -1 || issuePart.toLowerCase().indexOf('reasons') !== -1;
+      return '<div class="lacking-item-card' + (isWarn ? ' warn' : '') + '">' +
+        '<div class="lacking-item-head">' +
+          '<span class="lacking-item-title">' + icon(isWarn ? 'alert-triangle' : 'alert-circle') + ' ' +
+            esc(actPart ? actPart : ('Finding #' + (idx + 1))) +
+          '</span>' +
+          '<span class="pill ' + (isWarn ? 'warn' : 'bad') + ' tiny">' + (isWarn ? 'Attention' : 'Lacking') + '</span>' +
+        '</div>' +
+        '<div class="lacking-item-desc">' + esc(issuePart) + '</div>' +
+      '</div>';
+    }).join('');
+
+    bodyEl.innerHTML = '<div class="lacking-list">' + itemsHtml + '</div>';
+
+    if (copyBtn) {
+      copyBtn.style.display = '';
+      copyBtn.onclick = function () {
+        var textToCopy = title + '\n' + sub + '\n\n' + findings.map(function (f, i) {
+          return (i + 1) + '. ' + f;
+        }).join('\n');
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(textToCopy).then(function () {
+            toast('Copied ' + findings.length + ' findings to clipboard.');
+          });
+        } else {
+          toast('Copied to clipboard.');
+        }
+      };
+    }
+  }
+
+  openModalAnimated(dlg);
+}
+
 // Crisp offline SVG icon paths matching Lucide icon names used across Data Health and the app shell.
 var ICON_SVG = {
   'check': '<path d="M20 6 9 17l-5-5"/>',
@@ -421,6 +494,7 @@ var ICON_SVG = {
   'arrow-down': '<path d="M12 5v14"/><path d="m19 12-7 7-7-7"/>',
   'chevrons-up-down': '<path d="m7 15 5 5 5-5"/><path d="m7 9 5-5 5 5"/>',
   'rotate-ccw': '<path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/>',
+  'calendar': '<path d="M8 2v4"/><path d="M16 2v4"/><rect width="18" height="18" x="3" y="4" rx="2"/><path d="M3 10h18"/>',
   'calendar-check': '<rect width="18" height="18" x="3" y="4" rx="2"/><path d="M16 2v4"/><path d="M8 2v4"/><path d="M3 10h18"/><path d="m9 16 2 2 4-4"/>',
   'home': '<path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/>',
   'shield': '<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>',
@@ -435,7 +509,7 @@ var ICON_GLYPH = {
   'clipboard-x': '✕', 'search': '⌕', 'x': '✕', 'alert-triangle': '⚠', 'external-link': '↗',
   'clock-alert': '⏱', 'calendar-x': '✕', 'files': '⧉', 'users': '☷', 'spell-check': 'Aa', 'cake': '✱', 'gauge': '◔',
   'list-todo': '☑', 'target': '◎', 'repeat': '↻', 'crosshair': '⌖', 'clock': '⏱', 'shield-check': '✓', 'circle-alert': '!', 'clipboard-check': '☑', 'clipboard': '☐',
-  'arrow-up': '▲', 'arrow-down': '▼', 'chevrons-up-down': '↕', 'calendar-check': '☑', 'home': '⌂', 'shield': '⛊', 'award': '★', 'user-check': '✓'
+  'arrow-up': '▲', 'arrow-down': '▼', 'chevrons-up-down': '↕', 'calendar': '📅', 'calendar-check': '☑', 'home': '⌂', 'shield': '⛊', 'award': '★', 'user-check': '✓'
 };
 
 function icon(name, extraClass) {
@@ -573,7 +647,7 @@ function renderHome() {
     var list = baselineMunis();
     var mInfo = !h.region ? list.filter(function (m) { return m.province === h.province && m.municipality === h.municipality; })[0] : null;
     card.innerHTML = '<div class="home-set"><div>' +
-      '<div class="tiny"><span class="step-no done">✓</span> Step 1 · Role &amp; Workspace Scope</div>' +
+      '<div class="tiny"><span class="step-no done">✓</span> Section 2 · Municipal Scope &amp; Role</div>' +
       '<div class="home-name" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:4px 0">' +
         homeRoleBadge() + ' <span>' + esc(homeLabel()) + '</span>' +
         (mInfo ? ' <span class="pill idle">' + n(mInfo.barangays) + ' monitored barangays</span>' : ' <span class="pill good">516 monitored barangays</span>') +
@@ -594,7 +668,7 @@ function renderHome() {
     });
     opts += (prov ? '</optgroup>' : '');
 
-    card.innerHTML = '<h2><span class="step-no">1</span> Select your Role &amp; Municipality</h2>' +
+    card.innerHTML = '<h2><span class="step-no">2</span> Select your Role &amp; Municipality</h2>' +
       '<p class="muted">Tailors the dashboard and data access to your assigned duties. PEA &amp; MDM staff work exclusively in their assigned municipality; RPMO officers have region-wide access.</p>' +
       '<div class="role-grid">' +
         '<div class="role-card' + (curRole === 'pea_mdm' ? ' active' : '') + '" data-act="role-pick" data-v="pea_mdm" role="button" tabindex="0">' +
@@ -742,7 +816,7 @@ function coverageBanner() {
 
 function updateTabBadges() {
   var setBadge = function (id, text, cls) {
-    var el = $('badge-' + id);
+    var el = $('badge-' + id) || $(id);
     if (!el) return;
     if (!text && text !== 0) { el.hidden = true; el.textContent = ''; el.className = 'tab-badge'; return; }
     el.hidden = false;
@@ -751,6 +825,7 @@ function updateTabBadges() {
   };
   var loadedCount = ['participants', 'households', 'volunteers'].filter(function (k) { return !!LOADED[k]; }).length;
   setBadge('import', loadedCount ? loadedCount + '/3' : '', loadedCount === 3 ? 'good' : '');
+  setBadge('sni-badge-import', loadedCount ? loadedCount + '/3' : '', loadedCount === 3 ? 'good' : '');
 
   var tabMunis = $('tab-munis');
   if (tabMunis) tabMunis.style.display = isMunicipalUser() ? 'none' : '';
@@ -824,12 +899,15 @@ function updateTabBadges() {
 
   if (UPDATE_STATE.result && UPDATE_STATE.result.updateAvailable) {
     setBadge('settings', 'Update', 'good');
+    setBadge('sni-badge-updates', 'Update', 'good');
   } else {
-    setBadge('settings', '');
+    setBadge('settings', loadedCount ? loadedCount + '/3' : '', loadedCount === 3 ? 'good' : '');
+    setBadge('sni-badge-updates', '');
   }
 }
 
 function go(page) {
+  if (page === 'import') page = 'settings';
   if (isMunicipalUser() && page === 'munis') page = 'overview';
   if (page === 'people') page = 'attendees';
   STATE.page = page;
@@ -841,6 +919,16 @@ function go(page) {
     }
   });
 
+  var btnSettingsTop = $('btn-import-top');
+  if (btnSettingsTop) {
+    var isSettings = (page === 'settings');
+    btnSettingsTop.classList.toggle('on', isSettings);
+    btnSettingsTop.setAttribute('aria-selected', isSettings);
+    if (isSettings && hasGsap()) {
+      gsap.fromTo(btnSettingsTop, { scale: 0.94 }, { scale: 1, duration: 0.22, ease: 'back.out(2)', clearProps: 'transform' });
+    }
+  }
+
   // Highlight parent group triggers if active page is inside group
   var isAttendanceGroup = (page === 'attendees' || page === 'households');
   var isVolunteersGroup = (page === 'volunteers' || page === 'brest');
@@ -849,14 +937,10 @@ function go(page) {
   var grpVol = $('tab-group-volunteers');
   if (grpVol) grpVol.classList.toggle('on', isVolunteersGroup);
 
-  // Close open dropdowns & status menu
+  // Close open dropdowns
   Array.prototype.forEach.call(document.querySelectorAll('.nav-tab-group.open'), function (g) {
     g.classList.remove('open');
   });
-  var sMenu = $('top-status-menu');
-  if (sMenu) sMenu.classList.remove('open');
-  var sBtn = $('top-status-btn');
-  if (sBtn) sBtn.classList.remove('open');
 
   Array.prototype.forEach.call(document.querySelectorAll('.page'), function (s) { s.classList.toggle('on', s.id === 'page-' + page); });
   renderPage();
@@ -878,8 +962,8 @@ function renderPage() {
   else if (STATE.page === 'people') renderPeople();
   else if (STATE.page === 'verify') renderVerify();
   else if (STATE.page === 'health') renderHealth();
-  else if (STATE.page === 'settings') renderSettings();
-  else renderImport();
+  else if (STATE.page === 'settings' || STATE.page === 'import') renderSettings();
+  else renderSettings();
 }
 
 function setTabsEnabled(on) {
@@ -1012,7 +1096,7 @@ function renderImport() {
   var refs = '<div class="import-item">' +
     '<span class="status-chip ok">✓ ' + (p.baseline ? 'Custom loaded' : 'Built-in') + '</span>' +
     '<div><div class="what">Baseline (monitored barangays)</div><div class="where">' +
-    (p.baseline ? esc(p.baseline.file) : 'From ' + esc(BUILT_IN.source)) + ' · configurable in <button class="link" data-act="go" data-v="settings">Settings</button></div></div><span></span></div>';
+    (p.baseline ? esc(p.baseline.file) : 'From ' + esc(BUILT_IN.source)) + ' · configurable in <a class="link" href="#sec-baseline" data-target="sec-baseline">Baseline Masterlist below</a></div></div><span></span></div>';
   var errs = IMPORT_ERRORS.map(function (e) {
     return '<div class="msg bad" style="margin-top:10px;margin-bottom:0">' + icon('alert-triangle') + ' <div><strong>' + esc(e.file) + '</strong>: ' + esc(e.error) + '</div></div>';
   });
@@ -1024,77 +1108,29 @@ function renderImport() {
   var pullLine = LOADED.participants ? '<div class="toolbar-row" style="margin-top:12px;margin-bottom:0">' +
     '<label class="field"><span>KCIS pull date of these exports</span><input type="date" data-act="im-evaldate" value="' + attr(p.evalDate || today()) + '"></label>' +
     '<span class="tiny" style="flex:1 1 240px">The day the exports were pulled from KCIS. Set it whenever you drop a newer pull: the 3-day attendance window and the Fix list (new, still open, resolved) go by this date.</span></div>' : '';
-  $('import-list').innerHTML = '<div class="import-grid">' + cards.join('') + '</div>' + refs + errs.join('') + covLine + pullLine;
+  var lockNotice = (!home() || STATE.editHome) ? (
+    '<div class="msg warn" style="margin-bottom:14px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px">' +
+      '<div style="display:flex;align-items:center;gap:8px">' +
+        icon('alert-triangle') +
+        '<div><strong>Workspace scope required:</strong> Select your Role &amp; Municipality in Section 2 below to unlock data import.</div>' +
+      '</div>' +
+      '<a class="btn primary btn-sm" href="#sec-scope" data-target="sec-scope">Set Scope in Section 2 ↓</a>' +
+    '</div>'
+  ) : '';
+  $('import-list').innerHTML = lockNotice + '<div class="import-grid">' + cards.join('') + '</div>' + refs + errs.join('') + covLine + pullLine;
   var btnCompute = $('btn-compute');
-  btnCompute.disabled = !LOADED.participants;
-  btnCompute.innerHTML = icon('layout-dashboard') + ' <span>' + (STATE.computed ? 'Recompute findings' : 'Show findings') + '</span>';
+  if (btnCompute) {
+    btnCompute.disabled = !LOADED.participants;
+    btnCompute.innerHTML = icon('layout-dashboard') + ' <span>' + (STATE.computed ? 'Recompute findings' : 'Show findings') + '</span>';
+  }
+  var btnComputeSide = $('btn-compute-side');
+  if (btnComputeSide) {
+    btnComputeSide.disabled = !LOADED.participants;
+    btnComputeSide.innerHTML = icon('layout-dashboard') + ' <span>' + (STATE.computed ? 'Recompute findings' : 'Show findings') + '</span>';
+  }
 }
 
-function renderStatus() {
-  var l = LOADED;
-  var keys = ['participants', 'households', 'volunteers'];
-  var loadedCount = keys.filter(function (k) { return !!l[k]; }).length;
-
-  var pillCls = loadedCount === 3 ? 'all-loaded' : (loadedCount > 0 ? 'some-loaded' : '');
-  var pillText = loadedCount === 3
-    ? '3 KCIS Exports Loaded'
-    : (loadedCount > 0 ? loadedCount + ' of 3 Exports Loaded' : 'No Exports Loaded');
-
-  var makeItem = function (kind, title, ico) {
-    var item = l[kind];
-    return '<div class="top-status-item ' + (item ? 'ok' : '') + '">' +
-      '<div class="top-status-item-ico">' + icon(ico) + '</div>' +
-      '<div class="top-status-item-info">' +
-        '<div class="top-status-item-title">' + esc(title) + '</div>' +
-        '<div class="top-status-item-sub">' + (item ? esc(item.file) : 'Not loaded yet') + '</div>' +
-      '</div>' +
-      '<span class="top-status-badge ' + (item ? 'ok' : 'missing') + '">' + (item ? n(item.rows) + ' rows' : 'Missing') + '</span>' +
-    '</div>';
-  };
-
-  var compTime = STATE.computed && STATE.computedAt
-    ? STATE.computedAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-    : '';
-
-  var updateNotice = (UPDATE_STATE.result && UPDATE_STATE.result.updateAvailable)
-    ? '<div class="top-status-update-pill">' +
-        '<span class="pill-chip good tiny">Update v' + esc(UPDATE_STATE.result.remote.version) + ' ready</span> ' +
-        '<button type="button" class="link tiny" data-act="go" data-v="settings">View in Settings ›</button>' +
-      '</div>'
-    : '';
-
-  var footHtml = updateNotice +
-    '<div class="top-status-foot">' +
-      (STATE.computed ? icon('check') + ' <span>Computed at ' + esc(compTime) + '</span>' : '<span>Local offline analysis</span>') +
-      '<span class="tiny muted" style="margin-left:auto">v' + APP_VERSION + '</span>' +
-    '</div>' +
-    '<div class="top-status-action">' +
-      '<button type="button" class="btn ghost btn-sm" id="btn-top-manage-files">' + icon('upload-cloud') + ' <span>Manage Files</span></button>' +
-    '</div>';
-
-  var html = '<div class="top-status-wrap" id="top-status-wrap">' +
-    '<button type="button" class="top-status-pill ' + pillCls + '" id="top-status-btn" aria-haspopup="true" aria-expanded="false" title="Click to view KCIS export data sources">' +
-      '<span class="status-dot"></span>' +
-      '<span class="top-status-label">' + esc(pillText) + '</span>' +
-      (STATE.computed ? '<span class="pill-chip good tiny" style="margin-left:2px;padding:1px 6px;font-size:10px">Computed ' + esc(compTime) + '</span>' : '') +
-      icon('chevron-down', 'status-chevron') +
-    '</button>' +
-    '<div class="top-status-menu" id="top-status-menu" role="menu">' +
-      '<div class="top-status-head">' +
-        '<span class="top-status-head-title">KCIS Data Sources</span>' +
-        '<span class="top-status-badge ' + (loadedCount === 3 ? 'ok' : 'missing') + '">' + loadedCount + '/3 Ready</span>' +
-      '</div>' +
-      '<div class="top-status-list">' +
-        makeItem('participants', 'Participants & Attendees', 'users') +
-        makeItem('households', 'Households Masterlist', 'building-2') +
-        makeItem('volunteers', 'Community Volunteers', 'list-checks') +
-      '</div>' +
-      footHtml +
-    '</div>' +
-  '</div>';
-
-  $('top-status').innerHTML = html;
-}
+function renderStatus() {}
 
 // ---- scope helpers ---------------------------------------------------------
 
@@ -1103,8 +1139,19 @@ function provinces() {
   (S.overview.municipalities || []).forEach(function (m) { p[m.province] = true; });
   return Object.keys(p).sort();
 }
+function actSeqNum(s) {
+  if (typeof s === 'number') return s;
+  var n = parseFloat(s);
+  return isNaN(n) ? 999 : n;
+}
+
 function stageActs() {
-  return (S.overview.activities || []).filter(function (a) { return (a.stage || 1) === STATE.stage; });
+  var list = (S.overview && S.overview.activities ? S.overview.activities : []).filter(function (a) {
+    return (a.stage || 1) === STATE.stage;
+  });
+  return list.slice().sort(function (a, b) {
+    return actSeqNum(a.seq) - actSeqNum(b.seq);
+  });
 }
 function matrixRows() {
   if (isMunicipalUser()) {
@@ -1240,7 +1287,7 @@ function renderOverview() {
   var curCol = (STATE.ovSort && STATE.ovSort.col) || 'seq';
   var curDir = (STATE.ovSort && STATE.ovSort.dir) || 'asc';
   var ovExtractors = {
-    seq: function (p) { return p.a.seq; },
+    seq: function (p) { return actSeqNum(p.a.seq); },
     activity: function (p) { return p.a.label; },
     expected: function (p) { return p.expected; },
     complete: function (p) { return p.complete; },
@@ -1459,13 +1506,13 @@ function cvPill(v, code) {
     (x.reasons && x.reasons.length ? '<div class="tiny">' + esc(x.reasons.join(' · ')) + '</div>' : '');
 }
 
-function brgyRows() {
+function brgyRows(displayActsOverride) {
   var key = STATE.muni, q = normSearch(STATE.brgySearch);
   var f = BRGY_FILTERS.filter(function (x) { return x.id === STATE.brgyFilter; })[0] || BRGY_FILTERS[0];
   var filtered = (SNAP.barangayRows || []).filter(function (b) {
     return (!key || b.province + '|' + b.municipality === key) && (!q || normSearch(b.barangay).indexOf(q) !== -1) && f.test(b);
   });
-  var acts = stageActs();
+  var acts = displayActsOverride || (STATE.brgyHideMuni !== false ? stageActs().filter(function (a) { return a.level !== 'Municipal'; }) : stageActs());
   var curCol = (STATE.brgySort && STATE.brgySort.col) || 'brgy';
   var curDir = (STATE.brgySort && STATE.brgySort.dir) || 'asc';
   var extractors = {
@@ -1477,6 +1524,7 @@ function brgyRows() {
   };
   acts.forEach(function (a) {
     extractors['act_' + a.code] = function (b) {
+      if (a.level === 'Municipal') return -2;
       var x = b.activities[a.code];
       if (!x || x.notApplicable || x.status === 'N/A') return -1;
       if (x.status === 'Complete') return 100000 + (x.attendees || 0);
@@ -1496,8 +1544,10 @@ function renderBrgys() {
     STATE.muni = munis[0].province + '|' + munis[0].municipality;
   }
   var acts = stageActs(), cvOn = STATE.stage === 1 && S.overview.volunteers && S.overview.volunteers.imported;
+  var hideMuni = STATE.brgyHideMuni !== false;
+  var displayActs = hideMuni ? acts.filter(function (a) { return a.level !== 'Municipal'; }) : acts;
   var all = (SNAP.barangayRows || []).filter(function (b) { return b.province + '|' + b.municipality === STATE.muni; });
-  var rows = brgyRows();
+  var rows = brgyRows(displayActs);
   var opts = '', lastProv = '';
   munis.forEach(function (m) {
     if (m.province !== lastProv) { opts += (lastProv ? '</optgroup>' : '') + '<optgroup label="' + attr(m.province) + '">'; lastProv = m.province; }
@@ -1520,24 +1570,34 @@ function renderBrgys() {
   var link = function (v, html, title) { return '<button type="button" class="cell-link" data-act="p-open" data-v="' + attr(v) + '" title="' + attr(title) + '">' + html + '</button>'; };
   var body = rows.map(function (b) {
     var bkey = b.province + '|' + b.municipality + '|' + b.barangay;
+    var lackCount = (b.todo && b.todo.length) || 0;
+    var lackCell = lackCount > 0
+      ? '<button type="button" class="btn bad btn-xs lacking-btn" data-act="open-lacking" data-brgy="' + attr(bkey) + '" title="Click to view all ' + lackCount + ' lacking items and data quality findings">' +
+          icon('alert-circle') + ' <span>' + n(lackCount) + ' lacking</span>' +
+        '</button>'
+      : '<span class="pill good tiny" title="All monitored activities encoded">✓ 0 lacking</span>';
+
     return '<tr><td class="sticky"><strong>' + esc(b.barangay) + '</strong>' + (b.stage2Prio && STATE.stage === 2 ? ' <span class="pill idle">Prio</span>' : '') +
         '<div><button type="button" class="link tiny" data-act="p-open" data-v="' + attr('attendees#' + bkey) + '">Attendees ›</button></div></td>' +
-      acts.map(function (a) {
+      displayActs.map(function (a) {
+        if (a.level === 'Municipal') {
+          return '<td class="cell-muni-muted" title="' + attr(a.label + ' is conducted at the Municipal level') + '"><span class="tiny">—</span></td>';
+        }
         var x = b.activities[a.code], pill = brgyStatusPill(x, a);
-        return '<td>' + (x && x.status !== 'Not Encoded' && x.status !== 'N/A' && a.level !== 'Municipal' ? link('attendees#' + bkey + '#' + a.code, pill, 'See the attendees') : pill) + '</td>';
+        return '<td>' + (x && x.status !== 'Not Encoded' && x.status !== 'N/A' ? link('attendees#' + bkey + '#' + a.code, pill, 'See the attendees') : pill) + '</td>';
       }).join('') +
       (STATE.stage === 1 ? '<td class="num">' + (b.hhListed
         ? link('households#' + bkey + '#BA1', '<span style="color:' + (b.hhRate >= 0.7 ? 'var(--good-text)' : 'var(--warn-text)') + ';font-weight:700">' + pctText(b.hhRate) + '</span><div class="tiny">' + n(b.hhPresent) + '/' + n(b.hhListed) + '</div>', 'See the household roster')
         : '<span class="tiny">not reported</span>') + '</td>' : '') +
       (cvOn ? '<td>' + link('volunteers#' + bkey + '#BREST', cvPill(b.volunteers, 'BREST'), 'See BResT') + '</td><td>' + link('volunteers#' + bkey + '#SFMSC', cvPill(b.volunteers, 'SFMSC'), 'See SFMSC') + '</td>' : '') +
-      '<td class="tiny">' + (b.todo && b.todo.length ? '<span style="color:var(--bad-text);font-weight:600">' + esc(b.todo.join(' · ')) + '</span>' : '<span class="tiny">—</span>') + '</td></tr>';
+      '<td>' + lackCell + '</td></tr>';
   }).join('');
   var parts = STATE.muni.split('|');
   var hasFilter = !!(STATE.brgySearch || STATE.brgyFilter !== 'all');
   var curCol = (STATE.brgySort && STATE.brgySort.col) || 'brgy';
   var curDir = (STATE.brgySort && STATE.brgySort.dir) || 'asc';
-  var th = function (col, label, num, sub, title, sticky) {
-    return sortTh({ col: col, curCol: curCol, dir: curDir, label: label, num: num, sub: sub, title: title, sticky: sticky, act: 'bg-sort' });
+  var th = function (col, label, num, sub, title, sticky, extraClass) {
+    return sortTh({ col: col, curCol: curCol, dir: curDir, label: label, num: num, sub: sub, title: title, sticky: sticky, act: 'bg-sort', extraClass: extraClass });
   };
   var muniControl = isMuni
     ? '<div class="static-val">' + icon('map-pin') + ' <span>Municipality: <strong>' + esc(parts[1] || '') + '</strong> (' + esc(parts[0] || '') + ')</span> <span class="role-badge field">PEA / MDM Scope</span></div>'
@@ -1551,15 +1611,24 @@ function renderBrgys() {
       '<div class="toolbar-row"><div class="filters" style="margin:0">' +
         muniControl +
         '<label class="field"><span>Search</span><input type="search" id="bg-search" value="' + attr(STATE.brgySearch) + '" placeholder="Barangay name…"></label>' +
+        '<label class="field-toggle-inline" style="display:inline-flex;align-items:center;gap:6px;font-size:12px;cursor:pointer;user-select:none;margin-top:auto;padding-bottom:8px" title="Toggle between completely hiding municipal activities and showing them grayed out">' +
+          '<input type="checkbox" id="chk-hide-muni" data-act="toggle-hide-muni"' + (hideMuni ? ' checked' : '') + '> <span>Hide municipal activities</span>' +
+        '</label>' +
         (hasFilter ? '<button type="button" class="btn ghost btn-sm" data-act="brgy-reset">' + icon('rotate-ccw') + ' <span>Reset filters</span></button>' : '') +
-      '</div><div class="legend" style="margin:0"><span class="pill good">✓ Attendees</span><span class="pill warn">No sheet</span><span class="pill idle">○ Not in KCIS</span></div></div>' +
+      '</div><div class="legend" style="margin:0"><span class="pill good">✓ Attendees</span><span class="pill warn">No sheet</span><span class="pill idle">○ Not in KCIS</span>' +
+      (!hideMuni ? '<span class="pill idle" style="opacity:0.65">— Municipal (N/A)</span>' : '') +
+      '</div></div>' +
       '<div class="filter-cards">' + cards + '</div>' +
       '<div class="table-wrap"><table class="grid"><thead><tr>' +
         th('brgy', 'Barangay (' + rows.length + ')', false, null, null, true) +
-        acts.map(function (a) { return th('act_' + a.code, esc(a.code), false, 'Seq ' + esc(a.seq), a.label); }).join('') +
+        displayActs.map(function (a) {
+          var isMuni = a.level === 'Municipal';
+          var sub = 'Seq ' + esc(a.seq) + (isMuni ? ' · Muni' : '');
+          return th('act_' + a.code, esc(a.code), false, sub, a.label + (isMuni ? ' (Municipal Level)' : ''), false, isMuni ? 'th-muni-muted' : '');
+        }).join('') +
         (STATE.stage === 1 ? th('k2', 'K2', true) : '') +
         (cvOn ? th('BREST', 'BResT') + th('SFMSC', 'SFMSC') : '') +
-        th('lacking', 'Lacking') +
+        th('lacking', 'Lacking', true) +
       '</tr></thead><tbody>' + (body || '<tr><td colspan="30" class="empty-state">No barangay matches these filters.</td></tr>') + '</tbody></table></div>' +
     '</div>';
   bindSearch('bg-search', function (v) { STATE.brgySearch = v; renderBrgys(); });
@@ -2053,48 +2122,81 @@ function exportKpiSummaryCsv() {
 // ---- settings ----------------------------------------------------------------
 
 function renderSettings() {
+  renderImport();
+
   var p = prefs(), bs = baselineSummary();
   var acts = readActivities();
-  $('st-body').innerHTML =
-    '<div class="card"><div class="home-set"><div><h2>Role &amp; Workspace Scope</h2><div class="muted">' + homeRoleBadge() + ' ' + esc(homeLabel() || 'Not chosen yet') + '</div></div>' +
-      '<button class="btn ghost" data-act="home-edit">' + icon('map-pin') + ' <span>Change</span></button></div></div>' +
-    '<div class="card"><h2>Baseline</h2>' +
-      '<p class="muted">' + (p.baseline ? 'Loaded from <strong>' + esc(p.baseline.file) + '</strong> on ' + esc(new Date(p.baseline.at).toLocaleString()) + '.'
-        : 'Built in from <strong>' + esc(BUILT_IN.source) + '</strong> (built ' + esc(new Date(BUILT_IN.builtAt).toLocaleDateString()) + ').') +
-      ' ' + n(bs.rows) + ' barangays listed; ' + n(bs.brgys) + ' monitored in ' + n(bs.munis) + ' municipalities.</p>' +
-      '<div class="row-actions"><label class="btn ghost">' + icon('upload-cloud') + ' <span>Load a newer baseline…</span><input type="file" id="st-baseline" accept=".xlsx,.csv" hidden></label>' +
-        (p.baseline ? '<button class="btn ghost" data-act="baseline-reset">Use the built-in baseline</button>' : '') + '</div>' +
-      '<p class="tiny" style="margin-top:8px">A Baseline file needs Province, Municipality and Barangay columns (PSGC codes and Monitored are used when present). The monitor workbook works too.</p></div>' +
-    '<div class="card"><h2>KCIS pull date</h2>' +
-      '<p class="muted">The date the exports were pulled from KCIS. A record with no attendance sheet counts as lacking from the 3rd day after the activity, judged on this date.</p>' +
-      '<div class="filters"><label class="field"><span>Pull date</span><input type="date" id="st-evaldate" value="' + attr(p.evalDate || '') + '"></label>' +
-        '<button class="btn ghost" data-act="evaldate-clear">Use today</button></div></div>' +
-    '<div class="card"><h2>Field conduct per activity</h2>' +
-      '<p class="muted">A record not in KCIS counts as lacking only when its activity is marked <strong>Completed</strong> in the field. ' +
-        (p.activities ? 'Taken from <strong>' + esc(p.activities.file) + '</strong>.' : 'Starts from the built-in monitor settings.') + '</p>' +
-      (function () {
-        var q = normSearch(STATE.settingsSearch || '');
-        var filteredActs = acts.filter(function (a) {
-          if (!q) return true;
-          return normSearch(a.seq + ' ' + a.code + ' ' + a.label + ' Stage ' + a.stage + ' ' + a.field).indexOf(q) !== -1;
-        });
-        var curCol = (STATE.settingsSort && STATE.settingsSort.col) || 'seq';
-        var curDir = (STATE.settingsSort && STATE.settingsSort.dir) || 'asc';
-        var stExtractors = {
-          seq: function (a) { return a.seq; },
-          activity: function (a) { return a.label; },
-          stage: function (a) { return a.stage || 1; },
-          field: function (a) { return a.field; }
-        };
-        var sortedActs = tblSort(filteredActs, curCol, curDir, stExtractors);
-        var th = function (col, label, num) {
-          return sortTh({ col: col, curCol: curCol, dir: curDir, label: label, num: num, act: 'st-sort' });
-        };
-        var actRows = sortedActs.map(function (a) {
-          return '<tr><td class="num">' + esc(a.seq) + '</td><td><strong>' + esc(a.label) + '</strong></td><td>Stage ' + esc(a.stage) + '</td><td><select data-act="field" data-v="' + attr(a.code) + '">' +
-            FIELD_VALUES.map(function (f) { return '<option' + (a.field === f ? ' selected' : '') + '>' + f + '</option>'; }).join('') + '</select></td></tr>';
-        }).join('');
-        return '<div class="toolbar-row" style="margin-top:10px;margin-bottom:12px"><div class="filters" style="margin:0;flex:1">' +
+
+  // 1. Baseline Reference Masterlist
+  var baseEl = $('st-baseline-container');
+  if (baseEl) {
+    baseEl.innerHTML =
+      '<div class="card">' +
+        '<div class="card-head" style="margin-bottom:8px">' +
+          '<div>' +
+            '<h2>Baseline Reference Masterlist</h2>' +
+            '<div class="muted">Official masterlist of monitored municipalities and barangays.</div>' +
+          '</div>' +
+          '<span class="pill good">' + icon('database') + ' Reference Masterlist</span>' +
+        '</div>' +
+        '<p class="muted">' + (p.baseline ? 'Loaded from <strong>' + esc(p.baseline.file) + '</strong> on ' + esc(new Date(p.baseline.at).toLocaleString()) + '.'
+          : 'Built in from <strong>' + esc(BUILT_IN.source) + '</strong> (built ' + esc(new Date(BUILT_IN.builtAt).toLocaleDateString()) + ').') +
+        ' ' + n(bs.rows) + ' barangays listed; ' + n(bs.brgys) + ' monitored in ' + n(bs.munis) + ' municipalities.</p>' +
+        '<div class="row-actions" style="margin-top:12px">' +
+          '<label class="btn ghost">' + icon('upload-cloud') + ' <span>Load a newer baseline…</span><input type="file" id="st-baseline" accept=".xlsx,.csv" hidden></label>' +
+          (p.baseline ? '<button class="btn ghost" data-act="baseline-reset">' + icon('rotate-ccw') + ' <span>Use built-in baseline</span></button>' : '') +
+        '</div>' +
+        '<p class="tiny" style="margin-top:8px">A Baseline file needs Province, Municipality, and Barangay columns (PSGC codes and Monitored are used when present). The monitor workbook works too.</p>' +
+      '</div>';
+
+    var bf = $('st-baseline');
+    if (bf) bf.addEventListener('change', function () {
+      var f = bf.files[0]; if (!f) return;
+      readDataFile(f).then(function (found) {
+        var b = found.filter(function (x) { return x.kind === 'baseline'; })[0];
+        if (!b) throw new Error(f.name + ' has no Baseline (Province, Municipality, Barangay) table.');
+        acceptTable(b);
+        toast('Baseline loaded: ' + n(b.table.rows.length) + ' barangays.');
+        afterSettingsChange();
+      }).catch(function (e) { toast(e.message); });
+    });
+  }
+
+  // 2. Field Conduct Rules
+  var condEl = $('st-conduct-container');
+  if (condEl) {
+    var q = normSearch(STATE.settingsSearch || '');
+    var filteredActs = acts.filter(function (a) {
+      if (!q) return true;
+      return normSearch(a.seq + ' ' + a.code + ' ' + a.label + ' Stage ' + a.stage + ' ' + a.field).indexOf(q) !== -1;
+    });
+    var curCol = (STATE.settingsSort && STATE.settingsSort.col) || 'seq';
+    var curDir = (STATE.settingsSort && STATE.settingsSort.dir) || 'asc';
+    var stExtractors = {
+      seq: function (a) { return actSeqNum(a.seq); },
+      activity: function (a) { return a.label; },
+      stage: function (a) { return a.stage || 1; },
+      field: function (a) { return a.field; }
+    };
+    var sortedActs = tblSort(filteredActs, curCol, curDir, stExtractors);
+    var th = function (col, label, num) {
+      return sortTh({ col: col, curCol: curCol, dir: curDir, label: label, num: num, act: 'st-sort' });
+    };
+    var actRows = sortedActs.map(function (a) {
+      return '<tr><td class="num">' + esc(a.seq) + '</td><td><strong>' + esc(a.label) + '</strong></td><td>Stage ' + esc(a.stage) + '</td><td><select data-act="field" data-v="' + attr(a.code) + '">' +
+        FIELD_VALUES.map(function (f) { return '<option' + (a.field === f ? ' selected' : '') + '>' + f + '</option>'; }).join('') + '</select></td></tr>';
+    }).join('');
+
+    condEl.innerHTML =
+      '<div class="card">' +
+        '<div class="card-head" style="margin-bottom:8px">' +
+          '<div>' +
+            '<h2>Field Conduct Rules per Activity</h2>' +
+            '<div class="muted">A record not in KCIS counts as lacking only when its activity is marked <strong>Completed</strong> in the field. ' +
+              (p.activities ? 'Taken from <strong>' + esc(p.activities.file) + '</strong>.' : 'Starts from built-in monitor settings.') + '</div>' +
+          '</div>' +
+        '</div>' +
+        '<div class="toolbar-row" style="margin-top:10px;margin-bottom:12px"><div class="filters" style="margin:0;flex:1">' +
           '<label class="field" style="flex:1"><span>Filter activities</span><input type="search" id="st-act-search" value="' + attr(STATE.settingsSearch) + '" placeholder="Search sequence, activity name, stage, field conduct…"></label>' +
           (STATE.settingsSearch ? '<button type="button" class="btn ghost btn-sm" data-act="st-reset">' + icon('rotate-ccw') + ' <span>Reset</span></button>' : '') +
         '</div><span class="tiny">Showing <strong>' + n(sortedActs.length) + '</strong> of <strong>' + n(acts.length) + '</strong> activities</span></div>' +
@@ -2103,23 +2205,52 @@ function renderSettings() {
           th('activity', 'Activity') +
           th('stage', 'Stage') +
           th('field', 'Field conduct') +
-        '</tr></thead><tbody>' + (actRows || '<tr><td colspan="4" class="empty-state">No activity matches your search.</td></tr>') + '</tbody></table></div>';
-      })() + '</div>' +
-    (function () {
-      var isOnline = typeof navigator !== 'undefined' && navigator.onLine;
-      var notesBox = '';
-      if (UPDATE_STATE.result && UPDATE_STATE.result.updateAvailable && UPDATE_STATE.result.remote) {
-        var rem = UPDATE_STATE.result.remote;
-        if (rem.notes && rem.notes.length) {
-          notesBox = '<div class="update-notes-box"><div class="update-notes-title">What\'s New in v' + esc(rem.version) + ':</div><ul class="update-notes-list">' +
-            rem.notes.map(function (note) { return '<li>' + esc(note) + '</li>'; }).join('') +
-          '</ul></div>';
-        }
-      }
-      return '<div class="card update-settings-card">' +
+        '</tr></thead><tbody>' + (actRows || '<tr><td colspan="4" class="empty-state">No activity matches your search.</td></tr>') + '</tbody></table></div>' +
+      '</div>';
+
+    bindSearch('st-act-search', function (v) { STATE.settingsSearch = v; renderSettings(); });
+  }
+
+  // 3. KCIS Pull Date
+  var pullEl = $('st-pulldate-container');
+  if (pullEl) {
+    pullEl.innerHTML =
+      '<div class="card">' +
         '<div class="card-head" style="margin-bottom:8px">' +
           '<div>' +
-            '<h2>App Version &amp; Updates</h2>' +
+            '<h2>KCIS Pull Date</h2>' +
+            '<div class="muted">The date the exports were pulled from KCIS. A record with no attendance sheet counts as lacking from the 3rd day after the activity, judged on this date.</div>' +
+          '</div>' +
+          '<span class="pill neutral">' + icon('calendar') + ' ' + esc(p.evalDate || today()) + '</span>' +
+        '</div>' +
+        '<div class="filters" style="margin-top:12px">' +
+          '<label class="field"><span>Pull date</span><input type="date" id="st-evaldate" value="' + attr(p.evalDate || '') + '"></label>' +
+          '<button class="btn ghost" data-act="evaldate-clear">Use today</button>' +
+        '</div>' +
+      '</div>';
+
+    var ed = $('st-evaldate');
+    if (ed) ed.addEventListener('change', function () { var q = prefs(); q.evalDate = ed.value || ''; delete q.evalDateFromSave; savePrefs(q); afterSettingsChange(); });
+  }
+
+  // 4. App Version & Semi-Offline Updates
+  var updEl = $('st-updates-container');
+  if (updEl) {
+    var isOnline = typeof navigator !== 'undefined' && navigator.onLine;
+    var notesBox = '';
+    if (UPDATE_STATE.result && UPDATE_STATE.result.updateAvailable && UPDATE_STATE.result.remote) {
+      var rem = UPDATE_STATE.result.remote;
+      if (rem.notes && rem.notes.length) {
+        notesBox = '<div class="update-notes-box"><div class="update-notes-title">What\'s New in v' + esc(rem.version) + ':</div><ul class="update-notes-list">' +
+          rem.notes.map(function (note) { return '<li>' + esc(note) + '</li>'; }).join('') +
+        '</ul></div>';
+      }
+    }
+    updEl.innerHTML =
+      '<div class="card update-settings-card">' +
+        '<div class="card-head" style="margin-bottom:8px">' +
+          '<div>' +
+            '<h2>App Version &amp; Semi-Offline Updates</h2>' +
             '<div class="muted">Runs 100% offline in field barangays. Connect to Wi-Fi or mobile hotspot when in town to check or download updates.</div>' +
           '</div>' +
           '<div style="display:flex;align-items:center;gap:8px">' +
@@ -2185,26 +2316,51 @@ function renderSettings() {
           '</div>' +
         '</div>' +
       '</div>';
-    })() +
-    '<div class="card note-card"><h3>About</h3><ul>' +
-      '<li>PCRP Encoding and Data Quality Assessment Tool runs the Encoding Monitor v' + esc(BUILT_IN.monitorVersion) + ' rules on this computer. Files are never uploaded.</li>' +
-      '<li>The loaded exports, the findings of earlier pulls and the verification tags are kept in this browser until you choose "Forget saved data" on the Import page; settings above are remembered too.</li>' +
-      '<li>Household heads\' names appear in Data Health, as for an editor of the web monitor. Handle the exports and any downloaded file under the Data Privacy Act.</li>' +
-    '</ul></div>';
-  var bf = $('st-baseline');
-  if (bf) bf.addEventListener('change', function () {
-    var f = bf.files[0]; if (!f) return;
-    readDataFile(f).then(function (found) {
-      var b = found.filter(function (x) { return x.kind === 'baseline'; })[0];
-      if (!b) throw new Error(f.name + ' has no Baseline (Province, Municipality, Barangay) table.');
-      acceptTable(b);
-      toast('Baseline loaded: ' + n(b.table.rows.length) + ' barangays.');
-      afterSettingsChange();
-    }).catch(function (e) { toast(e.message); });
-  });
-  var ed = $('st-evaldate');
-  if (ed) ed.addEventListener('change', function () { var q = prefs(); q.evalDate = ed.value || ''; delete q.evalDateFromSave; savePrefs(q); afterSettingsChange(); });
-  bindSearch('st-act-search', function (v) { STATE.settingsSearch = v; renderSettings(); });
+  }
+
+  // 5. About & Privacy + Workstation Security (DPA)
+  var abtEl = $('st-about-container');
+  if (abtEl) {
+    var sec = typeof PCRP_CRYPTO !== 'undefined' ? PCRP_CRYPTO.getSecurityPrefs() : { enabled: false };
+    abtEl.innerHTML =
+      '<div class="card note-card">' +
+        '<div class="card-head" style="margin-bottom:8px">' +
+          '<div>' +
+            '<h3>About &amp; Data Privacy Notice</h3>' +
+            '<div class="tiny muted">Local execution &amp; compliance guidelines</div>' +
+          '</div>' +
+          '<span class="pill good">' + icon('shield-check') + ' Privacy Compliant</span>' +
+        '</div>' +
+        '<ul style="margin:8px 0 0;padding-left:18px;line-height:1.6">' +
+          '<li><strong>PCRP Encoding and Data Quality Assessment Tool</strong> runs the Encoding Monitor v' + esc(BUILT_IN.monitorVersion) + ' rules on this computer. Files are never uploaded.</li>' +
+          '<li>The loaded exports, the findings of earlier pulls, and the verification tags are kept in this browser until you choose "Forget saved data" on the Import card; settings above are remembered too.</li>' +
+          '<li>Household heads\' names appear in Data Health, as for an editor of the web monitor. Handle the exports and any downloaded file under the Data Privacy Act.</li>' +
+        '</ul>' +
+      '</div>' +
+      '<div class="card" style="margin-top:16px">' +
+        '<div class="card-head" style="margin-bottom:8px">' +
+          '<div>' +
+            '<h2>Workstation Security &amp; Session Lock</h2>' +
+            '<div class="muted">Protect sensitive participant and household records on shared LGU field laptops with AES-GCM at-rest encryption.</div>' +
+          '</div>' +
+          '<span class="pill ' + (sec.enabled ? 'good' : 'idle') + '">' +
+            (sec.enabled ? icon('shield-check') + ' PIN Lock Active' : icon('shield') + ' No PIN Set') +
+          '</span>' +
+        '</div>' +
+        '<div class="row-actions" style="margin-top:12px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">' +
+          (sec.enabled ? (
+            '<button type="button" class="btn primary btn-sm" data-act="sec-lock-now">' + icon('shield') + ' <span>Lock Workspace Now</span></button>' +
+            '<button type="button" class="btn ghost btn-sm" data-act="sec-change-pin">' + icon('settings') + ' <span>Change PIN</span></button>' +
+            '<button type="button" class="btn ghost btn-sm" data-act="sec-disable">' + icon('trash-2') + ' <span>Disable PIN Lock</span></button>'
+          ) : (
+            '<button type="button" class="btn primary btn-sm" data-act="sec-setup-pin">' + icon('shield-check') + ' <span>Enable PIN Lock &amp; Encryption</span></button>'
+          )) +
+        '</div>' +
+        '<p class="tiny muted" style="margin-top:8px">When active, the workstation session automatically locks after 15 minutes of inactivity and encrypts saved records at rest using 256-bit AES-GCM.</p>' +
+      '</div>';
+  }
+
+  refreshIcons($('page-settings'));
 }
 
 function afterSettingsChange() {
@@ -2472,8 +2628,38 @@ document.addEventListener('click', function (ev) {
     updateTabBadges();
     renderStatus();
   }
+  else if (act === 'sec-lock-now') {
+    if (typeof PCRP_CRYPTO !== 'undefined') PCRP_CRYPTO.lockSession('Manual lock triggered by user.');
+  }
+  else if (act === 'sec-setup-pin' || act === 'sec-change-pin') {
+    var p1 = prompt('Enter a 4-to-8 digit PIN to protect this workstation session:');
+    if (!p1) return;
+    if (p1.length < 4) { alert('PIN must be at least 4 digits.'); return; }
+    var p2 = prompt('Confirm your 4-to-8 digit PIN:');
+    if (p1 !== p2) { alert('PIN confirmation did not match.'); return; }
+    PCRP_CRYPTO.setPin(p1).then(function () {
+      toast('Workstation security PIN enabled (AES-GCM-256 active).');
+      renderSettings();
+    }).catch(function (e) { toast(e.message); });
+  }
+  else if (act === 'sec-disable') {
+    if (confirm('Disable PIN lock and storage encryption for this browser?')) {
+      PCRP_CRYPTO.disableSecurity();
+      toast('PIN lock disabled.');
+      renderSettings();
+    }
+  }
+  else if (act === 'open-lacking') {
+    var bkey = t.getAttribute('data-brgy') || (t.closest('[data-brgy]') && t.closest('[data-brgy]').getAttribute('data-brgy'));
+    openLackingModal(bkey);
+  }
 });
 document.addEventListener('keydown', function (ev) {
+  if (ev.key === 'Enter' && ev.target && ev.target.id === 'lock-pin-input') {
+    var btn = $('btn-unlock-session');
+    if (btn) btn.click();
+    return;
+  }
   if (ev.key === 'Enter' || ev.key === ' ') {
     var th = ev.target && ev.target.closest && ev.target.closest('th.sortable');
     if (th) { ev.preventDefault(); th.click(); return; }
@@ -2491,6 +2677,10 @@ document.addEventListener('change', function (ev) {
     if (STATE.computed) computeAndShow(null); else renderImport();
   }
   else if (act === 'muni-select') { STATE.muni = t.value; STATE.brgyFilter = 'all'; renderBrgys(); }
+  else if (act === 'toggle-hide-muni') {
+    STATE.brgyHideMuni = t.checked;
+    renderBrgys();
+  }
   else if (act === 'field') {
     var p = prefs(); p.field = p.field || {}; p.field[t.getAttribute('data-v')] = t.value; savePrefs(p);
     toast('Field conduct saved' + (STATE.computed ? '; recomputing.' : '.')); afterSettingsChange();
@@ -2498,7 +2688,7 @@ document.addEventListener('change', function (ev) {
 });
 
 // Close <dialog> when clicking its backdrop
-['memo-dialog', 'person-dialog', 'scope-dialog'].forEach(function (id) {
+['memo-dialog', 'person-dialog', 'scope-dialog', 'delta-dialog', 'lacking-dialog'].forEach(function (id) {
   var dlg = $(id);
   if (dlg) dlg.addEventListener('click', function (ev) {
     if (ev.target === dlg) dlg.close();
@@ -2529,35 +2719,6 @@ $('tabs').addEventListener('click', function (ev) {
 });
 
 document.addEventListener('click', function (ev) {
-  // Top status dropdown toggle
-  var sBtn = ev.target.closest('#top-status-btn');
-  if (sBtn) {
-    var menu = $('top-status-menu');
-    if (menu) {
-      var isOpen = menu.classList.contains('open');
-      menu.classList.toggle('open', !isOpen);
-      sBtn.classList.toggle('open', !isOpen);
-      sBtn.setAttribute('aria-expanded', !isOpen);
-    }
-    return;
-  }
-  // Click on "Manage Files" in top status dropdown
-  if (ev.target.closest('#btn-top-manage-files')) {
-    var sMenu = $('top-status-menu');
-    var sBtn2 = $('top-status-btn');
-    if (sMenu) sMenu.classList.remove('open');
-    if (sBtn2) sBtn2.classList.remove('open');
-    go('import');
-    return;
-  }
-  // Close top status popover if clicking outside
-  var statusWrap = $('top-status-wrap');
-  if (statusWrap && !statusWrap.contains(ev.target)) {
-    var sBtn3 = $('top-status-btn');
-    var sMenu3 = $('top-status-menu');
-    if (sBtn3) sBtn3.classList.remove('open');
-    if (sMenu3) sMenu3.classList.remove('open');
-  }
   // Close nav-tab-group dropdowns if clicking outside
   if (!ev.target.closest('.nav-tab-group')) {
     Array.prototype.forEach.call(document.querySelectorAll('.nav-tab-group.open'), function (g) {
@@ -2569,11 +2730,51 @@ document.addEventListener('click', function (ev) {
   if (subBtn) {
     var target = subBtn.getAttribute('data-go');
     if (target) go(target);
+    return;
+  }
+  // Settings sidebar menu anchor links
+  var navItem = ev.target.closest('.settings-nav-item, a[data-target^="sec-"]');
+  if (navItem) {
+    var targetId = navItem.getAttribute('data-target') || (navItem.getAttribute('href') || '').replace('#', '');
+    var targetSec = targetId ? $(targetId) : null;
+    if (targetSec) {
+      ev.preventDefault();
+      Array.prototype.forEach.call(document.querySelectorAll('.settings-nav-item'), function (el) {
+        var match = el === navItem || el.getAttribute('data-target') === targetId;
+        el.classList.toggle('active', match);
+      });
+      targetSec.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  }
+  // Unlock workspace button in lock overlay
+  if (ev.target && (ev.target.id === 'btn-unlock-session' || ev.target.closest('#btn-unlock-session'))) {
+    var inp = $('lock-pin-input');
+    var pin = inp ? inp.value.trim() : '';
+    if (!pin) return;
+    if (typeof PCRP_CRYPTO !== 'undefined') {
+      PCRP_CRYPTO.unlockSession(pin).then(function (ok) {
+        if (ok) {
+          toast('Workspace unlocked.');
+          var err = $('lock-error');
+          if (err) err.style.display = 'none';
+        } else {
+          var err2 = $('lock-error');
+          if (err2) {
+            err2.textContent = 'Incorrect PIN. Please try again.';
+            err2.style.display = 'block';
+          }
+          if (inp) { inp.value = ''; inp.focus(); }
+        }
+      });
+    }
+    return;
   }
 });
-$('btn-import-top').addEventListener('click', function () { go('import'); });
+$('btn-import-top').addEventListener('click', function () { go('settings'); });
 $('btn-export').addEventListener('click', exportExcel);
 $('btn-compute').addEventListener('click', function () { computeAndShow('overview'); });
+var btnComputeSide = $('btn-compute-side');
+if (btnComputeSide) btnComputeSide.addEventListener('click', function () { computeAndShow('overview'); });
 $('btn-clear').addEventListener('click', function () {
   delete TABS.Raw_Participants; delete TABS.Raw_Households; delete TABS.Raw_Volunteers;
   LOADED = {}; IMPORT_ERRORS = []; STATE.computed = false; SNAP = null; S.overview = null; S.matrix = null; PEOPLE = null;
@@ -2612,14 +2813,47 @@ $('memo-save').addEventListener('click', function () {
 
 $('home-chip').addEventListener('click', function () { openScopeDialog(); });
 
+function initSettingsScrollSpy() {
+  if (typeof IntersectionObserver === 'undefined') return;
+  var sections = document.querySelectorAll('.settings-section');
+  if (!sections.length) return;
+  var observer = new IntersectionObserver(function (entries) {
+    entries.forEach(function (entry) {
+      if (entry.isIntersecting) {
+        var id = entry.target.id;
+        Array.prototype.forEach.call(document.querySelectorAll('.settings-nav-item'), function (item) {
+          item.classList.toggle('active', item.getAttribute('data-target') === id);
+        });
+      }
+    });
+  }, {
+    rootMargin: '-15% 0px -60% 0px'
+  });
+  sections.forEach(function (sec) { observer.observe(sec); });
+
+  window.addEventListener('scroll', function () {
+    if (STATE.page !== 'settings') return;
+    if ((window.innerHeight + window.scrollY) >= (document.documentElement.scrollHeight - 48)) {
+      Array.prototype.forEach.call(document.querySelectorAll('.settings-nav-item'), function (item) {
+        item.classList.toggle('active', item.getAttribute('data-target') === 'sec-about');
+      });
+    }
+  }, { passive: true });
+}
+
 // ---- start ----------------------------------------------------------------------
 refreshIcons(document);
 applyTheme();
 loadReferenceTables();
 applyHomeScope();
-renderImport();
+renderSettings();
 renderStatus();
 updateTabBadges();
+initSettingsScrollSpy();
+var secPrefs = typeof PCRP_CRYPTO !== 'undefined' ? PCRP_CRYPTO.getSecurityPrefs() : null;
+if (secPrefs && secPrefs.enabled && secPrefs.pinHash) {
+  PCRP_CRYPTO.lockSession('Workstation session protected by PIN.');
+}
 // after the computation's own 'Findings ready' message, so this one is the one left on screen
 savedRestore().then(function (restored) {
   if (restored) setTimeout(function () { toast('Opened the data saved on this PC: as of ' + SAVED.current.pullDate + '. Drop newer exports to replace it.'); }, 800);

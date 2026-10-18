@@ -283,7 +283,7 @@ function yesNo(v) { return v ? '<span class="pill good">Yes</span>' : '<span cla
 var ATT_STATE = { muni: '', brgy: '', act: '', sex: 'all', flag: 'all', search: '', limit: 100, sortCol: 'name', sortDir: 'asc' };
 var HH_STATE = { tab: 'scorecard', muni: '', brgy: '', quorum: 'all', flag: 'all', search: '', limit: 100, sortCol: 'brgy', sortDir: 'asc' };
 var VOL_STATE = { muni: '', brgy: '', body: 'all', position: 'all', sex: 'all', marg: 'all', flag: 'all', search: '', limit: 100, sortCol: 'name', sortDir: 'asc' };
-var BRT_STATE = { muni: '', brgy: '', status: 'all', search: '', sortCol: 'brgy', sortDir: 'asc' };
+var BRT_STATE = { muni: '', brgy: '', status: 'all', search: '', sortCol: 'brgy', sortDir: 'asc', teamSortCol: 'brgy', teamSortDir: 'asc' };
 var MRT_STATE = { muni: '', search: '', sortCol: 'name', sortDir: 'asc' };
 var PSTATE = { view: 'attendees', scope: 'home', brgy: '', act: '', body: '', flag: 'all', search: '', limit: 100, sortCol: 0, sortDir: 'asc' };
 
@@ -905,40 +905,113 @@ function renderBrest() {
     return true;
   });
 
-  // Render Barangay Cards Grid
-  var cardsHtml = filteredBrgys.map(function (b) {
+  // Section 1: Barangay Teams Tabular Matrix
+  var curTeamCol = BRT_STATE.teamSortCol || 'brgy';
+  var curTeamDir = BRT_STATE.teamSortDir || 'asc';
+  var selectedBkey = BRT_STATE.brgy;
+
+  var teamItems = filteredBrgys.map(function (b) {
     var bkey = b.province + '|' + b.municipality + '|' + b.barangay;
     var bVols = brestVols.filter(function (v) { return v.barangay === b.barangay && v.municipality === b.municipality; });
-    var chair = bVols.filter(function (v) { return v.chair; })[0];
     var st = b.volunteers && b.volunteers.BREST ? b.volunteers.BREST.status : 'Not encoded';
     var reasons = (b.volunteers && b.volunteers.BREST && b.volunteers.BREST.reasons) || [];
-    var cardCls = st === 'Encoded' ? 'good' : (st === 'Needs fixing' ? 'warn' : 'bad');
-    var statusPill = st === 'Encoded' ? '<span class="pill good">✓ Compliant</span>' : (st === 'Needs fixing' ? '<span class="pill warn">⚠ Needs Fixing</span>' : '<span class="pill bad">○ Not Encoded</span>');
     var women = bVols.filter(function (v) { return v.sex === 'female'; }).length;
     var marg = bVols.filter(function (v) { return v.sex === 'female' || v.ip || v.pwd; }).length;
+    var sectors = [];
+    bVols.forEach(function (v) {
+      var p = v.position ? v.position.trim() : '';
+      if (p && sectors.indexOf(p) === -1) sectors.push(p);
+    });
+    return {
+      b: b,
+      bkey: bkey,
+      bVols: bVols,
+      st: st,
+      reasons: reasons,
+      women: women,
+      marg: marg,
+      sectors: sectors,
+      womenPct: bVols.length ? Math.round(women / bVols.length * 100) : 0,
+      margPct: bVols.length ? Math.round(marg / bVols.length * 100) : 0
+    };
+  });
 
-    return '<div class="brest-card ' + cardCls + '">' +
-      '<div class="brest-head">' +
-        '<div><div class="brest-title">' + esc(b.barangay) + '</div>' + (isRegionalUser() ? '<div class="tiny">' + esc(b.municipality) + '</div>' : '') + '</div>' +
-        statusPill +
-      '</div>' +
-      (chair ?
-        '<div class="brest-chair"><strong>' + esc(chair.name) + '</strong><span class="tiny">' + esc(chair.position || 'Chairperson') + '</span></div>'
-        : '<div class="brest-chair" style="color:var(--warn-text)"><strong>⚠ No Chairperson Tagged</strong><span class="tiny">Chairperson required under Stage 1</span></div>') +
-      '<div class="brest-stats">' +
-        '<span class="pill idle">' + n(bVols.length) + ' members</span>' +
-        '<span class="pill idle">' + n(women) + ' women (' + pctText(pctOf(women, bVols.length)) + ')</span>' +
-        (bVols.length ? '<span class="pill idle">Marginalized ' + Math.round(marg / bVols.length * 100) + '%</span>' : '') +
-      '</div>' +
-      (reasons.length ? '<div class="brest-issues">' + icon('alert-triangle') + ' <span>' + esc(reasons.join(' · ')) + '</span></div>' : '') +
-      '<div style="margin-top:auto;display:flex;justify-content:flex-end">' +
-        '<button type="button" class="link tiny" data-act="brt-pick-brgy" data-v="' + attr(bkey) + '">Inspect ' + n(bVols.length) + ' Members ›</button>' +
-      '</div>' +
-    '</div>';
+  var teamExt = {
+    brgy: function (t) { return t.b.barangay; },
+    muni: function (t) { return t.b.municipality; },
+    members: function (t) { return t.bVols.length; },
+    women: function (t) { return t.women; },
+    womenPct: function (t) { return t.bVols.length ? t.women / t.bVols.length : -1; },
+    marg: function (t) { return t.bVols.length ? t.marg / t.bVols.length : -1; },
+    sectors: function (t) { return t.sectors.length; },
+    status: function (t) { return t.st === 'Encoded' ? 2 : (t.st === 'Needs fixing' ? 1 : 0); },
+    issues: function (t) { return t.reasons.length; }
+  };
+
+  var sortedTeams = tblSort(teamItems, curTeamCol, curTeamDir, teamExt);
+
+  var teamTh = function (col, label, num, sub, title, sticky) {
+    return sortTh({
+      col: col,
+      curCol: curTeamCol,
+      dir: curTeamDir,
+      label: label,
+      num: num,
+      sub: sub,
+      title: title,
+      sticky: sticky,
+      act: 'brt-team-sort'
+    });
+  };
+
+  var teamRowsHtml = sortedTeams.map(function (item) {
+    var b = item.b;
+    var bkey = item.bkey;
+    var bVols = item.bVols;
+    var st = item.st;
+    var reasons = item.reasons;
+    var isSelected = selectedBkey === bkey;
+
+    var statusPill = st === 'Encoded'
+      ? '<span class="pill good">✓ Compliant</span>'
+      : (st === 'Needs fixing' ? '<span class="pill warn">⚠ Needs Fixing</span>' : '<span class="pill bad">○ Not Encoded</span>');
+
+    var issuesCell = reasons.length > 0
+      ? '<button type="button" class="btn bad btn-xs lacking-btn" data-act="open-brest-issues" data-brgy="' + attr(bkey) + '" title="Click to view all ' + reasons.length + ' validation issues">' +
+          icon('alert-circle') + ' <span>' + n(reasons.length) + ' lacking</span>' +
+        '</button>'
+      : '<span class="pill good tiny" title="No validation issues">✓ None</span>';
+
+    var sectorsHtml = item.sectors.length
+      ? '<span title="' + attr(item.sectors.join(', ')) + '">' + esc(item.sectors.slice(0, 2).join(', ')) + (item.sectors.length > 2 ? ' <span class="tiny muted">+' + (item.sectors.length - 2) + ' more</span>' : '') + '</span>'
+      : '<span class="tiny muted">No roles tagged</span>';
+
+    var womenText = bVols.length
+      ? n(item.women) + ' <span class="tiny muted">(' + item.womenPct + '%)</span>'
+      : '<span class="tiny muted">—</span>';
+
+    var margText = bVols.length
+      ? n(item.marg) + ' <span class="tiny muted">(' + item.margPct + '%)</span>'
+      : '<span class="tiny muted">—</span>';
+
+    return '<tr class="' + (isSelected ? 'active-row ' : '') + (st === 'Needs fixing' ? 'row-warn' : '') + '">' +
+      '<td class="sticky"><strong>' + esc(b.barangay) + '</strong>' +
+        (isSelected ? ' <span class="pill good tiny">Viewing</span>' : '') +
+      '</td>' +
+      (!isMuni ? '<td>' + esc(b.municipality) + '</td>' : '') +
+      '<td class="num"><strong>' + n(bVols.length) + '</strong></td>' +
+      '<td class="num">' + womenText + '</td>' +
+      '<td class="num">' + margText + '</td>' +
+      '<td>' + sectorsHtml + '</td>' +
+      '<td>' + statusPill + '</td>' +
+      '<td>' + issuesCell + '</td>' +
+      '<td><button type="button" class="btn ghost btn-xs" data-act="brt-pick-brgy" data-v="' + attr(bkey) + '" title="Filter members directory below to ' + esc(b.barangay) + '">' +
+        icon('users') + ' <span>' + (isSelected ? 'Selected' : 'Inspect (' + n(bVols.length) + ')') + '</span>' +
+      '</button></td>' +
+    '</tr>';
   }).join('');
 
   // Section 2: Members Directory Table
-  var selectedBkey = BRT_STATE.brgy;
   var displayVols = brestVols.filter(function (v) {
     if (selectedBkey && (v.province + '|' + v.municipality + '|' + v.barangay !== selectedBkey)) return false;
     if (BRT_STATE.search) {
@@ -1014,9 +1087,12 @@ function renderBrest() {
       '<div class="card-head">' +
         '<div>' +
           '<h2>Barangay Resilience Team (BResT) Management</h2>' +
-          '<div class="muted">' + (isMuni ? 'Monitoring BResT formation for <strong>' + esc(home().municipality) + '</strong>.' : 'Region-wide BResT compliance monitor.') + ' Evaluates team formation, Chairperson designation, and marginalized representation under Stage 1.</div>' +
+          '<div class="muted">' + (isMuni ? 'Monitoring BResT formation for <strong>' + esc(home().municipality) + '</strong>.' : 'Region-wide BResT compliance monitor.') + ' Evaluates volunteer team formation, sectoral purok coverage, and marginalized representation (&ge;30%) under Stage 1.</div>' +
         '</div>' +
-        '<div class="row-actions" style="margin:0"><button class="btn ghost btn-sm" data-act="brt-export">' + icon('download') + ' <span>Export BResT Directory CSV</span></button></div>' +
+        '<div class="row-actions" style="margin:0">' +
+          '<button class="btn ghost btn-sm" data-act="brt-teams-export">' + icon('download') + ' <span>Export Teams CSV</span></button>' +
+          '<button class="btn ghost btn-sm" data-act="brt-export">' + icon('download') + ' <span>Export Members CSV</span></button>' +
+        '</div>' +
       '</div>' +
       '<div class="grid-kpi">' +
         '<div class="kpi ' + (encodedBrgys === totalBrgys && totalBrgys > 0 ? 'accent-good' : 'accent-warn') + '">' +
@@ -1024,8 +1100,8 @@ function renderBrest() {
           '<div class="kpi-value">' + n(encodedBrgys + needsFixBrgys) + ' <span class="tiny">of ' + n(totalBrgys) + '</span></div>' +
           '<div class="kpi-sub">' + (totalBrgys ? Math.round((encodedBrgys + needsFixBrgys) / totalBrgys * 100) + '% teams organized in KCIS' : '') + '</div>' +
         '</div>' +
-        '<div class="kpi accent-good"><div class="kpi-label">Compliant Teams</div><div class="kpi-value">' + n(encodedBrgys) + '</div><div class="kpi-sub">valid chairperson &amp; active quorum</div></div>' +
-        '<div class="kpi ' + (needsFixBrgys > 0 ? 'accent-warn' : 'accent-good') + '"><div class="kpi-label">Teams Needing Attention</div><div class="kpi-value">' + n(needsFixBrgys) + '</div><div class="kpi-sub">missing chairperson or validation issues</div></div>' +
+        '<div class="kpi accent-good"><div class="kpi-label">Compliant Teams</div><div class="kpi-value">' + n(encodedBrgys) + '</div><div class="kpi-sub">active volunteer quorum &amp; inclusive representation</div></div>' +
+        '<div class="kpi ' + (needsFixBrgys > 0 ? 'accent-warn' : 'accent-good') + '"><div class="kpi-label">Teams Needing Attention</div><div class="kpi-value">' + n(needsFixBrgys) + '</div><div class="kpi-sub">insufficient volunteers or validation issues</div></div>' +
         '<div class="kpi ' + (notEncodedBrgys > 0 ? 'accent-bad' : 'accent-good') + '"><div class="kpi-label">Not Yet Encoded</div><div class="kpi-value">' + n(notEncodedBrgys) + '</div><div class="kpi-sub">pending volunteer encoding in KCIS</div></div>' +
       '</div>' +
       '<div class="toolbar-row" style="margin-top:14px;margin-bottom:8px">' +
@@ -1033,8 +1109,17 @@ function renderBrest() {
         '<label class="field" style="min-width:240px"><span>Search Barangay / Volunteer</span><input type="search" id="brt-search" value="' + attr(BRT_STATE.search) + '" placeholder="Search…"></label>' +
         (BRT_STATE.status !== 'all' || BRT_STATE.search ? '<button type="button" class="btn ghost btn-sm" data-act="brt-reset">' + icon('rotate-ccw') + ' <span>Reset</span></button>' : '') +
       '</div>' +
-      '<h3 style="margin-top:16px">Barangay Team Status Cards (' + filteredBrgys.length + ')</h3>' +
-      '<div class="brest-grid">' + (cardsHtml || '<div class="empty-state">No barangays match this status filter.</div>') + '</div>' +
+      '<div class="table-wrap" style="margin-top:12px"><table class="grid"><thead><tr>' +
+        teamTh('brgy', 'Barangay (' + sortedTeams.length + ')', false, null, null, true) +
+        (!isMuni ? teamTh('muni', 'Municipality') : '') +
+        teamTh('members', 'Members', true) +
+        teamTh('women', 'Women Rep.', true, 'Count (%)') +
+        teamTh('marg', 'Marginalized', true, 'IP/PWD (%)') +
+        teamTh('sectors', 'Sectors / Purok Roles', false, 'Sitios & Groups') +
+        teamTh('status', 'Compliance') +
+        teamTh('issues', 'Lacking / Issues') +
+        '<th>Actions</th>' +
+      '</tr></thead><tbody>' + (teamRowsHtml || '<tr><td colspan="9" class="empty-state">No barangays match this status filter.</td></tr>') + '</tbody></table></div>' +
       '<hr style="border:0;border-top:1px solid var(--border-subtle);margin:24px 0 16px">' +
       '<div class="card-head" style="margin-bottom:8px">' +
         '<div><h3>BResT Member Directory</h3><div class="tiny">' + (selectedBkey ? 'Showing members for selected barangay' : 'All encoded BResT members across monitored barangays') + '</div></div>' +
@@ -1387,6 +1472,45 @@ function exportVolunteersCsv() {
   downloadCsv('PCRP_volunteers_' + (activeMuni ? activeMuni.replace(/[^A-Za-z0-9]+/g, '_') : 'region') + '_' + stamp() + '.csv', csvOf([head].concat(rows)));
 }
 
+function exportBrestTeamsCsv() {
+  var P = people(), isMuni = isMunicipalUser(), key = homeKey();
+  var activeMuni = isMuni ? key : (BRT_STATE.muni || key || '');
+  var brgys = (SNAP.barangayRows || []).filter(function (b) { return !activeMuni || b.province + '|' + b.municipality === activeMuni; });
+  var brestVols = P.volunteers.filter(function (v) {
+    if (v.kind !== 'BREST') return false;
+    return !activeMuni || (v.province + '|' + v.municipality === activeMuni);
+  });
+  var head = ['Barangay', 'Municipality', 'Province', 'Sectors / Purok Roles', 'Members Count', 'Women Count', 'Women Pct', 'Marginalized Count', 'Marginalized Pct', 'Compliance Status', 'Validation Issues'];
+  var rows = brgys.map(function (b) {
+    var bVols = brestVols.filter(function (v) { return v.barangay === b.barangay && v.municipality === b.municipality; });
+    var sectors = [];
+    bVols.forEach(function (v) {
+      var p = v.position ? v.position.trim() : '';
+      if (p && sectors.indexOf(p) === -1) sectors.push(p);
+    });
+    var st = b.volunteers && b.volunteers.BREST ? b.volunteers.BREST.status : 'Not encoded';
+    var reasons = (b.volunteers && b.volunteers.BREST && b.volunteers.BREST.reasons) || [];
+    var women = bVols.filter(function (v) { return v.sex === 'female'; }).length;
+    var marg = bVols.filter(function (v) { return v.sex === 'female' || v.ip || v.pwd; }).length;
+    var womenPct = bVols.length ? Math.round(women / bVols.length * 100) + '%' : '0%';
+    var margPct = bVols.length ? Math.round(marg / bVols.length * 100) + '%' : '0%';
+    return [
+      b.barangay,
+      b.municipality,
+      b.province,
+      sectors.length ? sectors.join('; ') : 'No roles tagged',
+      bVols.length,
+      women,
+      womenPct,
+      marg,
+      margPct,
+      st,
+      reasons.join('; ')
+    ];
+  });
+  downloadCsv('PCRP_BResT_teams_' + (activeMuni ? activeMuni.replace(/[^A-Za-z0-9]+/g, '_') : 'region') + '_' + stamp() + '.csv', csvOf([head].concat(rows)));
+}
+
 function exportBrestCsv() {
   var P = people(), isMuni = isMunicipalUser(), key = homeKey();
   var activeMuni = isMuni ? key : (BRT_STATE.muni || key || '');
@@ -1469,12 +1593,27 @@ document.addEventListener('click', function (ev) {
   else if (act === 'brt-status') { BRT_STATE.status = v; renderBrest(); }
   else if (act === 'brt-reset') { BRT_STATE.status = 'all'; BRT_STATE.search = ''; renderBrest(); }
   else if (act === 'brt-pick-brgy') { BRT_STATE.brgy = v; renderBrest(); }
+  else if (act === 'brt-team-sort') {
+    var bCol = t.getAttribute('data-col');
+    if (BRT_STATE.teamSortCol === bCol) BRT_STATE.teamSortDir = BRT_STATE.teamSortDir === 'asc' ? 'desc' : 'asc';
+    else { BRT_STATE.teamSortCol = bCol; BRT_STATE.teamSortDir = (bCol === 'brgy' || bCol === 'muni') ? 'asc' : 'desc'; }
+    renderBrest();
+  }
+  else if (act === 'open-brest-issues') {
+    var bkey = t.getAttribute('data-brgy') || (t.closest('[data-brgy]') && t.closest('[data-brgy]').getAttribute('data-brgy'));
+    var b = (SNAP.barangayRows || []).filter(function (x) { return (x.province + '|' + x.municipality + '|' + x.barangay) === bkey; })[0];
+    var issues = (b && b.volunteers && b.volunteers.BREST && b.volunteers.BREST.reasons) || [];
+    var brgyName = b ? b.barangay : 'Barangay';
+    var muniLoc = b ? (b.municipality + ', ' + b.province) : '';
+    openLackingModal(bkey, issues, brgyName + ' · BResT Validation Issues', muniLoc + ' · ' + issues.length + ' validation issue' + (issues.length === 1 ? '' : 's'));
+  }
   else if (act === 'brt-sort') {
     var bCol = t.getAttribute('data-col');
     if (BRT_STATE.sortCol === bCol) BRT_STATE.sortDir = BRT_STATE.sortDir === 'asc' ? 'desc' : 'asc';
     else { BRT_STATE.sortCol = bCol; BRT_STATE.sortDir = 'asc'; }
     renderBrest();
   }
+  else if (act === 'brt-teams-export') exportBrestTeamsCsv();
   else if (act === 'brt-export') exportBrestCsv();
 
   // MResT

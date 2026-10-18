@@ -1,0 +1,474 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>graphify - graphify-out/graph.html</title>
+<script src="https://unpkg.com/vis-network@9.1.6/standalone/umd/vis-network.min.js"
+        integrity="sha384-Ux6phic9PEHJ38YtrijhkzyJ8yQlH8i/+buBR8s3mAZOJrP1gwyvAcIYl3GWtpX1"
+        crossorigin="anonymous"></script>
+<style>
+  :root {
+    --bg: #0f0f1a; --panel: #1a1a2e; --border: #2a2a4e; --input-border: #3a3a5e;
+    --text: #e0e0e0; --text-2: #aaa; --text-3: #ccc; --muted: #555; --count: #666;
+    --neighbor-border: #333; --node-label: #ffffff;
+  }
+  [data-theme="light"] {
+    --bg: #ffffff; --panel: #f8f9fa; --border: #d9dee5; --input-border: #c3cad4;
+    --text: #222222; --text-2: #666666; --text-3: #333333; --muted: #888888; --count: #777777;
+    --neighbor-border: #ccc; --node-label: #222222;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; display: flex; height: 100vh; overflow: hidden; }
+  #graph { flex: 1; }
+  #sidebar { width: 280px; background: var(--panel); border-left: 1px solid var(--border); display: flex; flex-direction: column; overflow: hidden; }
+  #search-wrap { padding: 12px; border-bottom: 1px solid var(--border); }
+  #search { width: 100%; background: var(--bg); border: 1px solid var(--input-border); color: var(--text); padding: 7px 10px; border-radius: 6px; font-size: 13px; outline: none; }
+  #search:focus { border-color: #4E79A7; }
+  #search-results { max-height: 140px; overflow-y: auto; padding: 4px 12px; border-bottom: 1px solid var(--border); display: none; }
+  .search-item { padding: 4px 6px; cursor: pointer; border-radius: 4px; font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .search-item:hover { background: var(--border); }
+  #info-panel { padding: 14px; border-bottom: 1px solid var(--border); min-height: 140px; }
+  #info-panel h3 { font-size: 13px; color: var(--text-2); margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.05em; }
+  #info-content { font-size: 13px; color: var(--text-3); line-height: 1.6; }
+  #info-content .field { margin-bottom: 5px; }
+  #info-content .field b { color: var(--text); }
+  #info-content .empty { color: var(--muted); font-style: italic; }
+  .neighbor-link { display: block; padding: 2px 6px; margin: 2px 0; border-radius: 3px; cursor: pointer; font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; border-left: 3px solid var(--neighbor-border); }
+  .neighbor-link:hover { background: var(--border); }
+  #neighbors-list { max-height: 160px; overflow-y: auto; margin-top: 4px; }
+  #legend-wrap { flex: 1; overflow-y: auto; padding: 12px; }
+  #legend-wrap h3 { font-size: 13px; color: var(--text-2); margin-bottom: 10px; text-transform: uppercase; letter-spacing: 0.05em; }
+  .legend-item { display: flex; align-items: center; gap: 8px; padding: 4px 0; cursor: pointer; border-radius: 4px; font-size: 12px; }
+  .legend-item:hover { background: var(--border); padding-left: 4px; }
+  .legend-item.dimmed { opacity: 0.35; }
+  .legend-dot { width: 12px; height: 12px; border-radius: 50%; flex-shrink: 0; }
+  .legend-label { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .legend-count { color: var(--count); font-size: 11px; }
+  #stats { padding: 10px 14px; border-top: 1px solid var(--border); font-size: 11px; color: var(--muted); }
+  #legend-controls { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; padding: 4px 0; }
+  #legend-controls label { display: flex; align-items: center; gap: 6px; cursor: pointer; font-size: 12px; color: var(--text-2); user-select: none; }
+  #legend-controls label:hover { color: var(--text); }
+  .legend-cb, #select-all-cb { appearance: none; -webkit-appearance: none; width: 14px; height: 14px; border: 1.5px solid var(--input-border); border-radius: 3px; background: var(--bg); cursor: pointer; position: relative; flex-shrink: 0; }
+  .legend-cb:checked, #select-all-cb:checked { background: #4E79A7; border-color: #4E79A7; }
+  .legend-cb:checked::after, #select-all-cb:checked::after { content: ''; position: absolute; left: 3.5px; top: 1px; width: 4px; height: 7px; border: solid #fff; border-width: 0 2px 2px 0; transform: rotate(45deg); }
+  #select-all-cb:indeterminate { background: #4E79A7; border-color: #4E79A7; }
+  #select-all-cb:indeterminate::after { content: ''; position: absolute; left: 2px; top: 5px; width: 8px; height: 2px; background: #fff; border: none; transform: none; }
+  #theme-wrap { display: flex; gap: 4px; padding: 8px 12px; border-bottom: 1px solid var(--border); }
+  #theme-wrap button { flex: 1; background: var(--bg); color: var(--text-2); border: 1px solid var(--input-border); border-radius: 4px; padding: 3px 0; font-size: 11px; cursor: pointer; }
+  #theme-wrap button:hover { color: var(--text); }
+  #theme-wrap button[aria-pressed="true"] { background: #4E79A7; border-color: #4E79A7; color: #fff; }
+</style>
+<script id="graphify-theme-init">
+// Apply the saved theme before first paint (#3894). No saved choice keeps the
+// historical dark look; "system" follows prefers-color-scheme.
+(function () {
+  var pref = null;
+  try { pref = localStorage.getItem('graphify-theme'); } catch (e) {}
+  var t = pref === 'light' ? 'light'
+    : pref === 'system' && window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches ? 'light'
+    : 'dark';
+  document.documentElement.setAttribute('data-theme', t);
+})();
+</script>
+</head>
+<body>
+<div id="graph"></div>
+<div id="sidebar">
+  <div id="theme-wrap" role="group" aria-label="Theme">
+    <button type="button" data-theme-choice="light">Light</button>
+    <button type="button" data-theme-choice="dark">Dark</button>
+    <button type="button" data-theme-choice="system">System</button>
+  </div>
+  <div id="search-wrap">
+    <input id="search" type="text" placeholder="Search nodes..." autocomplete="off">
+    <div id="search-results"></div>
+  </div>
+  <div id="info-panel">
+    <h3>Node Info</h3>
+    <div id="info-content"><span class="empty">Click a node to inspect it</span></div>
+  </div>
+  <div id="legend-wrap">
+    <h3>Communities</h3>
+    <div id="legend-controls">
+      <label><input type="checkbox" id="select-all-cb" checked onchange="toggleAllCommunities(!this.checked)">Select All</label>
+    </div>
+    <div id="legend"></div>
+  </div>
+  <div id="stats">38 nodes &middot; 48 edges &middot; 6 communities</div>
+</div>
+<script>
+const RAW_NODES = [{"id": "Doc:SM1_Social_Mobilization", "label": "SM1: Social Mobilization Sub-Manual", "color": {"background": "#59A14F", "border": "#59A14F", "highlight": {"background": "#ffffff", "border": "#59A14F"}}, "size": 23.3, "font": {"size": 12, "color": "#ffffff"}, "title": "SM1: Social Mobilization Sub-Manual", "community": 4, "community_name": "Sub-Project Development & Implementation", "source_file": "manuals/SM1_ Social Mobilization.pdf", "file_type": "concept", "degree": 4}, {"id": "Doc:SM7_Monitoring_Evaluation", "label": "SM7: Monitoring & Evaluation Sub-Manual", "color": {"background": "#4E79A7", "border": "#4E79A7", "highlight": {"background": "#ffffff", "border": "#4E79A7"}}, "size": 23.3, "font": {"size": 12, "color": "#ffffff"}, "title": "SM7: Monitoring & Evaluation Sub-Manual", "community": 0, "community_name": "BResT Composition & PRVA Planning", "source_file": "manuals/SM7_ Monitoring and Evaluation.pdf", "file_type": "concept", "degree": 4}, {"id": "Team:BResT", "label": "Barangay Resilience Team (BResT)", "color": {"background": "#E15759", "border": "#E15759", "highlight": {"background": "#ffffff", "border": "#E15759"}}, "size": 40.0, "font": {"size": 12, "color": "#ffffff"}, "title": "Barangay Resilience Team (BResT)", "community": 2, "community_name": "BResT Composition & PRVA Planning", "source_file": "manuals/SM1_ Social Mobilization.pdf", "file_type": "concept", "degree": 9}, {"id": "Rule:BResT_No_Chairperson", "label": "BResT Composition Rule: No Chairperson Needed", "color": {"background": "#E15759", "border": "#E15759", "highlight": {"background": "#ffffff", "border": "#E15759"}}, "size": 13.3, "font": {"size": 0, "color": "#ffffff"}, "title": "BResT Composition Rule: No Chairperson Needed", "community": 2, "community_name": "BResT Composition & PRVA Planning", "source_file": "manuals/SM1_ Social Mobilization.pdf", "file_type": "concept", "degree": 1}, {"id": "Rule:BResT_Marginalized_Quota", "label": "BResT 30% Marginalized Quota Rule", "color": {"background": "#E15759", "border": "#E15759", "highlight": {"background": "#ffffff", "border": "#E15759"}}, "size": 13.3, "font": {"size": 0, "color": "#ffffff"}, "title": "BResT 30% Marginalized Quota Rule", "community": 2, "community_name": "BResT Composition & PRVA Planning", "source_file": "manuals/SM1_ Social Mobilization.pdf", "file_type": "concept", "degree": 1}, {"id": "Team:MResT", "label": "Municipal Resilience Team (MResT)", "color": {"background": "#F28E2B", "border": "#F28E2B", "highlight": {"background": "#ffffff", "border": "#F28E2B"}}, "size": 26.7, "font": {"size": 12, "color": "#ffffff"}, "title": "Municipal Resilience Team (MResT)", "community": 1, "community_name": "Monitoring, Evaluation & Data Quality", "source_file": "manuals/SM1_ Social Mobilization.pdf", "file_type": "concept", "degree": 5}, {"id": "Team:CRSPMC", "label": "Community Resilience Sub-Project Management Committee (CRSPMC / CSPMC)", "color": {"background": "#76B7B2", "border": "#76B7B2", "highlight": {"background": "#ffffff", "border": "#76B7B2"}}, "size": 30.0, "font": {"size": 12, "color": "#ffffff"}, "title": "Community Resilience Sub-Project Management Committee (CRSPMC / CSPMC)", "community": 3, "community_name": "Sub-Project Development & Implementation", "source_file": "manuals/SM1_ Social Mobilization.pdf", "file_type": "concept", "degree": 6}, {"id": "Team:CMSC", "label": "Community Monitoring Sub-Committee (CMSC)", "color": {"background": "#4E79A7", "border": "#4E79A7", "highlight": {"background": "#ffffff", "border": "#4E79A7"}}, "size": 26.7, "font": {"size": 12, "color": "#ffffff"}, "title": "Community Monitoring Sub-Committee (CMSC)", "community": 0, "community_name": "BResT Composition & PRVA Planning", "source_file": "manuals/SM7_ Monitoring and Evaluation.pdf", "file_type": "concept", "degree": 5}, {"id": "Team:SFMSC", "label": "Stakeholder & Feedback Mechanism Sub-Committee (SFMSC)", "color": {"background": "#EDC948", "border": "#EDC948", "highlight": {"background": "#ffffff", "border": "#EDC948"}}, "size": 13.3, "font": {"size": 0, "color": "#ffffff"}, "title": "Stakeholder & Feedback Mechanism Sub-Committee (SFMSC)", "community": 5, "community_name": "Community Cluster 5", "source_file": "manuals/SM1_ Social Mobilization.pdf", "file_type": "concept", "degree": 1}, {"id": "Team:PIT", "label": "Project Implementation Team (PIT)", "color": {"background": "#76B7B2", "border": "#76B7B2", "highlight": {"background": "#ffffff", "border": "#76B7B2"}}, "size": 16.7, "font": {"size": 12, "color": "#ffffff"}, "title": "Project Implementation Team (PIT)", "community": 3, "community_name": "Sub-Project Development & Implementation", "source_file": "manuals/SM1_ Social Mobilization.pdf", "file_type": "concept", "degree": 2}, {"id": "Team:Procurement_Team", "label": "Community Procurement Team (PT)", "color": {"background": "#76B7B2", "border": "#76B7B2", "highlight": {"background": "#ffffff", "border": "#76B7B2"}}, "size": 16.7, "font": {"size": 12, "color": "#ffffff"}, "title": "Community Procurement Team (PT)", "community": 3, "community_name": "Sub-Project Development & Implementation", "source_file": "manuals/SM1_ Social Mobilization.pdf", "file_type": "concept", "degree": 2}, {"id": "Team:AIT", "label": "Audit & Inventory Team (AIT)", "color": {"background": "#76B7B2", "border": "#76B7B2", "highlight": {"background": "#ffffff", "border": "#76B7B2"}}, "size": 13.3, "font": {"size": 0, "color": "#ffffff"}, "title": "Audit & Inventory Team (AIT)", "community": 3, "community_name": "Sub-Project Development & Implementation", "source_file": "manuals/SM1_ Social Mobilization.pdf", "file_type": "concept", "degree": 1}, {"id": "Team:OMT", "label": "Operations & Maintenance Team (O&MT)", "color": {"background": "#4E79A7", "border": "#4E79A7", "highlight": {"background": "#ffffff", "border": "#4E79A7"}}, "size": 16.7, "font": {"size": 12, "color": "#ffffff"}, "title": "Operations & Maintenance Team (O&MT)", "community": 0, "community_name": "BResT Composition & PRVA Planning", "source_file": "manuals/SM1_ Social Mobilization.pdf", "file_type": "concept", "degree": 2}, {"id": "Team:ACT", "label": "Area Coordinating Team (ACT)", "color": {"background": "#F28E2B", "border": "#F28E2B", "highlight": {"background": "#ffffff", "border": "#F28E2B"}}, "size": 16.7, "font": {"size": 12, "color": "#ffffff"}, "title": "Area Coordinating Team (ACT)", "community": 1, "community_name": "Monitoring, Evaluation & Data Quality", "source_file": "manuals/SM1_ Social Mobilization.pdf", "file_type": "concept", "degree": 2}, {"id": "Team:MCT", "label": "Municipal Coordinating Team (MCT)", "color": {"background": "#F28E2B", "border": "#F28E2B", "highlight": {"background": "#ffffff", "border": "#F28E2B"}}, "size": 13.3, "font": {"size": 0, "color": "#ffffff"}, "title": "Municipal Coordinating Team (MCT)", "community": 1, "community_name": "Monitoring, Evaluation & Data Quality", "source_file": "manuals/SM1_ Social Mobilization.pdf", "file_type": "concept", "degree": 1}, {"id": "Stage:CRIP_Overview", "label": "Community Resilience Implementation Process (CRIP)", "color": {"background": "#59A14F", "border": "#59A14F", "highlight": {"background": "#ffffff", "border": "#59A14F"}}, "size": 13.3, "font": {"size": 0, "color": "#ffffff"}, "title": "Community Resilience Implementation Process (CRIP)", "community": 4, "community_name": "Sub-Project Development & Implementation", "source_file": "manuals/SM1_ Social Mobilization.pdf", "file_type": "concept", "degree": 1}, {"id": "Stage:Stage1_Assessment_Planning", "label": "CRIP Stage 1: Participatory Assessment & Resilience Planning", "color": {"background": "#59A14F", "border": "#59A14F", "highlight": {"background": "#ffffff", "border": "#59A14F"}}, "size": 20.0, "font": {"size": 12, "color": "#ffffff"}, "title": "CRIP Stage 1: Participatory Assessment & Resilience Planning", "community": 4, "community_name": "Sub-Project Development & Implementation", "source_file": "manuals/SM1_ Social Mobilization.pdf", "file_type": "concept", "degree": 3}, {"id": "Stage:Stage2_SubProject_Development", "label": "CRIP Stage 2: Community Resilience Sub-Project Development", "color": {"background": "#59A14F", "border": "#59A14F", "highlight": {"background": "#ffffff", "border": "#59A14F"}}, "size": 26.7, "font": {"size": 12, "color": "#ffffff"}, "title": "CRIP Stage 2: Community Resilience Sub-Project Development", "community": 4, "community_name": "Sub-Project Development & Implementation", "source_file": "manuals/SM1_ Social Mobilization.pdf", "file_type": "concept", "degree": 5}, {"id": "Stage:Stage3_Implementation", "label": "CRIP Stage 3: Community-Managed Sub-Project Implementation", "color": {"background": "#76B7B2", "border": "#76B7B2", "highlight": {"background": "#ffffff", "border": "#76B7B2"}}, "size": 30.0, "font": {"size": 12, "color": "#ffffff"}, "title": "CRIP Stage 3: Community-Managed Sub-Project Implementation", "community": 3, "community_name": "Sub-Project Development & Implementation", "source_file": "manuals/SM1_ Social Mobilization.pdf", "file_type": "concept", "degree": 6}, {"id": "Stage:Stage4_Monitoring_Review", "label": "CRIP Stage 4: Community-Based Monitoring & Review", "color": {"background": "#4E79A7", "border": "#4E79A7", "highlight": {"background": "#ffffff", "border": "#4E79A7"}}, "size": 20.0, "font": {"size": 12, "color": "#ffffff"}, "title": "CRIP Stage 4: Community-Based Monitoring & Review", "community": 0, "community_name": "BResT Composition & PRVA Planning", "source_file": "manuals/SM7_ Monitoring and Evaluation.pdf", "file_type": "concept", "degree": 3}, {"id": "Assembly:BA1", "label": "1st Barangay Assembly (BA1): Project Orientation & Team Selection", "color": {"background": "#EDC948", "border": "#EDC948", "highlight": {"background": "#ffffff", "border": "#EDC948"}}, "size": 26.7, "font": {"size": 12, "color": "#ffffff"}, "title": "1st Barangay Assembly (BA1): Project Orientation & Team Selection", "community": 5, "community_name": "Community Cluster 5", "source_file": "manuals/SM1_ Social Mobilization.pdf", "file_type": "concept", "degree": 5}, {"id": "Assembly:BA2", "label": "2nd Barangay Assembly (BA2): PRVA Validation & Committee Formation", "color": {"background": "#4E79A7", "border": "#4E79A7", "highlight": {"background": "#ffffff", "border": "#4E79A7"}}, "size": 20.0, "font": {"size": 12, "color": "#ffffff"}, "title": "2nd Barangay Assembly (BA2): PRVA Validation & Committee Formation", "community": 0, "community_name": "BResT Composition & PRVA Planning", "source_file": "manuals/SM1_ Social Mobilization.pdf", "file_type": "concept", "degree": 3}, {"id": "Assembly:BA3", "label": "3rd Barangay Assembly (BA3): Sub-Project Proposal Approval", "color": {"background": "#59A14F", "border": "#59A14F", "highlight": {"background": "#ffffff", "border": "#59A14F"}}, "size": 16.7, "font": {"size": 12, "color": "#ffffff"}, "title": "3rd Barangay Assembly (BA3): Sub-Project Proposal Approval", "community": 4, "community_name": "Sub-Project Development & Implementation", "source_file": "manuals/SM1_ Social Mobilization.pdf", "file_type": "concept", "degree": 2}, {"id": "Assembly:BA4_BAR", "label": "4th Barangay Assembly / Barangay Accountability Reporting (BAR)", "color": {"background": "#4E79A7", "border": "#4E79A7", "highlight": {"background": "#ffffff", "border": "#4E79A7"}}, "size": 16.7, "font": {"size": 12, "color": "#ffffff"}, "title": "4th Barangay Assembly / Barangay Accountability Reporting (BAR)", "community": 0, "community_name": "BResT Composition & PRVA Planning", "source_file": "manuals/SM7_ Monitoring and Evaluation.pdf", "file_type": "concept", "degree": 2}, {"id": "Process:PRVA", "label": "Participatory Risk & Vulnerability Assessment (PRVA)", "color": {"background": "#E15759", "border": "#E15759", "highlight": {"background": "#ffffff", "border": "#E15759"}}, "size": 13.3, "font": {"size": 0, "color": "#ffffff"}, "title": "Participatory Risk & Vulnerability Assessment (PRVA)", "community": 2, "community_name": "BResT Composition & PRVA Planning", "source_file": "manuals/SM1_ Social Mobilization.pdf", "file_type": "concept", "degree": 1}, {"id": "Process:Walkthrough_Mapping", "label": "Risk & Vulnerability Walk-Through and Spot Mapping", "color": {"background": "#E15759", "border": "#E15759", "highlight": {"background": "#ffffff", "border": "#E15759"}}, "size": 13.3, "font": {"size": 0, "color": "#ffffff"}, "title": "Risk & Vulnerability Walk-Through and Spot Mapping", "community": 2, "community_name": "BResT Composition & PRVA Planning", "source_file": "manuals/SM1_ Social Mobilization.pdf", "file_type": "concept", "degree": 1}, {"id": "Process:FGD_Series", "label": "Focused Group Discussions (FGDs) with Sectors", "color": {"background": "#E15759", "border": "#E15759", "highlight": {"background": "#ffffff", "border": "#E15759"}}, "size": 13.3, "font": {"size": 0, "color": "#ffffff"}, "title": "Focused Group Discussions (FGDs) with Sectors", "community": 2, "community_name": "BResT Composition & PRVA Planning", "source_file": "manuals/SM1_ Social Mobilization.pdf", "file_type": "concept", "degree": 1}, {"id": "Process:BPRVA_Workshop", "label": "Barangay PRVA Workshop", "color": {"background": "#E15759", "border": "#E15759", "highlight": {"background": "#ffffff", "border": "#E15759"}}, "size": 13.3, "font": {"size": 0, "color": "#ffffff"}, "title": "Barangay PRVA Workshop", "community": 2, "community_name": "BResT Composition & PRVA Planning", "source_file": "manuals/SM1_ Social Mobilization.pdf", "file_type": "concept", "degree": 1}, {"id": "Process:MRP_Workshop", "label": "Municipal Resilience Planning (MRP) Workshop", "color": {"background": "#F28E2B", "border": "#F28E2B", "highlight": {"background": "#ffffff", "border": "#F28E2B"}}, "size": 13.3, "font": {"size": 0, "color": "#ffffff"}, "title": "Municipal Resilience Planning (MRP) Workshop", "community": 1, "community_name": "Monitoring, Evaluation & Data Quality", "source_file": "manuals/SM1_ Social Mobilization.pdf", "file_type": "concept", "degree": 1}, {"id": "Process:BDC_Endorsement", "label": "Barangay Development Council (BDC) Endorsement", "color": {"background": "#F28E2B", "border": "#F28E2B", "highlight": {"background": "#ffffff", "border": "#F28E2B"}}, "size": 13.3, "font": {"size": 0, "color": "#ffffff"}, "title": "Barangay Development Council (BDC) Endorsement", "community": 1, "community_name": "Monitoring, Evaluation & Data Quality", "source_file": "manuals/SM1_ Social Mobilization.pdf", "file_type": "concept", "degree": 1}, {"id": "Process:SPDW", "label": "Sub-Project Development Workshop (SPDW)", "color": {"background": "#76B7B2", "border": "#76B7B2", "highlight": {"background": "#ffffff", "border": "#76B7B2"}}, "size": 13.3, "font": {"size": 0, "color": "#ffffff"}, "title": "Sub-Project Development Workshop (SPDW)", "community": 3, "community_name": "Sub-Project Development & Implementation", "source_file": "manuals/SM1_ Social Mobilization.pdf", "file_type": "concept", "degree": 1}, {"id": "Process:TDR_Appraisal", "label": "Technical Desk Review (TDR) & RPMO Appraisal", "color": {"background": "#59A14F", "border": "#59A14F", "highlight": {"background": "#ffffff", "border": "#59A14F"}}, "size": 13.3, "font": {"size": 0, "color": "#ffffff"}, "title": "Technical Desk Review (TDR) & RPMO Appraisal", "community": 4, "community_name": "Sub-Project Development & Implementation", "source_file": "manuals/SM1_ Social Mobilization.pdf", "file_type": "concept", "degree": 1}, {"id": "ME:Results_Framework", "label": "PCRP M&E Results Framework & Theory of Change", "color": {"background": "#4E79A7", "border": "#4E79A7", "highlight": {"background": "#ffffff", "border": "#4E79A7"}}, "size": 13.3, "font": {"size": 0, "color": "#ffffff"}, "title": "PCRP M&E Results Framework & Theory of Change", "community": 0, "community_name": "BResT Composition & PRVA Planning", "source_file": "manuals/SM7_ Monitoring and Evaluation.pdf", "file_type": "concept", "degree": 1}, {"id": "ME:Community_Monitoring_Toolkit", "label": "Community Monitoring Toolkit (Annex L)", "color": {"background": "#4E79A7", "border": "#4E79A7", "highlight": {"background": "#ffffff", "border": "#4E79A7"}}, "size": 16.7, "font": {"size": 12, "color": "#ffffff"}, "title": "Community Monitoring Toolkit (Annex L)", "community": 0, "community_name": "BResT Composition & PRVA Planning", "source_file": "manuals/SM7_ Monitoring and Evaluation.pdf", "file_type": "concept", "degree": 2}, {"id": "ME:DQA_Protocols", "label": "Data Quality Assessment (DQA) & Verification Protocols", "color": {"background": "#F28E2B", "border": "#F28E2B", "highlight": {"background": "#ffffff", "border": "#F28E2B"}}, "size": 26.7, "font": {"size": 12, "color": "#ffffff"}, "title": "Data Quality Assessment (DQA) & Verification Protocols", "community": 1, "community_name": "Monitoring, Evaluation & Data Quality", "source_file": "manuals/SM7_ Monitoring and Evaluation.pdf", "file_type": "concept", "degree": 5}, {"id": "System:KCIS", "label": "KALAHI-CIDSS Comprehensive Information System (KCIS)", "color": {"background": "#F28E2B", "border": "#F28E2B", "highlight": {"background": "#ffffff", "border": "#F28E2B"}}, "size": 16.7, "font": {"size": 12, "color": "#ffffff"}, "title": "KALAHI-CIDSS Comprehensive Information System (KCIS)", "community": 1, "community_name": "Monitoring, Evaluation & Data Quality", "source_file": "manuals/SM7_ Monitoring and Evaluation.pdf", "file_type": "concept", "degree": 2}, {"id": "Standard:K2_Quorum", "label": "Household Quorum Standard (K2 Standard)", "color": {"background": "#EDC948", "border": "#EDC948", "highlight": {"background": "#ffffff", "border": "#EDC948"}}, "size": 13.3, "font": {"size": 0, "color": "#ffffff"}, "title": "Household Quorum Standard (K2 Standard)", "community": 5, "community_name": "Community Cluster 5", "source_file": "manuals/SM7_ Monitoring and Evaluation.pdf", "file_type": "concept", "degree": 1}, {"id": "Standard:ESMP", "label": "Environmental and Social Management Plan (ESMP)", "color": {"background": "#76B7B2", "border": "#76B7B2", "highlight": {"background": "#ffffff", "border": "#76B7B2"}}, "size": 13.3, "font": {"size": 0, "color": "#ffffff"}, "title": "Environmental and Social Management Plan (ESMP)", "community": 3, "community_name": "Sub-Project Development & Implementation", "source_file": "manuals/SM7_ Monitoring and Evaluation.pdf", "file_type": "concept", "degree": 1}];
+const RAW_EDGES = [{"from": "Doc:SM1_Social_Mobilization", "to": "Stage:CRIP_Overview", "label": "defines", "title": "defines [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "Doc:SM1_Social_Mobilization", "to": "Stage:Stage1_Assessment_Planning", "label": "specifies_procedures", "title": "specifies_procedures [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "Doc:SM1_Social_Mobilization", "to": "Stage:Stage2_SubProject_Development", "label": "specifies_procedures", "title": "specifies_procedures [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "Doc:SM1_Social_Mobilization", "to": "Stage:Stage3_Implementation", "label": "specifies_procedures", "title": "specifies_procedures [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "Doc:SM7_Monitoring_Evaluation", "to": "ME:Community_Monitoring_Toolkit", "label": "provides", "title": "provides [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "Doc:SM7_Monitoring_Evaluation", "to": "ME:DQA_Protocols", "label": "mandates", "title": "mandates [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "Doc:SM7_Monitoring_Evaluation", "to": "ME:Results_Framework", "label": "establishes", "title": "establishes [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "Doc:SM7_Monitoring_Evaluation", "to": "Stage:Stage4_Monitoring_Review", "label": "specifies_procedures", "title": "specifies_procedures [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "Team:BResT", "to": "Process:BPRVA_Workshop", "label": "participates_in", "title": "participates_in [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "Team:BResT", "to": "Process:FGD_Series", "label": "mobilizes", "title": "mobilizes [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "Team:BResT", "to": "Process:PRVA", "label": "executes", "title": "executes [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "Team:BResT", "to": "Process:Walkthrough_Mapping", "label": "conducts", "title": "conducts [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "Team:BResT", "to": "Rule:BResT_Marginalized_Quota", "label": "must_comply_with", "title": "must_comply_with [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "Team:BResT", "to": "Rule:BResT_No_Chairperson", "label": "governed_by", "title": "governed_by [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "Team:BResT", "to": "Team:CMSC", "label": "provides_candidates_for", "title": "provides_candidates_for [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "Team:MResT", "to": "Process:BDC_Endorsement", "label": "coordinates_with", "title": "coordinates_with [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "Team:MResT", "to": "Process:MRP_Workshop", "label": "leads", "title": "leads [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "Team:MResT", "to": "Team:ACT", "label": "partners_with", "title": "partners_with [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "Team:MResT", "to": "Team:MCT", "label": "oversees", "title": "oversees [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "Team:CRSPMC", "to": "Process:SPDW", "label": "attends", "title": "attends [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "Team:CRSPMC", "to": "Team:AIT", "label": "coordinates_with", "title": "coordinates_with [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "Team:CRSPMC", "to": "Team:OMT", "label": "prepares", "title": "prepares [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "Team:CRSPMC", "to": "Team:PIT", "label": "supervises", "title": "supervises [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "Team:CRSPMC", "to": "Team:Procurement_Team", "label": "supervises", "title": "supervises [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "Team:CMSC", "to": "Assembly:BA4_BAR", "label": "presents_findings_at", "title": "presents_findings_at [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "Team:CMSC", "to": "ME:Community_Monitoring_Toolkit", "label": "utilizes", "title": "utilizes [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "Team:CMSC", "to": "Stage:Stage4_Monitoring_Review", "label": "conducts_monitoring_in", "title": "conducts_monitoring_in [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "Team:PIT", "to": "Stage:Stage3_Implementation", "label": "manages_civil_works_in", "title": "manages_civil_works_in [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "Team:Procurement_Team", "to": "Stage:Stage3_Implementation", "label": "procures_materials_in", "title": "procures_materials_in [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "Team:ACT", "to": "System:KCIS", "label": "encodes_data_into", "title": "encodes_data_into [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "Stage:Stage1_Assessment_Planning", "to": "Assembly:BA1", "label": "includes", "title": "includes [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "Stage:Stage1_Assessment_Planning", "to": "Stage:Stage2_SubProject_Development", "label": "precedes", "title": "precedes [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "Stage:Stage2_SubProject_Development", "to": "Assembly:BA2", "label": "includes", "title": "includes [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "Stage:Stage2_SubProject_Development", "to": "Assembly:BA3", "label": "culminates_in", "title": "culminates_in [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "Stage:Stage2_SubProject_Development", "to": "Stage:Stage3_Implementation", "label": "precedes", "title": "precedes [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "Stage:Stage3_Implementation", "to": "Stage:Stage4_Monitoring_Review", "label": "precedes", "title": "precedes [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "Stage:Stage3_Implementation", "to": "Standard:ESMP", "label": "enforces", "title": "enforces [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "Assembly:BA1", "to": "Standard:K2_Quorum", "label": "governed_by", "title": "governed_by [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "Assembly:BA1", "to": "Team:BResT", "label": "selects_volunteers_for", "title": "selects_volunteers_for [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "Assembly:BA1", "to": "Team:SFMSC", "label": "organizes", "title": "organizes [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "Assembly:BA2", "to": "Team:CMSC", "label": "elects_members_of", "title": "elects_members_of [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "Assembly:BA2", "to": "Team:CRSPMC", "label": "elects_officers_of", "title": "elects_officers_of [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "Assembly:BA3", "to": "Process:TDR_Appraisal", "label": "submits_proposal_for", "title": "submits_proposal_for [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "Assembly:BA4_BAR", "to": "Team:OMT", "label": "hands_over_completed_asset_to", "title": "hands_over_completed_asset_to [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "ME:DQA_Protocols", "to": "Assembly:BA1", "label": "verifies_attendance_sheets_of", "title": "verifies_attendance_sheets_of [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "ME:DQA_Protocols", "to": "System:KCIS", "label": "verifies_records_in", "title": "verifies_records_in [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "ME:DQA_Protocols", "to": "Team:BResT", "label": "cross_checks_profiles_of", "title": "cross_checks_profiles_of [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "ME:DQA_Protocols", "to": "Team:MResT", "label": "cross_checks_executive_order_of", "title": "cross_checks_executive_order_of [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}];
+const LEGEND = [{"cid": 0, "color": "#4E79A7", "label": "BResT Composition &amp; PRVA Planning", "count": 8}, {"cid": 1, "color": "#F28E2B", "label": "Monitoring, Evaluation &amp; Data Quality", "count": 7}, {"cid": 2, "color": "#E15759", "label": "BResT Composition &amp; PRVA Planning", "count": 7}, {"cid": 3, "color": "#76B7B2", "label": "Sub-Project Development &amp; Implementation", "count": 7}, {"cid": 4, "color": "#59A14F", "label": "Sub-Project Development &amp; Implementation", "count": 6}, {"cid": 5, "color": "#EDC948", "label": "Community Cluster 5", "count": 3}];
+
+// HTML-escape helper — prevents XSS when injecting graph data into innerHTML
+function esc(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+}
+
+// Build vis datasets
+const nodesDS = new vis.DataSet(RAW_NODES.map((n, i) => ({
+  id: n.id, label: n.label, color: n.color, size: n.size,
+  font: n.font, title: n.title,
+  // Fermat/golden-angle spiral seed positions (#3699): spreading nodes out
+  // before physics runs keeps avoidOverlap from computing near-zero-distance
+  // repulsion that blows the BarnesHut recursion into a stack overflow on large
+  // graphs. `i` is the map index — physics still settles small graphs identically.
+  x: 30 * Math.sqrt(i) * Math.cos(i * 2.4),
+  y: 30 * Math.sqrt(i) * Math.sin(i * 2.4),
+  community: n.community, community_name: n.community_name,
+  source_file: n.source_file, file_type: n.file_type, degree: n.degree,
+  member_count: n.member_count,
+})));
+
+const edgesDS = new vis.DataSet(RAW_EDGES.map((e, i) => ({
+  id: i, from: e.from, to: e.to,
+  label: '',
+  title: e.title,
+  dashes: e.dashes,
+  width: e.width,
+  color: e.color,
+  arrows: { to: { enabled: true, scaleFactor: 0.5 } },
+})));
+
+const container = document.getElementById('graph');
+const network = new vis.Network(container, { nodes: nodesDS, edges: edgesDS }, {
+  physics: {
+    enabled: true,
+    solver: 'forceAtlas2Based',
+    forceAtlas2Based: {
+      gravitationalConstant: -60,
+      centralGravity: 0.005,
+      springLength: 120,
+      springConstant: 0.08,
+      damping: 0.4,
+      avoidOverlap: 0.8,
+    },
+    stabilization: { iterations: 200, fit: true },
+  },
+  interaction: {
+    hover: true,
+    tooltipDelay: 100,
+    hideEdgesOnDrag: true,
+    navigationButtons: false,
+    keyboard: false,
+  },
+  nodes: { shape: 'dot', borderWidth: 1.5 },
+  edges: { smooth: { type: 'continuous', roundness: 0.2 }, selectionWidth: 3 },
+});
+
+// Theme toggle (#3894): Light / Dark / System, persisted in localStorage.
+const THEME_KEY = 'graphify-theme';
+const themeMQ = window.matchMedia ? window.matchMedia('(prefers-color-scheme: light)') : null;
+let themeLabelColor = '#ffffff';  // matches the per-node font color set in Python
+function themePref() {
+  let p = null;
+  try { p = localStorage.getItem(THEME_KEY); } catch (e) {}
+  return (p === 'light' || p === 'dark' || p === 'system') ? p : null;
+}
+function applyTheme(pref) {
+  const t = pref === 'light' ? 'light' : (pref === 'system' && themeMQ && themeMQ.matches) ? 'light' : 'dark';
+  const root = document.documentElement;
+  if (!root) return;
+  root.setAttribute('data-theme', t);
+  document.querySelectorAll('[data-theme-choice]').forEach(b => {
+    b.setAttribute('aria-pressed', String(b.dataset.themeChoice === (pref || 'dark')));
+  });
+  const labelColor = getComputedStyle(root).getPropertyValue('--node-label').trim();
+  if (labelColor && labelColor !== themeLabelColor) {
+    themeLabelColor = labelColor;
+    nodesDS.update(nodesDS.get().map(n => ({ id: n.id, font: Object.assign({}, n.font, { color: labelColor }) })));
+  }
+}
+document.querySelectorAll('[data-theme-choice]').forEach(b => {
+  b.addEventListener('click', () => {
+    const pref = b.dataset.themeChoice;
+    try { localStorage.setItem(THEME_KEY, pref); } catch (e) {}
+    applyTheme(pref);
+  });
+});
+if (themeMQ) {
+  const onSchemeChange = () => { if (themePref() === 'system') applyTheme('system'); };
+  if (themeMQ.addEventListener) themeMQ.addEventListener('change', onSchemeChange);
+  else if (themeMQ.addListener) themeMQ.addListener(onSchemeChange);
+}
+applyTheme(themePref());
+
+network.once('stabilizationIterationsDone', () => {
+  network.setOptions({ physics: { enabled: false } });
+});
+
+function showInfo(nodeId) {
+  const n = nodesDS.get(nodeId);
+  if (!n) return;
+  const neighborIds = network.getConnectedNodes(nodeId);
+  const neighborItems = neighborIds.map(nid => {
+    const nb = nodesDS.get(nid);
+    const color = nb ? nb.color.background : '#555';
+    return `<span class="neighbor-link" style="border-left-color:${esc(color)}" data-nid="${esc(nid)}">${esc(nb ? nb.label : nid)}</span>`;
+  }).join('');
+  const isMetaNode = !n.file_type && !n.source_file;
+  let html = `<div class="field"><b>${esc(n.label)}</b></div>`;
+  if (!isMetaNode) {
+    html += `<div class="field">Type: ${esc(n.file_type || 'unknown')}</div>`;
+  }
+  html += `<div class="field">Community: ${esc(n.community_name || '')}</div>`;
+  if (!isMetaNode) {
+    html += `<div class="field">Source: ${esc(n.source_file || '-')}</div>`;
+  } else if (n.member_count !== undefined && n.member_count !== null) {
+    html += `<div class="field">Members: ${esc(n.member_count)}</div>`;
+  }
+  html += `<div class="field">Degree: ${n.degree}</div>`;
+  if (neighborIds.length) {
+    html += `<div class="field" style="margin-top:8px;color:var(--text-2);font-size:11px">Neighbors (${neighborIds.length})</div><div id="neighbors-list">${neighborItems}</div>`;
+  }
+  document.getElementById('info-content').innerHTML = html;
+}
+
+function focusNode(nodeId) {
+  network.focus(nodeId, { scale: 1.4, animation: true });
+  network.selectNodes([nodeId]);
+  showInfo(nodeId);
+}
+
+// Neighbor links use a data attribute + one delegated listener rather than an
+// inline onclick. A node id/label sourced from a document or a scraped URL
+// (graphify add) can contain a double-quote; dropping the stringified id
+// unescaped into a quoted onclick both broke every link and allowed a hostile
+// source to inject an event handler into the local report (stored XSS, #1838).
+// esc() on data-nid keeps the value inside the attribute; the listener reads it
+// back verbatim. Bound to document so it survives the innerHTML rebuild that
+// recreates #neighbors-list on each showInfo().
+document.addEventListener('click', e => {
+  const el = e.target.closest('.neighbor-link');
+  if (el && el.dataset.nid !== undefined) focusNode(el.dataset.nid);
+});
+
+// Sidebar tooltips reuse vis-network's .vis-tooltip style and 100ms tooltipDelay.
+// Names get one only when CSS ellipsis truncates them (the full text is still in
+// the DOM); counts always get one, to say what the number is. Text is set with
+// textContent only (labels are untrusted). Delegated on document so rows rebuilt
+// later (search results, showInfo()) are covered.
+const sidebarTip = document.createElement('div');
+sidebarTip.className = 'vis-tooltip';
+sidebarTip.style.cssText = 'white-space: normal; max-width: 360px; overflow-wrap: break-word;';
+document.body.appendChild(sidebarTip);
+let sidebarTipTimer = null;
+let sidebarTipEl = null;    // element whose text the tooltip shows
+let sidebarTipZone = null;  // element the pointer must leave to hide it
+function hideSidebarTip() {
+  clearTimeout(sidebarTipTimer);
+  sidebarTip.style.visibility = 'hidden';
+  sidebarTip.textContent = '';
+  sidebarTipEl = sidebarTipZone = null;
+}
+document.addEventListener('mouseover', e => {
+  const zone = e.target.closest && e.target.closest('.legend-count, .legend-item, .search-item, .neighbor-link');
+  // Anywhere on a legend row except its count (dot, checkbox, gaps, padding)
+  // stands for the row's name, so moving within the row never re-triggers it.
+  const el = zone && zone.classList.contains('legend-item') ? zone.querySelector('.legend-label') : zone;
+  if (!el || el === sidebarTipEl) return;
+  hideSidebarTip();
+  const isCount = el.classList.contains('legend-count');
+  if (!isCount && el.scrollWidth <= el.clientWidth) return;
+  const text = isCount ? `${el.textContent} ${el.textContent === '1' ? 'node' : 'nodes'}` : el.textContent;
+  sidebarTipEl = el;
+  sidebarTipZone = zone;
+  const x = e.clientX, y = e.clientY;
+  sidebarTipTimer = setTimeout(() => {
+    sidebarTip.textContent = text;
+    sidebarTip.style.left = sidebarTip.style.top = '0px';  // measure at full max-width
+    sidebarTip.style.visibility = 'visible';
+    const w = sidebarTip.offsetWidth, h = sidebarTip.offsetHeight;
+    sidebarTip.style.left = Math.max(4, Math.min(x + 12, window.innerWidth - w - 4)) + 'px';
+    sidebarTip.style.top = (y + 16 + h > window.innerHeight ? Math.max(4, y - h - 8) : y + 16) + 'px';
+  }, 100);
+});
+document.addEventListener('mouseout', e => {
+  if (sidebarTipZone && !sidebarTipZone.contains(e.relatedTarget)) hideSidebarTip();
+});
+// A click rebuilds or hides the row (showInfo(), search pick) without a mouseout.
+document.addEventListener('mousedown', hideSidebarTip);
+
+// Track hovered node — hover detection is more reliable than click params
+let hoveredNodeId = null;
+network.on('hoverNode', params => {
+  hoveredNodeId = params.node;
+  container.style.cursor = 'pointer';
+});
+network.on('blurNode', () => {
+  hoveredNodeId = null;
+  container.style.cursor = 'default';
+});
+container.addEventListener('click', () => {
+  if (hoveredNodeId !== null) {
+    showInfo(hoveredNodeId);
+    network.selectNodes([hoveredNodeId]);
+  }
+});
+network.on('click', params => {
+  if (params.nodes.length > 0) {
+    showInfo(params.nodes[0]);
+  } else if (hoveredNodeId === null) {
+    document.getElementById('info-content').innerHTML = '<span class="empty">Click a node to inspect it</span>';
+  }
+});
+
+const searchInput = document.getElementById('search');
+const searchResults = document.getElementById('search-results');
+searchInput.addEventListener('input', () => {
+  const q = searchInput.value.toLowerCase().trim();
+  searchResults.innerHTML = '';
+  if (!q) { searchResults.style.display = 'none'; return; }
+  const matches = RAW_NODES.filter(n => n.label.toLowerCase().includes(q)).slice(0, 20);
+  if (!matches.length) { searchResults.style.display = 'none'; return; }
+  searchResults.style.display = 'block';
+  matches.forEach(n => {
+    const el = document.createElement('div');
+    el.className = 'search-item';
+    el.textContent = n.label;
+    el.style.borderLeft = `3px solid ${n.color.background}`;
+    el.style.paddingLeft = '8px';
+    el.onclick = () => {
+      network.focus(n.id, { scale: 1.5, animation: true });
+      network.selectNodes([n.id]);
+      showInfo(n.id);
+      searchResults.style.display = 'none';
+      searchInput.value = '';
+    };
+    searchResults.appendChild(el);
+  });
+});
+document.addEventListener('click', e => {
+  if (!searchResults.contains(e.target) && e.target !== searchInput)
+    searchResults.style.display = 'none';
+});
+
+const hiddenCommunities = new Set();
+
+const selectAllCb = document.getElementById('select-all-cb');
+
+function updateSelectAllState() {
+  const total = LEGEND.length;
+  const hidden = hiddenCommunities.size;
+  selectAllCb.checked = hidden === 0;
+  selectAllCb.indeterminate = hidden > 0 && hidden < total;
+}
+
+function toggleAllCommunities(hide) {
+  document.querySelectorAll('.legend-item').forEach(item => {
+    hide ? item.classList.add('dimmed') : item.classList.remove('dimmed');
+  });
+  document.querySelectorAll('.legend-cb').forEach(cb => {
+    cb.checked = !hide;
+  });
+  LEGEND.forEach(c => {
+    if (hide) hiddenCommunities.add(c.cid); else hiddenCommunities.delete(c.cid);
+  });
+  const updates = RAW_NODES.map(n => ({ id: n.id, hidden: hide }));
+  nodesDS.update(updates);
+  updateSelectAllState();
+}
+
+const legendEl = document.getElementById('legend');
+LEGEND.forEach(c => {
+  const item = document.createElement('div');
+  item.className = 'legend-item';
+  const cb = document.createElement('input');
+  cb.type = 'checkbox';
+  cb.className = 'legend-cb';
+  cb.checked = true;
+  cb.addEventListener('change', (e) => {
+    e.stopPropagation();
+    if (cb.checked) {
+      hiddenCommunities.delete(c.cid);
+      item.classList.remove('dimmed');
+    } else {
+      hiddenCommunities.add(c.cid);
+      item.classList.add('dimmed');
+    }
+    const updates = RAW_NODES
+      .filter(n => n.community === c.cid)
+      .map(n => ({ id: n.id, hidden: !cb.checked }));
+    nodesDS.update(updates);
+    updateSelectAllState();
+  });
+  item.innerHTML = `<div class="legend-dot" style="background:${c.color}"></div>
+    <span class="legend-label">${c.label}</span>
+    <span class="legend-count">${c.count}</span>`;
+  item.prepend(cb);
+  item.onclick = (e) => {
+    if (e.target === cb) return;
+    cb.checked = !cb.checked;
+    cb.dispatchEvent(new Event('change'));
+  };
+  legendEl.appendChild(item);
+});
+</script>
+<script>
+// Render hyperedges as shaded regions
+const hyperedges = [];
+// afterDrawing passes ctx already transformed to network coordinate space.
+// Draw node positions raw — no manual pan/zoom/DPR math needed.
+
+// Andrew's monotone chain. Returns the hull in counter-clockwise order, which
+// is what the perimeter must be traced in. Collinear and duplicate points
+// collapse to the extremes, so degenerate member sets render as a segment
+// rather than a zero-area crossed path.
+function convexHull(pts) {
+    const p = pts.slice().sort((a, b) => (a.x - b.x) || (a.y - b.y));
+    if (p.length < 3) return p;
+    const cross = (o, a, b) => (a.x - o.x) * (b.y - o.y) - (a.y - o.y) * (b.x - o.x);
+    const build = seq => {
+        const out = [];
+        for (const q of seq) {
+            while (out.length >= 2 && cross(out[out.length - 2], out[out.length - 1], q) <= 0) out.pop();
+            out.push(q);
+        }
+        out.pop();
+        return out;
+    };
+    const hull = build(p).concat(build(p.slice().reverse()));
+    return hull.length >= 3 ? hull : p;
+}
+network.on('afterDrawing', function(ctx) {
+    hyperedges.forEach(h => {
+        const positions = h.nodes
+            .map(nid => network.getPositions([nid])[nid])
+            .filter(p => p !== undefined);
+        if (positions.length < 2) return;
+        ctx.save();
+        ctx.globalAlpha = 0.12;
+        ctx.fillStyle = '#6366f1';
+        ctx.strokeStyle = '#6366f1';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        // Centroid and expanded hull in network coordinates.
+        // The perimeter must follow hull order, not h.nodes order: tracing the
+        // raw member order self-intersects whenever the layout does not happen
+        // to place members in angular order, filling as crossed wedges.
+        const cx = positions.reduce((s, p) => s + p.x, 0) / positions.length;
+        const cy = positions.reduce((s, p) => s + p.y, 0) / positions.length;
+        const hull = convexHull(positions);
+        const expanded = hull.map(p => ({
+            x: cx + (p.x - cx) * 1.15,
+            y: cy + (p.y - cy) * 1.15
+        }));
+        ctx.moveTo(expanded[0].x, expanded[0].y);
+        expanded.slice(1).forEach(p => ctx.lineTo(p.x, p.y));
+        ctx.closePath();
+        ctx.fill();
+        ctx.globalAlpha = 0.4;
+        ctx.stroke();
+        // Label
+        ctx.globalAlpha = 0.8;
+        ctx.fillStyle = '#4f46e5';
+        ctx.font = 'bold 11px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText(h.label, cx, cy - 5);
+        ctx.restore();
+    });
+});
+</script>
+</body>
+</html>
