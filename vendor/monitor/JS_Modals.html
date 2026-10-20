@@ -29,11 +29,24 @@ S.changelogSearch = '';
 
 var CHANGELOG_DATA = [
   {
-    version: '2.12.0',
-    date: 'October 15, 2026',
+    version: '2.13.0',
+    date: 'October 20, 2026',
     tag: 'Latest Release',
     tagColor: 'bg-emerald-100 text-emerald-900 border-emerald-300 dark:bg-emerald-950/60 dark:text-emerald-300 dark:border-emerald-700',
     spotlight: true,
+    items: [
+      { type: 'feature', label: 'Triage Action Trays & Quick Presets', text: 'Dynamic triage summary action trays and quick filter presets across Overview, Municipalities, Barangays, Attendees, Households, Volunteers, BResT, and DQA Verification.', page: 'dash', pageLabel: 'Dashboard' },
+      { type: 'feature', label: 'DQA Field Form Verification Split Workbench', text: 'Two-column review workspace with sticky record sidebar, SM7 Table 8 precision indicators, and tabbed executive audit memo dialog.', page: 'health', pageLabel: 'Data Quality' },
+      { type: 'enhancement', label: 'Compliance Quorum & Mini Progress Bars', text: 'Household 70% quorum and BResT 30% marginalized mini progress bars with compliance threshold markers.', page: 'people', pageLabel: 'People' },
+      { type: 'enhancement', label: 'Helper Tooltips & PCRP Glossary', text: 'Contextual floating helper tooltips and popovers linked to the standard KALAHI-CIDSS PCRP glossary.', page: 'admin', pageLabel: 'Glossary' },
+      { type: 'enhancement', label: 'Stage 2 CSPMC & MResT Modernization', text: 'Full 8 specialized sub-committees tracking, Bookkeeper, and Mayor-led co-governance org charts with 50% women quota.', page: 'people', pageLabel: 'People' }
+    ]
+  },
+  {
+    version: '2.12.0',
+    date: 'October 15, 2026',
+    tag: 'Previous Release',
+    tagColor: 'bg-slate-100 text-slate-800 border-slate-300 dark:bg-slate-900/60 dark:text-slate-300 dark:border-slate-700',
     items: [
       { type: 'feature', label: 'Community Volunteer Import', text: 'Import & Setup has a Step 3 for the KCIS Community Volunteer List. Its three "Name" columns are saved as Activity, Committee and Position.', page: 'admin', pageLabel: 'Import & Setup' },
       { type: 'feature', label: '1st BA Volunteers: BResT and SFMSC', text: 'The 1st BA card, the Activity Matrix and the Worksheet show how many barangays have their BResT and SFMSC encoded. An SFMSC needs exactly one Chairperson and at least two Members.', page: 'dash', pageLabel: 'Dashboard' },

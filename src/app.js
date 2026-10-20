@@ -3819,21 +3819,19 @@ document.addEventListener('click', function (ev) {
     UPDATE_STATE.result = {
       updateAvailable: true,
       remote: {
-        version: '2.13.0',
+        version: '2.14.0',
         releaseDate: today(),
-        title: 'PCRP Encoding and Data Quality Assessment Tool v2.13.0',
-        fileSize: '796 KB',
+        title: 'PCRP Encoding and Data Quality Assessment Tool v2.14.0',
+        fileSize: '1115 KB',
         notes: [
-          'Consolidated top header status pill with floating KCIS export details popover',
-          'Grouped navigation bar tabs for Attendance & Households and Volunteers & BResT',
-          'In-page sub-navigation tabs for instant 1-click toggling between sister modules',
-          'Semi-offline update checker: automatically detects Wi-Fi/data to check and download new versions without data loss'
+          'Preview simulation: next-generation real-time multi-user telemetry and export sync',
+          'Automated data validation rules for Stage 3 community procurement sub-projects'
         ],
         downloadUrl: 'https://raw.githubusercontent.com/hidalgokimjohn/pcrp-monitor-desktop/main/dist/PCRP%20Encoding%20and%20Data%20Quality%20Assessment%20Tool.html',
         releaseUrl: 'https://github.com/hidalgokimjohn/pcrp-monitor-desktop'
       }
     };
-    toast('Simulated v2.13.0 update available!');
+    toast('Simulated v2.14.0 update available!');
     renderSettings();
     updateTabBadges();
     renderStatus();

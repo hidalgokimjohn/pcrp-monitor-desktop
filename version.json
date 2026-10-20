@@ -1,15 +1,16 @@
 {
-  "version": "2.12.0",
-  "releaseDate": "2026-10-18",
-  "title": "PCRP Encoding and Data Quality Assessment Tool v2.12.0",
+  "version": "2.13.0",
+  "releaseDate": "2026-10-20",
+  "title": "PCRP Encoding and Data Quality Assessment Tool v2.13.0",
   "minAppVersion": "2.0.0",
   "downloadUrl": "https://raw.githubusercontent.com/hidalgokimjohn/pcrp-monitor-desktop/main/dist/PCRP%20Encoding%20and%20Data%20Quality%20Assessment%20Tool.html",
-  "releaseUrl": "https://github.com/hidalgokimjohn/pcrp-monitor-desktop/releases",
-  "fileSize": "783 KB",
+  "releaseUrl": "https://github.com/hidalgokimjohn/pcrp-monitor-desktop",
+  "fileSize": "1111 KB",
   "notes": [
-    "Consolidated top header status pill with floating KCIS export details popover",
-    "Grouped navigation bar tabs for Attendance & Households and Volunteers & BResT",
-    "In-page sub-navigation tabs for instant 1-click toggling between sister modules",
-    "Semi-offline update checker: automatically detects Wi-Fi/data to check and download new versions without data loss"
+    "Triage action trays & quick filter presets across Overview, Municipalities, Barangays, Attendees, Households, Volunteers, BResT, and DQA Verification",
+    "DQA Field Form Verification split-pane workbench with sticky record sidebar, SM7 Table 8 precision indicators, and executive audit memo dialog",
+    "Household 70% quorum and BResT 30% marginalized mini progress bars with compliance threshold markers",
+    "Contextual floating helper tooltips and standard PCRP glossary popovers",
+    "Stage 2 CSPMC (8 specialized sub-committees + Bookkeeper) & MResT co-governance org charts with 50% women quota"
   ]
 }
