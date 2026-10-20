@@ -6,7 +6,7 @@
 var PREFS_KEY = 'pcrp-desktop:v1';
 var LOADED = {};          // kind -> { file, sheet, rows }
 var IMPORT_ERRORS = [];   // { file, error }
-var STATE = { page: 'settings', stage: 1, prov: '', muniSearch: '', muniFilter: 'all', muniSort: { col: 'muni', dir: 'asc' }, muni: '', brgySearch: '', brgyFilter: 'all', brgySort: { col: 'brgy', dir: 'asc' }, ovSearch: '', ovSort: { col: 'seq', dir: 'asc' }, ovFilter: 'all', ovSeqFilter: '', settingsSearch: '', settingsSort: { col: 'seq', dir: 'asc' }, computed: false, computedAt: null, ms: 0 };
+var STATE = { page: 'settings', stage: 1, prov: '', muniSearch: '', muniFilter: 'all', muniSort: { col: 'muni', dir: 'asc' }, muni: '', brgySearch: '', brgyFilter: 'all', brgySort: { col: 'brgy', dir: 'asc' }, ovSearch: '', ovSort: { col: 'seq', dir: 'asc' }, ovFilter: 'all', ovSeqFilter: '', settingsSearch: '', settingsSort: { col: 'seq', dir: 'asc' }, computed: false, computedAt: null, ms: 0, dqaOrigin: null };
 var FIELD_VALUES = ['Not started', 'On-going', 'Completed'];
 
 var APP_VERSION = '@@VERSION@@';
@@ -35,6 +35,43 @@ function compareVersions(v1, v2) {
   return 0;
 }
 
+function renderBrandUpdateStatus() {
+  var el = $('brand-update-status');
+  if (!el) return;
+
+  if (UPDATE_STATE.checking) {
+    el.innerHTML = '<span class="brand-status-chip checking" title="Checking GitHub feed for latest version…">' +
+      '<span class="status-pulse-dot spin"></span>' +
+      '<span>Checking updates…</span>' +
+    '</span>';
+    return;
+  }
+
+  if (UPDATE_STATE.result && UPDATE_STATE.result.updateAvailable) {
+    var v = UPDATE_STATE.result.remote ? UPDATE_STATE.result.remote.version : '';
+    el.innerHTML = '<button type="button" class="brand-status-chip has-update" data-act="open-updates" title="New version v' + esc(v) + ' available! Click to view release notes and download.">' +
+      '<span class="status-pulse-dot alert"></span>' +
+      '<span>🎉 Update available: <strong>v' + esc(v) + '</strong></span>' +
+      '<span class="brand-status-arrow">↗</span>' +
+    '</button>';
+    return;
+  }
+
+  if (typeof navigator !== 'undefined' && !navigator.onLine) {
+    el.innerHTML = '<span class="brand-status-chip offline" title="Working offline (100% field ready). Connect to internet to check for updates.">' +
+      '<span class="status-pulse-dot idle"></span>' +
+      '<span>Field Offline</span>' +
+    '</span>';
+    return;
+  }
+
+  // Default / up to date
+  el.innerHTML = '<span class="brand-status-chip up-to-date" data-act="update-check" title="Your app is up to date (v' + esc(APP_VERSION) + '). Click to check for updates now.">' +
+    '<span class="status-pulse-dot good"></span>' +
+    '<span>Your app is up to date!</span>' +
+  '</span>';
+}
+
 function checkForUpdates(manual) {
   if (UPDATE_STATE.checking) return;
 
@@ -46,12 +83,14 @@ function checkForUpdates(manual) {
     UPDATE_STATE.error = 'You are currently offline. Connect to Wi-Fi or mobile data to check for updates.';
     if (manual) toast(UPDATE_STATE.error);
     renderSettings();
+    renderBrandUpdateStatus();
     return;
   }
 
   UPDATE_STATE.checking = true;
   UPDATE_STATE.error = null;
   renderSettings();
+  renderBrandUpdateStatus();
 
   var controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
   var timer = controller ? setTimeout(function () { controller.abort(); }, 8000) : null;
@@ -87,13 +126,14 @@ function checkForUpdates(manual) {
       };
 
       if (isNewer) {
-        if (manual) toast('Update available: v' + data.version + '!');
+        toast('Update available: v' + data.version + '! Click the update badge in the header to view.');
       } else {
         if (manual) toast('You are on the latest version (v' + APP_VERSION + ').');
       }
       renderSettings();
       updateTabBadges();
       renderStatus();
+      renderBrandUpdateStatus();
     })
     .catch(function (err) {
       if (timer) clearTimeout(timer);
@@ -104,6 +144,7 @@ function checkForUpdates(manual) {
       UPDATE_STATE.error = msg;
       if (manual) toast(msg);
       renderSettings();
+      renderBrandUpdateStatus();
     });
 }
 
@@ -974,7 +1015,7 @@ function renderHome() {
     var list = baselineMunis();
     var mInfo = !h.region ? list.filter(function (m) { return m.province === h.province && m.municipality === h.municipality; })[0] : null;
     card.innerHTML = '<div class="home-set"><div>' +
-      '<div class="tiny"><span class="step-no done">✓</span> Section 2 · Municipal Scope &amp; Role</div>' +
+      '<div class="tiny"><span class="step-no done">✓</span> Section 1 · Municipal Scope &amp; Role</div>' +
       '<div class="home-name" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:4px 0">' +
         homeRoleBadge() + ' <span>' + esc(homeLabel()) + '</span>' +
         (mInfo ? ' <span class="pill idle">' + n(mInfo.barangays) + ' monitored barangays</span>' : ' <span class="pill good">516 monitored barangays</span>') +
@@ -995,7 +1036,7 @@ function renderHome() {
     });
     opts += (prov ? '</optgroup>' : '');
 
-    card.innerHTML = '<h2><span class="step-no">2</span> Select your Role &amp; Municipality</h2>' +
+    card.innerHTML = '<h2><span class="step-no">1</span> Select your Role &amp; Municipality</h2>' +
       '<p class="muted">Tailors the dashboard and data access to your assigned duties. PEA &amp; MDM staff work exclusively in their assigned municipality; RPMO officers have region-wide access.</p>' +
       '<div class="role-grid">' +
         '<div class="role-card' + (curRole === 'pea_mdm' ? ' active' : '') + '" data-act="role-pick" data-v="pea_mdm" role="button" tabindex="0">' +
@@ -1020,10 +1061,12 @@ function renderHome() {
   $('import-card').setAttribute('aria-disabled', locked);
   $('file-input').disabled = locked;
   var chip = $('home-chip');
-  chip.hidden = !h;
-  if (h) {
-    chip.innerHTML = (isRegionalUser() ? icon('building-2') : icon('map-pin')) + ' ' + homeRoleBadge() + ' <span>' + esc(homeLabel()) + '</span>';
-    chip.title = 'Click to switch role or change municipality scope';
+  if (chip) {
+    chip.hidden = !h;
+    if (h) {
+      chip.innerHTML = (isRegionalUser() ? icon('building-2') : icon('map-pin')) + ' ' + homeRoleBadge() + ' <span>' + esc(homeLabel()) + '</span>';
+      chip.title = 'Click to switch role or change municipality scope';
+    }
   }
 }
 
@@ -1246,6 +1289,7 @@ function updateTabBadges() {
     setBadge('settings', loadedCount ? loadedCount + '/3' : '', loadedCount === 3 ? 'good' : '');
     setBadge('sni-badge-updates', '');
   }
+  renderBrandUpdateStatus();
 }
 
 function go(page) {
@@ -1334,6 +1378,24 @@ function setTabsEnabled(on) {
 // Hooks the Data Health page calls.
 function openMuni(mKey) { STATE.muni = mKey; STATE.brgyFilter = 'all'; STATE.brgySearch = ''; go('brgys'); }
 function openPasskeyModal() {}
+
+function renderDqaBreadcrumb() {
+  if (!STATE.dqaOrigin) return '';
+  var orig = STATE.dqaOrigin;
+  var bName = orig.bkey ? (orig.bkey.split('|')[2] || orig.bkey) : '';
+  return '<div class="dqa-nav-breadcrumb msg info" style="margin-bottom:14px;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap">' +
+    '<div style="display:flex;align-items:center;gap:8px">' +
+      icon('info') +
+      '<div>Inspecting records from <strong>DQA Audit: ' + esc(orig.label) + '</strong>' +
+        (bName ? ' · <span>' + esc(bName) + '</span>' : '') +
+        (orig.count ? ' <span class="pill warn tiny" style="font-weight:700">' + n(orig.count) + ' items</span>' : '') +
+      '.</div>' +
+    '</div>' +
+    '<button type="button" class="btn ghost btn-sm" data-act="dqa-return">' +
+      icon('arrow-left') + ' <span>Return to DQA Audit</span>' +
+    '</button>' +
+  '</div>';
+}
 
 function renderExecutiveMemoHtml(text) {
   if (!text) return '<p class="muted">No memo text available.</p>';
@@ -1579,9 +1641,9 @@ function renderImport() {
     '<div class="msg warn" style="margin-bottom:14px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px">' +
       '<div style="display:flex;align-items:center;gap:8px">' +
         icon('alert-triangle') +
-        '<div><strong>Workspace scope required:</strong> Select your Role &amp; Municipality in Section 2 below to unlock data import.</div>' +
+        '<div><strong>Workspace scope required:</strong> Select your Role &amp; Municipality in Section 1 above to unlock data import.</div>' +
       '</div>' +
-      '<a class="btn primary btn-sm" href="#sec-scope" data-target="sec-scope">Set Scope in Section 2 ↓</a>' +
+      '<a class="btn primary btn-sm" href="#sec-scope" data-target="sec-scope">Set Scope in Section 1 ↑</a>' +
     '</div>'
   ) : '';
   $('import-list').innerHTML = lockNotice + '<div class="import-grid">' + cards.join('') + '</div>' + refs + errs.join('') + covLine + pullLine;
@@ -2813,6 +2875,7 @@ function renderBrgys() {
     : '<label class="field"><span>Municipality</span><select data-act="muni-select">' + opts + '</select></label>';
 
   $('bg-body').innerHTML =
+    renderDqaBreadcrumb() +
     renderBrgyTriageTray(summary, cvOn) +
     '<div class="card"><div class="card-head"><div><h2>Barangays · ' + esc(parts[1] || '') + ' <span class="muted" style="font-weight:400">(' + esc(parts[0] || '') + ')</span></h2>' +
       '<div class="muted">' + n(all.length) + ' monitored barangays. Click any cell to inspect the attendees, roster, or volunteers.</div></div>' +
@@ -3520,6 +3583,7 @@ function renderSettings() {
         '</div>' +
         '<ul style="margin:8px 0 0;padding-left:18px;line-height:1.6">' +
           '<li><strong>PCRP Encoding and Data Quality Assessment Tool</strong> runs the Encoding Monitor v' + esc(BUILT_IN.monitorVersion) + ' rules on this computer. Files are never uploaded.</li>' +
+          '<li><strong>Caraga Region Implementation</strong> · Vibe coded by: <strong>kjahidalgo</strong>.</li>' +
           '<li>The loaded exports, the findings of earlier pulls, and the verification tags are kept in this browser until you choose "Forget saved data" on the Import card; settings above are remembered too.</li>' +
           '<li>Household heads\' names appear in Data Health, as for an editor of the web monitor. Handle the exports and any downloaded file under the Data Privacy Act.</li>' +
         '</ul>' +
@@ -3710,6 +3774,118 @@ document.addEventListener('click', function (ev) {
       go(targetTab);
     }
   }
+  else if (act === 'dqa-jump') {
+    var checkId = t.getAttribute('data-check') || '';
+    var bkey = t.getAttribute('data-brgy') || '';
+    var muniKey = t.getAttribute('data-muni') || '';
+    var actCode = t.getAttribute('data-actcode') || '';
+    var flag = t.getAttribute('data-flag') || '';
+    var nameVal = t.getAttribute('data-name') || t.getAttribute('data-search') || '';
+    var source = t.getAttribute('data-source') || '';
+    var bodyVal = t.getAttribute('data-body') || '';
+    var problem = t.getAttribute('data-problem') || '';
+    var count = t.getAttribute('data-count') || '';
+
+    var checkLabel = (typeof DH_SHORT !== 'undefined' && DH_SHORT[checkId]) ? DH_SHORT[checkId] : checkId;
+    STATE.dqaOrigin = {
+      checkId: checkId,
+      bkey: bkey,
+      muniKey: muniKey,
+      label: checkLabel,
+      count: count
+    };
+
+    if (checkId === 'noname' || checkId === 'dup' || checkId === 'cross' || checkId === 'bday') {
+      if (typeof HH_STATE !== 'undefined') {
+        HH_STATE.tab = 'roster';
+        if (bkey) HH_STATE.brgy = bkey;
+        if (flag) HH_STATE.flag = flag;
+        if (nameVal) HH_STATE.search = nameVal;
+        if (!nameVal && checkId === 'noname') HH_STATE.search = '';
+        if (checkId === 'dup' && !flag) HH_STATE.flag = 'twice';
+        if (checkId === 'cross' && !flag) HH_STATE.flag = 'otherbrgy';
+      }
+      go('households');
+    } else if (checkId === 'quorum') {
+      if (typeof HH_STATE !== 'undefined') {
+        HH_STATE.tab = 'scorecard';
+        if (bkey) HH_STATE.brgy = bkey;
+        if (nameVal) HH_STATE.search = nameVal;
+      }
+      go('households');
+    } else if (checkId === 'late' || checkId === 'dates' || checkId === 'multidate' || checkId === 'attdup' || checkId === 'sex' || checkId === 'unmapped') {
+      if (typeof ATT_STATE !== 'undefined') {
+        if (bkey) ATT_STATE.brgy = bkey;
+        if (actCode) ATT_STATE.act = actCode;
+        if (nameVal) ATT_STATE.search = nameVal;
+        if (checkId === 'sex') { ATT_STATE.sex = 'all'; ATT_STATE.flag = 'all'; }
+        if (checkId === 'attdup') { ATT_STATE.flag = 'duplicate'; }
+      }
+      go('attendees');
+    } else if (checkId === 'names') {
+      if (source === 'Households') {
+        if (typeof HH_STATE !== 'undefined') {
+          HH_STATE.tab = 'roster';
+          if (bkey) HH_STATE.brgy = bkey;
+        }
+        go('households');
+      } else if (source === 'Volunteers') {
+        if (typeof VOL_STATE !== 'undefined') {
+          if (bkey) VOL_STATE.brgy = bkey;
+        }
+        go('volunteers');
+      } else {
+        if (typeof ATT_STATE !== 'undefined') {
+          if (bkey) ATT_STATE.brgy = bkey;
+          if (actCode) ATT_STATE.act = actCode;
+        }
+        go('attendees');
+      }
+    } else if (checkId === 'sequence') {
+      if (muniKey) STATE.muni = muniKey;
+      var bParts = bkey.split('|');
+      if (bParts[2]) STATE.brgySearch = bParts[2];
+      go('brgys');
+    } else if (checkId === 'cv_missing') {
+      if (typeof BRT_STATE !== 'undefined' && bkey) {
+        BRT_STATE.brgy = bkey;
+        BRT_STATE.status = 'all';
+      }
+      go('brest');
+    } else if (checkId === 'cv_sfmsc' || checkId === 'cv_tagging' || checkId === 'cv_gaps') {
+      if (typeof VOL_STATE !== 'undefined') {
+        if (bkey) VOL_STATE.brgy = bkey;
+        if (bodyVal) VOL_STATE.body = bodyVal;
+        if (problem === 'No committee') VOL_STATE.flag = 'nocommittee';
+        else if (problem && problem.indexOf('Tagged to') !== -1) VOL_STATE.flag = 'otherbody';
+        else if (problem === 'No name') VOL_STATE.flag = 'noname';
+        else if (problem === 'Sex not recorded') VOL_STATE.flag = 'nosex';
+        else if (problem) VOL_STATE.flag = 'has_flags';
+      }
+      go('volunteers');
+    } else if (checkId === 'baseline') {
+      go('settings');
+      var sec = $('sec-baseline');
+      if (sec) sec.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    } else {
+      go('health');
+    }
+    toast('Inspecting findings from DQA Audit (' + checkLabel + ').');
+  }
+  else if (act === 'dqa-return') {
+    var orig = STATE.dqaOrigin;
+    STATE.dqaOrigin = null;
+    go('health');
+    if (orig && orig.checkId && typeof S !== 'undefined') {
+      S.healthOpen = S.healthOpen || {};
+      S.healthOpen[orig.checkId] = true;
+      if (typeof renderHealth === 'function') renderHealth();
+      setTimeout(function () {
+        var el = document.querySelector('.dh-check.sev-critical.is-open, .dh-check.sev-verify.is-open, .dh-check.is-open');
+        if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }, 50);
+    }
+  }
   else if (act === 'csv-pipeline') downloadCsv('PCRP_activities_stage' + STATE.stage + '_' + stamp() + '.csv', csvOf(pipelineTable()));
   else if (act === 'csv-munis') downloadCsv('PCRP_municipalities_stage' + STATE.stage + '_' + stamp() + '.csv', csvOf(muniTable(false)));
   else if (act === 'csv-brgys') downloadCsv('PCRP_barangays_' + STATE.muni.replace(/[^A-Za-z0-9]+/g, '_') + '_' + stamp() + '.csv', csvOf(brgyTable(brgyRows(), false)));
@@ -3792,6 +3968,13 @@ document.addEventListener('click', function (ev) {
   else if (act === 'evaldate-clear') { var q = prefs(); delete q.evalDate; delete q.evalDateFromSave; savePrefs(q); afterSettingsChange(); }
   else if (act === 'update-check') { checkForUpdates(true); }
   else if (act === 'update-download') { downloadAppUpdate(); }
+  else if (act === 'open-updates') {
+    go('settings');
+    setTimeout(function () {
+      var sec = $('sec-updates');
+      if (sec) sec.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 80);
+  }
   else if (act === 'update-feed-toggle') {
     var cfg = $('update-feed-config');
     if (cfg) cfg.style.display = cfg.style.display === 'none' ? 'block' : 'none';
@@ -3819,10 +4002,10 @@ document.addEventListener('click', function (ev) {
     UPDATE_STATE.result = {
       updateAvailable: true,
       remote: {
-        version: '2.14.0',
+        version: '2.15.0',
         releaseDate: today(),
-        title: 'PCRP Encoding and Data Quality Assessment Tool v2.14.0',
-        fileSize: '1115 KB',
+        title: 'PCRP Encoding and Data Quality Assessment Tool v2.15.0',
+        fileSize: '1125 KB',
         notes: [
           'Preview simulation: next-generation real-time multi-user telemetry and export sync',
           'Automated data validation rules for Stage 3 community procurement sub-projects'
@@ -3831,10 +4014,11 @@ document.addEventListener('click', function (ev) {
         releaseUrl: 'https://github.com/hidalgokimjohn/pcrp-monitor-desktop'
       }
     };
-    toast('Simulated v2.14.0 update available!');
+    toast('Simulated v2.15.0 update available!');
     renderSettings();
     updateTabBadges();
     renderStatus();
+    renderBrandUpdateStatus();
   }
   else if (act === 'sec-lock-now') {
     if (typeof PCRP_CRYPTO !== 'undefined') PCRP_CRYPTO.lockSession('Manual lock triggered by user.');
@@ -4055,7 +4239,10 @@ if (btnPrint) {
   });
 }
 
-$('home-chip').addEventListener('click', function () { openScopeDialog(); });
+var homeChip = $('home-chip');
+if (homeChip) {
+  homeChip.addEventListener('click', function () { openScopeDialog(); });
+}
 
 function initSettingsScrollSpy() {
   if (typeof IntersectionObserver === 'undefined') return;
@@ -4093,6 +4280,7 @@ applyHomeScope();
 renderSettings();
 renderStatus();
 updateTabBadges();
+renderBrandUpdateStatus();
 initSettingsScrollSpy();
 initTooltipEngine();
 var secPrefs = typeof PCRP_CRYPTO !== 'undefined' ? PCRP_CRYPTO.getSecurityPrefs() : null;
@@ -4126,11 +4314,8 @@ window.addEventListener('online', function () {
     badge.className = 'pill good';
     badge.innerHTML = '<span class="status-dot" style="background:#16a34a"></span> Online';
   }
-  var p = prefs();
-  var last = p.lastUpdateCheck ? new Date(p.lastUpdateCheck).getTime() : 0;
-  if (Date.now() - last > 24 * 60 * 60 * 1000) {
-    checkForUpdates(false);
-  }
+  renderBrandUpdateStatus();
+  checkForUpdates(false);
 });
 
 window.addEventListener('offline', function () {
@@ -4140,14 +4325,19 @@ window.addEventListener('offline', function () {
     badge.className = 'pill idle';
     badge.innerHTML = '<span class="status-dot" style="background:var(--idle-text)"></span> Offline (Field Mode)';
   }
+  renderBrandUpdateStatus();
 });
 
+// Always check for updates on startup when online
 if (typeof navigator !== 'undefined' && navigator.onLine) {
   setTimeout(function () {
-    var p = prefs();
-    var last = p.lastUpdateCheck ? new Date(p.lastUpdateCheck).getTime() : 0;
-    if (Date.now() - last > 24 * 60 * 60 * 1000) {
-      checkForUpdates(false);
-    }
-  }, 3500);
+    checkForUpdates(false);
+  }, 1200);
 }
+
+// Background poll: automatically check for new modules/versions every 30 minutes when online
+setInterval(function () {
+  if (typeof navigator !== 'undefined' && navigator.onLine) {
+    checkForUpdates(false);
+  }
+}, 30 * 60 * 1000);

@@ -29,11 +29,23 @@ S.changelogSearch = '';
 
 var CHANGELOG_DATA = [
   {
-    version: '2.13.0',
-    date: 'October 20, 2026',
+    version: '2.14.0',
+    date: 'October 21, 2026',
     tag: 'Latest Release',
     tagColor: 'bg-emerald-100 text-emerald-900 border-emerald-300 dark:bg-emerald-950/60 dark:text-emerald-300 dark:border-emerald-700',
     spotlight: true,
+    items: [
+      { type: 'feature', label: 'Universal DQA Finding Deep Links', text: 'All Data Quality findings across households, attendees, volunteers, and barangays now feature interactive deep links that jump directly into the exact module and record.', page: 'health', pageLabel: 'Data Quality' },
+      { type: 'feature', label: 'Duplicate Records Highlighting', text: 'Visual highlight stripes, inline duplicate badges, and quick filter chips for duplicate attendance sittings and household roster duplicates.', page: 'people', pageLabel: 'People' },
+      { type: 'enhancement', label: 'Persistent Version Status & Auto-Polling', text: 'Header subtitle now displays real-time update status with automatic background checks on startup, network reconnect, and 30-minute intervals.', page: 'admin', pageLabel: 'Header' },
+      { type: 'enhancement', label: 'Streamlined Settings & Regional Branding', text: 'Municipal scope moved to Section 1 ahead of Data Import; header cleaned up with dedicated Caraga Region branding and About attribution.', page: 'admin', pageLabel: 'Settings & Setup' }
+    ]
+  },
+  {
+    version: '2.13.0',
+    date: 'October 20, 2026',
+    tag: 'Previous Release',
+    tagColor: 'bg-slate-100 text-slate-800 border-slate-300 dark:bg-slate-900/60 dark:text-slate-300 dark:border-slate-700',
     items: [
       { type: 'feature', label: 'Triage Action Trays & Quick Presets', text: 'Dynamic triage summary action trays and quick filter presets across Overview, Municipalities, Barangays, Attendees, Households, Volunteers, BResT, and DQA Verification.', page: 'dash', pageLabel: 'Dashboard' },
       { type: 'feature', label: 'DQA Field Form Verification Split Workbench', text: 'Two-column review workspace with sticky record sidebar, SM7 Table 8 precision indicators, and tabbed executive audit memo dialog.', page: 'health', pageLabel: 'Data Quality' },

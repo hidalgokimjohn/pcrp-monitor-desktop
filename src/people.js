@@ -305,7 +305,12 @@ function buildPeopleIndex() {
     s[a.key] = true; if (a.loose) s['~' + a.loose] = true;
   });
   var inBa1 = function (r) { var s = ba1[bk(r)]; return !!s && (!!s[r.key] || (r.loose && !!s['~' + r.loose])); };
-  var same = {}, heads = {}, vols = {};
+  var same = {}, heads = {}, vols = {}, sameAtt = {};
+  out.attendees.forEach(function (a) {
+    if (!a.key) return;
+    var ak = bk(a) + '|' + a.act + '|' + (a.date || '') + '|' + a.key;
+    sameAtt[ak] = (sameAtt[ak] || 0) + 1;
+  });
   out.households.forEach(function (h) {
     if (!h.key) return;
     var k = bk(h) + '|' + h.act + '|' + h.key + '|' + h.birthdate;
@@ -334,12 +339,21 @@ function buildPeopleIndex() {
   out.attendees.forEach(function (a) {
     a.flags = [];
     if (!a.key) a.flags.push('noname');
+    var ak = bk(a) + '|' + a.act + '|' + (a.date || '') + '|' + a.key;
+    if (a.key && sameAtt[ak] > 1) {
+      a.flags.push('duplicate');
+      a.dupCount = sameAtt[ak];
+    }
     if (a.key && vols[a.key] && vols[a.key].some(function (v) { return bk(v) === bk(a); })) a.flags.push('volunteer');
   });
   out.households.forEach(function (h) {
     h.flags = [];
     if (!h.key) { h.flags.push('noname'); return; }
-    if (same[bk(h) + '|' + h.act + '|' + h.key + '|' + h.birthdate] > 1) h.flags.push('twice');
+    var k = bk(h) + '|' + h.act + '|' + h.key + '|' + h.birthdate;
+    if (same[k] > 1) {
+      h.flags.push('twice');
+      h.dupCount = same[k];
+    }
     if (h.head && heads[h.key] && Object.keys(heads[h.key]).length > 1) h.flags.push('otherbrgy');
     // The roster names the head; any member may have attended, so this is a note, not a problem.
     if (h.act === 'BA1' && h.present && !inBa1(h)) h.flags.push('headnotattendee');
@@ -397,6 +411,7 @@ function people() {
 var PEOPLE_FLAGS = {
   attendees: [
     { id: 'all', label: 'All Attendees' },
+    { id: 'duplicate', label: 'Duplicate Attendees', test: function (r) { return r.flags && r.flags.indexOf('duplicate') !== -1; } },
     { id: 'volunteer', label: 'Also a Volunteer here' },
     { id: 'noname', label: 'No name recorded' }
   ],
@@ -405,9 +420,10 @@ var PEOPLE_FLAGS = {
     { id: 'head', label: 'Household Heads', test: function (r) { return r.head; } },
     { id: 'present', label: 'Marked Present', test: function (r) { return r.present; } },
     { id: 'absent', label: 'Not Present', test: function (r) { return !r.present; } },
-    { id: 'headnotattendee', label: 'Present, Head not in Attendees' },
+    { id: 'duplicates', label: 'All Duplicates', test: function (r) { return r.flags && (r.flags.indexOf('twice') !== -1 || r.flags.indexOf('otherbrgy') !== -1); } },
     { id: 'twice', label: 'Listed twice' },
     { id: 'otherbrgy', label: 'Head in another barangay' },
+    { id: 'headnotattendee', label: 'Present, Head not in Attendees' },
     { id: 'noname', label: 'No name recorded' }
   ],
   volunteers: [
@@ -436,7 +452,7 @@ var PEOPLE_FLAGS = {
 };
 
 var FLAG_TEXT = {
-  noname: ['bad', 'No name'], volunteer: ['good', 'Volunteer'], twice: ['warn', 'Listed twice'],
+  noname: ['bad', 'No name'], duplicate: ['warn', 'Duplicate Attendee'], volunteer: ['good', 'Volunteer'], twice: ['warn', 'Listed twice'],
   otherbrgy: ['warn', 'Head in another barangay'], notattendee: ['warn', 'Not among 1st BA attendees'],
   headnotattendee: ['idle', 'Head not among attendees'],
   noba1: ['idle', '1st BA attendance not encoded yet'],
@@ -491,6 +507,7 @@ function getAttendeeTriageSummary(list) {
   var uniqueCount = Object.keys(uniqueNames).length;
   var volunteers = l.filter(function (r) { return r.flags && r.flags.indexOf('volunteer') !== -1; }).length;
   var missingName = l.filter(function (r) { return r.flags && r.flags.indexOf('noname') !== -1; }).length;
+  var duplicates = l.filter(function (r) { return r.flags && r.flags.indexOf('duplicate') !== -1; }).length;
   var womenRate = total > 0 ? (women / total) : 0;
 
   return {
@@ -500,13 +517,14 @@ function getAttendeeTriageSummary(list) {
     womenRate: womenRate,
     men: men,
     volunteers: volunteers,
-    missingName: missingName
+    missingName: missingName,
+    duplicates: duplicates
   };
 }
 
 function renderAttendeeTriageTray(summary) {
   var items = [];
-  var isAllGood = summary.missingName === 0 && summary.womenRate >= 0.5;
+  var isAllGood = summary.missingName === 0 && (!summary.duplicates || summary.duplicates === 0) && summary.womenRate >= 0.5;
 
   // 1. All Attendees
   items.push(
@@ -566,10 +584,24 @@ function renderAttendeeTriageTray(summary) {
     );
   }
 
-  var trayCls = summary.missingName > 0 ? 'triage-tray has-critical' : (isAllGood ? 'triage-tray all-good' : 'triage-tray');
+  // 6. Data Integrity: Duplicate Attendees
+  if (summary.duplicates > 0) {
+    items.push(
+      '<button type="button" class="triage-item triage-warn' + (ATT_STATE.flag === 'duplicate' ? ' active-triage' : '') + '" data-act="att-triage" data-v="duplicate" title="Filter duplicate attendee records encoded more than once in an activity sitting">' +
+        '<div class="triage-item-info">' +
+          '<span class="triage-item-count">' + n(summary.duplicates) + '</span>' +
+          '<span class="triage-item-label">Duplicate Attendees</span>' +
+        '</div>' +
+        '<span class="triage-item-arrow">' + icon('arrow-right') + '</span>' +
+      '</button>'
+    );
+  }
+
+  var totalAttAlerts = (summary.missingName || 0) + (summary.duplicates || 0);
+  var trayCls = totalAttAlerts > 0 ? 'triage-tray has-critical' : (isAllGood ? 'triage-tray all-good' : 'triage-tray');
   var badgeHtml = isAllGood
     ? '<span class="triage-badge">GSI Target Met &amp; Clean Data</span>'
-    : '<span class="triage-badge">' + (summary.missingName > 0 ? summary.missingName + ' Data Alerts' : 'GSI Attention Needed') + '</span>';
+    : '<span class="triage-badge">' + (totalAttAlerts > 0 ? totalAttAlerts + ' Data Alerts' : 'GSI Attention Needed') + '</span>';
 
   return (
     '<div class="' + trayCls + '">' +
@@ -625,6 +657,7 @@ function renderAttendees() {
     if (ATT_STATE.sex !== 'all' && r.sex !== ATT_STATE.sex) return false;
     if (ATT_STATE.flag === 'volunteer' && r.flags.indexOf('volunteer') === -1) return false;
     if (ATT_STATE.flag === 'noname' && r.flags.indexOf('noname') === -1) return false;
+    if (ATT_STATE.flag === 'duplicate' && r.flags.indexOf('duplicate') === -1) return false;
     if (q && r.q.indexOf(q) === -1) return false;
     return true;
   });
@@ -654,8 +687,11 @@ function renderAttendees() {
   var shown = sorted.slice(0, ATT_STATE.limit);
 
   var rowsHtml = shown.map(function (r) {
-    return '<tr>' +
-      '<td>' + nameCell(r) + '</td>' +
+    var isDup = r.flags && r.flags.indexOf('duplicate') !== -1;
+    var rowCls = isDup ? ' class="row-duplicate"' : '';
+    var dupBadge = isDup ? ' <span class="badge-dup" title="Duplicate attendee: same name recorded multiple times in this activity sitting"><span class="badge-dup-icon">👥</span> Duplicate' + (r.dupCount > 1 ? ' (' + r.dupCount + '×)' : '') + '</span>' : '';
+    return '<tr' + rowCls + '>' +
+      '<td>' + nameCell(r) + dupBadge + '</td>' +
       '<td>' + esc(r.sex || '—') + '</td>' +
       '<td>' + placeCell(r) + '</td>' +
       (!isMuni ? '<td>' + esc(r.municipality) + '</td>' : '') +
@@ -674,6 +710,7 @@ function renderAttendees() {
     if (ATT_STATE.act && r.act !== ATT_STATE.act) return false;
     if (ATT_STATE.flag === 'volunteer' && r.flags.indexOf('volunteer') === -1) return false;
     if (ATT_STATE.flag === 'noname' && r.flags.indexOf('noname') === -1) return false;
+    if (ATT_STATE.flag === 'duplicate' && r.flags.indexOf('duplicate') === -1) return false;
     if (q && r.q.indexOf(q) === -1) return false;
     return true;
   });
@@ -693,9 +730,9 @@ function renderAttendees() {
   ];
 
   var flagFilters = PEOPLE_FLAGS.attendees.map(function (f) {
-    var cnt = f.id === 'all' ? baseForFlag.length : baseForFlag.filter(function (r) { return r.flags.indexOf(f.id) !== -1; }).length;
-    var col = f.id === 'volunteer' ? 'chip-good' : (f.id === 'noname' ? 'chip-warn' : '');
-    var ico = f.id === 'volunteer' ? '🎗️ ' : (f.id === 'noname' ? '⚠️ ' : '');
+    var cnt = f.id === 'all' ? baseForFlag.length : baseForFlag.filter(function (r) { return f.test ? f.test(r) : r.flags.indexOf(f.id) !== -1; }).length;
+    var col = f.id === 'duplicate' ? 'chip-warn' : (f.id === 'volunteer' ? 'chip-good' : (f.id === 'noname' ? 'chip-warn' : ''));
+    var ico = f.id === 'duplicate' ? '👥 ' : (f.id === 'volunteer' ? '🎗️ ' : (f.id === 'noname' ? '⚠️ ' : ''));
     return { id: f.id, label: ico + f.label, count: cnt, cls: col };
   });
 
@@ -730,7 +767,7 @@ function renderAttendees() {
 
   var hasFilter = !!(ATT_STATE.brgy || ATT_STATE.act || ATT_STATE.sex !== 'all' || ATT_STATE.flag !== 'all' || ATT_STATE.search);
 
-  body.innerHTML = subNav +
+  body.innerHTML = subNav + (typeof renderDqaBreadcrumb === 'function' ? renderDqaBreadcrumb() : '') +
     '<div class="card">' +
       '<div class="card-head">' +
         '<div>' +
@@ -831,6 +868,7 @@ function getHouseholdTriageSummary(brgys, P, inScope) {
   var rosterPresent = roster.filter(function (r) { return r.present; }).length;
   var rosterAbsent = roster.filter(function (r) { return !r.present; }).length;
   var rosterMissingName = roster.filter(function (r) { return r.flags && r.flags.indexOf('noname') !== -1; }).length;
+  var rosterDuplicates = roster.filter(function (r) { return r.flags && (r.flags.indexOf('twice') !== -1 || r.flags.indexOf('otherbrgy') !== -1); }).length;
 
   return {
     totalBrgys: totalBrgys,
@@ -845,16 +883,18 @@ function getHouseholdTriageSummary(brgys, P, inScope) {
     rosterHeads: rosterHeads,
     rosterPresent: rosterPresent,
     rosterAbsent: rosterAbsent,
-    rosterMissingName: rosterMissingName
+    rosterMissingName: rosterMissingName,
+    rosterDuplicates: rosterDuplicates
   };
 }
 
 function renderHouseholdTriageTray(summary) {
   var isScorecard = HH_STATE.tab === 'scorecard';
   var items = [];
+  var totalRosterAlerts = (summary.rosterMissingName || 0) + (summary.rosterDuplicates || 0);
   var isAllGood = isScorecard
     ? (summary.belowQuorumBrgys === 0 && summary.noReportBrgys === 0 && summary.reportingBrgys > 0)
-    : (summary.rosterMissingName === 0);
+    : (totalRosterAlerts === 0);
 
   if (isScorecard) {
     // 1. All Monitored Barangays
@@ -973,12 +1013,25 @@ function renderHouseholdTriageTray(summary) {
         '</button>'
       );
     }
+
+    // 6. Duplicate Roster / Cross-Barangay Records
+    if (summary.rosterDuplicates > 0) {
+      items.push(
+        '<button type="button" class="triage-item triage-warn' + (HH_STATE.flag === 'duplicates' || HH_STATE.flag === 'twice' || HH_STATE.flag === 'otherbrgy' ? ' active-triage' : '') + '" data-act="hh-triage" data-v="duplicates" title="Filter duplicate roster and cross-barangay records">' +
+          '<div class="triage-item-info">' +
+            '<span class="triage-item-count">' + n(summary.rosterDuplicates) + '</span>' +
+            '<span class="triage-item-label">Duplicate Records</span>' +
+          '</div>' +
+          '<span class="triage-item-arrow">' + icon('arrow-right') + '</span>' +
+        '</button>'
+      );
+    }
   }
 
-  var trayCls = (!isAllGood && (summary.belowQuorumBrgys > 0 || summary.noReportBrgys > 0 || summary.rosterMissingName > 0)) ? 'triage-tray has-critical' : (isAllGood ? 'triage-tray all-good' : 'triage-tray');
+  var trayCls = (!isAllGood && (summary.belowQuorumBrgys > 0 || summary.noReportBrgys > 0 || totalRosterAlerts > 0)) ? 'triage-tray has-critical' : (isAllGood ? 'triage-tray all-good' : 'triage-tray');
   var badgeHtml = isAllGood
     ? '<span class="triage-badge">100% Quorum Compliance</span>'
-    : '<span class="triage-badge">' + (isScorecard ? (summary.belowQuorumBrgys + summary.noReportBrgys) + ' Quorum Gaps' : summary.rosterMissingName + ' Data Alerts') + '</span>';
+    : '<span class="triage-badge">' + (isScorecard ? (summary.belowQuorumBrgys + summary.noReportBrgys) + ' Quorum Gaps' : totalRosterAlerts + ' Data Alerts') + '</span>';
 
   return (
     '<div class="' + trayCls + '">' +
@@ -1124,7 +1177,7 @@ function renderHouseholds() {
     var filteredRoster = roster.filter(function (r) {
       if (HH_STATE.brgy && (r.province + '|' + r.municipality + '|' + r.barangay !== HH_STATE.brgy)) return false;
       if (flagObj.id !== 'all') {
-        if (flagObj.test ? !flagObj.test(r) : r.flags.indexOf(flagObj.id) !== -1) return false;
+        if (flagObj.test ? !flagObj.test(r) : r.flags.indexOf(flagObj.id) === -1) return false;
       }
       if (q2 && r.q.indexOf(q2) === -1) return false;
       return true;
@@ -1146,8 +1199,15 @@ function renderHouseholds() {
     var shownRoster = sortedRoster.slice(0, HH_STATE.limit);
 
     var rows2 = shownRoster.map(function (r) {
-      return '<tr>' +
-        '<td>' + nameCell(r) + '</td>' +
+      var isTwice = r.flags && r.flags.indexOf('twice') !== -1;
+      var isCross = r.flags && r.flags.indexOf('otherbrgy') !== -1;
+      var rowCls = isCross ? ' class="row-cross-brgy"' : (isTwice ? ' class="row-duplicate"' : '');
+      var dupBadge = isCross
+        ? ' <span class="badge-dup alert" title="Cross-barangay duplicate: Household head appears in multiple barangays"><span class="badge-dup-icon">📍</span> Cross-Brgy</span>'
+        : (isTwice ? ' <span class="badge-dup" title="Duplicate beneficiary: Listed multiple times in this barangay roster"><span class="badge-dup-icon">👥</span> Duplicate' + (r.dupCount > 1 ? ' (' + r.dupCount + '×)' : '') + '</span>' : '');
+
+      return '<tr' + rowCls + '>' +
+        '<td>' + nameCell(r) + dupBadge + '</td>' +
         '<td>' + esc(r.birthdate || '—') + '</td>' +
         '<td>' + esc(r.sex || '—') + '</td>' +
         '<td>' + yesNo(r.head) + '</td>' +
@@ -1178,8 +1238,8 @@ function renderHouseholds() {
       '<span class="tiny text-muted" style="font-weight:700;margin-right:4px;">Roster Presets:</span>' +
       PEOPLE_FLAGS.households.map(function (f) {
         var cnt = f.id === 'all' ? baseRoster.length : baseRoster.filter(function (r) { return f.test ? f.test(r) : r.flags.indexOf(f.id) !== -1; }).length;
-        var col = f.id === 'present' ? 'chip-good' : (f.id === 'absent' || f.id === 'noname' ? 'chip-warn' : '');
-        var ico = f.id === 'present' ? '✓ ' : (f.id === 'absent' ? '○ ' : (f.id === 'noname' ? '⚠️ ' : (f.id === 'head' ? '👤 ' : '')));
+        var col = f.id === 'present' ? 'chip-good' : (f.id === 'absent' || f.id === 'noname' || f.id === 'twice' || f.id === 'otherbrgy' || f.id === 'duplicates' ? 'chip-warn' : '');
+        var ico = f.id === 'present' ? '✓ ' : (f.id === 'absent' ? '○ ' : (f.id === 'noname' ? '⚠️ ' : (f.id === 'head' ? '👤 ' : (f.id === 'twice' ? '👥 ' : (f.id === 'otherbrgy' ? '📍 ' : (f.id === 'duplicates' ? '👥 ' : ''))))));
         var isActive = HH_STATE.flag === f.id;
         return '<button type="button" class="quick-filter-chip' + (col ? ' ' + col : '') + (isActive ? ' active' : '') + '" data-act="hh-flag" data-v="' + f.id + '">' +
           '<span>' + ico + f.label + '</span>' +
@@ -1214,7 +1274,7 @@ function renderHouseholds() {
     '<button type="button" class="sub-nav-btn active">' + icon('home') + ' <span>Household Participation</span></button>' +
   '</div>';
 
-  body.innerHTML = subNav +
+  body.innerHTML = subNav + (typeof renderDqaBreadcrumb === 'function' ? renderDqaBreadcrumb() : '') +
     '<div class="card">' +
       '<div class="card-head">' +
         '<div>' +
@@ -1572,7 +1632,7 @@ function renderVolunteers() {
     '<button type="button" class="sub-nav-btn" data-go="cspmc">' + icon('layers') + ' <span>CSPMC &amp; Sub-Committees (Stage 2)</span></button>' +
   '</div>';
 
-  body.innerHTML = subNav +
+  body.innerHTML = subNav + (typeof renderDqaBreadcrumb === 'function' ? renderDqaBreadcrumb() : '') +
     '<div class="card">' +
       '<div class="card-head">' +
         '<div>' +
@@ -1997,7 +2057,7 @@ function renderBrest() {
     '<button type="button" class="sub-nav-btn" data-go="cspmc">' + icon('layers') + ' <span>CSPMC &amp; Sub-Committees (Stage 2)</span></button>' +
   '</div>';
 
-  body.innerHTML = subNav +
+  body.innerHTML = subNav + (typeof renderDqaBreadcrumb === 'function' ? renderDqaBreadcrumb() : '') +
     '<div class="card">' +
       '<div class="card-head">' +
         '<div>' +
@@ -2760,7 +2820,7 @@ function renderCspmc() {
     }
   }
 
-  body.innerHTML = subNav +
+  body.innerHTML = subNav + (typeof renderDqaBreadcrumb === 'function' ? renderDqaBreadcrumb() : '') +
     '<div class="card">' +
       '<div class="card-head">' +
         '<div>' +
@@ -3811,6 +3871,7 @@ function openPerson(key) {
   var bodies = {}; vol.forEach(function (v) { if (v.body) bodies[v.body + ' · ' + v.barangay] = true; });
   if (Object.keys(bodies).length > 1) hint.push('Sits in ' + Object.keys(bodies).join(' and ') + ' (allowed).');
   hh.forEach(function (h) { if (h.flags.indexOf('twice') !== -1) hint.push('Listed more than once on the ' + h.actLabel + ' roster of ' + h.barangay + '.'); });
+  att.forEach(function (a) { if (a.flags.indexOf('duplicate') !== -1) hint.push('Listed more than once on the ' + a.actLabel + ' attendance sheet of ' + a.barangay + ' for the same date (' + (a.date || 'unspecified date') + ').'); });
   hint = hint.filter(function (h, i) { return hint.indexOf(h) === i; });
 
   var table = function (title, list, cols) {
@@ -3835,8 +3896,8 @@ function openPerson(key) {
       '</div>' +
     '</div>' +
     (hint.length ? '<div class="msg warn" style="margin-top:10px">' + icon('alert-triangle') + ' <div><strong>Items to check</strong><ul style="margin:4px 0 0;padding-left:18px">' + hint.map(function (h) { return '<li>' + esc(h) + '</li>'; }).join('') + '</ul></div></div>' : '') +
-    table('Attendance', att, [['Activity', function (r) { return 'Seq ' + esc(r.seq) + ' · ' + esc(r.actLabel); }], ['Where', plc], ['Date', function (r) { return esc(r.date || '—'); }], ['Sex', function (r) { return esc(r.sex || '—'); }]]) +
-    table('Household roster', hh, [['Assembly', function (r) { return esc(r.actLabel); }], ['Where', plc], ['HH head', function (r) { return yesNo(r.head); }], ['Present', function (r) { return yesNo(r.present); }], ['Birthdate', function (r) { return esc(r.birthdate || '—'); }]]) +
+    table('Attendance', att, [['Activity', function (r) { return 'Seq ' + esc(r.seq) + ' · ' + esc(r.actLabel); }], ['Where', plc], ['Date', function (r) { return esc(r.date || '—') + (r.flags.indexOf('duplicate') !== -1 ? ' <span class="badge-dup">👥 Duplicate</span>' : ''); }], ['Sex', function (r) { return esc(r.sex || '—'); }]]) +
+    table('Household roster', hh, [['Assembly', function (r) { return esc(r.actLabel) + (r.flags.indexOf('twice') !== -1 ? ' <span class="badge-dup">👥 Duplicate</span>' : '') + (r.flags.indexOf('otherbrgy') !== -1 ? ' <span class="badge-dup alert">📍 Cross-Brgy</span>' : ''); }], ['Where', plc], ['HH head', function (r) { return yesNo(r.head); }], ['Present', function (r) { return yesNo(r.present); }], ['Birthdate', function (r) { return esc(r.birthdate || '—'); }]]) +
     table('Volunteer roles', vol, [['Committee', function (r) { return esc(r.committee || '(none)'); }], ['Position', function (r) { return esc(r.position || '—'); }], ['Where', plc], ['Term start', function (r) { return esc(r.start || '—'); }], ['IP / PWD', function (r) { return [r.ip ? 'IP' : '', r.pwd ? 'PWD' : ''].filter(Boolean).join(', ') || '—'; }]]) +
     (looseOnly.length ? '<h3 style="margin-top:16px">Same first and last name, different middle name <span class="pill warn">' + looseOnly.length + '</span></h3>' +
       '<p class="tiny">Possibly the same person encoded with a different or missing middle name.</p><ul style="margin:6px 0 0;padding-left:18px">' +
@@ -4033,7 +4094,7 @@ document.addEventListener('click', function (ev) {
   else if (act === 'att-triage') {
     if (v === 'all') { ATT_STATE.sex = 'all'; ATT_STATE.flag = 'all'; }
     else if (v === 'female' || v === 'male') { ATT_STATE.sex = v; ATT_STATE.flag = 'all'; }
-    else if (v === 'volunteer' || v === 'noname') { ATT_STATE.flag = v; ATT_STATE.sex = 'all'; }
+    else if (v === 'volunteer' || v === 'noname' || v === 'duplicate') { ATT_STATE.flag = v; ATT_STATE.sex = 'all'; }
     ATT_STATE.limit = 100;
     renderAttendees();
   }

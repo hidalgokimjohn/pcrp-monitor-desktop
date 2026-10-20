@@ -20,10 +20,15 @@
     </div>
     <div>
       <div class="brand-title">PCRP Encoding &amp; Data Quality Assessment Tool</div>
-      <div class="brand-sub"><span class="brand-tag">KALAHI-CIDSS PCRP</span> <span>Offline Field Console · Monitor v@@VERSION@@</span></div>
+      <div class="brand-sub">
+        <span class="brand-tag">KALAHI-CIDSS PCRP</span>
+        <span class="brand-tag region">Caraga Region</span>
+        <span>Offline Field Console · Monitor v@@VERSION@@</span>
+        <span class="brand-sep" aria-hidden="true">·</span>
+        <span id="brand-update-status" class="brand-status-wrap"></span>
+      </div>
     </div>
   </div>
-  <button class="home-chip" id="home-chip" type="button" hidden></button>
   <div class="top-actions">
     <button class="btn ghost icon-btn" id="btn-theme" type="button" aria-label="Toggle light or dark theme">
       <i data-lucide="sun"></i>
@@ -141,20 +146,20 @@
           <span class="pill-chip good tiny">100% Offline</span>
         </div>
         <nav class="settings-menu" id="settings-menu" role="tablist" aria-label="Settings navigation">
-          <a class="settings-nav-item active" href="#sec-import" data-target="sec-import">
+          <a class="settings-nav-item active" href="#sec-scope" data-target="sec-scope">
+            <span class="sni-icon"><i data-lucide="map-pin"></i></span>
+            <div class="sni-text">
+              <span class="sni-title">Municipal Scope</span>
+              <span class="sni-sub">PEA / MDM or RPMO</span>
+            </div>
+          </a>
+          <a class="settings-nav-item" href="#sec-import" data-target="sec-import">
             <span class="sni-icon"><i data-lucide="upload-cloud"></i></span>
             <div class="sni-text">
               <span class="sni-title">Data Import</span>
               <span class="sni-sub">KCIS exports &amp; status</span>
             </div>
             <span class="tab-badge" id="sni-badge-import" hidden></span>
-          </a>
-          <a class="settings-nav-item" href="#sec-scope" data-target="sec-scope">
-            <span class="sni-icon"><i data-lucide="map-pin"></i></span>
-            <div class="sni-text">
-              <span class="sni-title">Municipal Scope</span>
-              <span class="sni-sub">PEA / MDM or RPMO</span>
-            </div>
           </a>
           <a class="settings-nav-item" href="#sec-baseline" data-target="sec-baseline">
             <span class="sni-icon"><i data-lucide="database"></i></span>
@@ -204,12 +209,17 @@
       <div class="settings-content">
         <div id="saved-bar"></div>
 
-        <!-- Section 1: Data Import -->
+        <!-- Section 1: Role & Municipal Scope -->
+        <section class="settings-section" id="sec-scope">
+          <div class="card step-card" id="home-card"></div>
+        </section>
+
+        <!-- Section 2: Data Import -->
         <section class="settings-section" id="sec-import">
           <div class="card step-card" id="import-card">
             <div class="card-head" style="margin-bottom:4px">
               <div>
-                <h2><span class="step-no">1</span> Import KCIS exports</h2>
+                <h2><span class="step-no">2</span> Import KCIS exports</h2>
                 <p class="muted" style="margin:4px 0 0">Drop files here all at once or one by one. Files are read locally on this PC; nothing is uploaded.</p>
               </div>
               <span class="pill good"><i data-lucide="lock"></i> 100% Offline &amp; Local</span>
@@ -232,11 +242,6 @@
               <button class="btn ghost" id="btn-clear" type="button"><i data-lucide="trash-2"></i> <span>Clear loaded files</span></button>
             </div>
           </div>
-        </section>
-
-        <!-- Section 2: Role & Municipal Scope -->
-        <section class="settings-section" id="sec-scope">
-          <div class="card step-card" id="home-card"></div>
         </section>
 
         <!-- Section 3: Baseline Reference -->

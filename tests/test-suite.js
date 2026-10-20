@@ -1083,6 +1083,27 @@ async function runAll() {
       assert.strictEqual(headerContent.includes('data-tooltip='), false, 'Header buttons should not contain data-tooltip');
       assert.strictEqual(headerContent.includes('data-term='), false, 'Header buttons should not contain data-term');
     });
+
+    test('Settings Layout: Municipal Scope is Section 1 and Data Import is Section 2', () => {
+      // Sidebar menu ordering: Municipal Scope before Data Import
+      const scopeMenuIdx = appHtml.indexOf('href="#sec-scope"');
+      const importMenuIdx = appHtml.indexOf('href="#sec-import"');
+      assert.ok(scopeMenuIdx !== -1, 'sec-scope missing in menu');
+      assert.ok(importMenuIdx !== -1, 'sec-import missing in menu');
+      assert.ok(scopeMenuIdx < importMenuIdx, 'Municipal Scope menu item must appear before Data Import');
+
+      // Main content section ordering: Municipal Scope before Data Import
+      const scopeSecIdx = appHtml.indexOf('id="sec-scope"');
+      const importSecIdx = appHtml.indexOf('id="sec-import"');
+      assert.ok(scopeSecIdx !== -1, 'sec-scope section missing');
+      assert.ok(importSecIdx !== -1, 'sec-import section missing');
+      assert.ok(scopeSecIdx < importSecIdx, 'sec-scope section must appear before sec-import in main content');
+
+      // Step numbering
+      assert.ok(appHtml.includes('<h2><span class="step-no">2</span> Import KCIS exports</h2>'), 'Data import should be Step 2 in HTML');
+      assert.ok(appJs.includes('<h2><span class="step-no">1</span> Select your Role &amp; Municipality</h2>'), 'Municipal scope should be Step 1 in app.js');
+      assert.ok(appJs.includes('Section 1 · Municipal Scope &amp; Role'), 'Municipal scope badge should reference Section 1');
+    });
   }
 
   // -----------------------------------------------------------------
@@ -2150,6 +2171,179 @@ async function runAll() {
     test('Cross-Module Deep-Linking: Scorecard card and table precision links target openVerifyForm', () => {
       assert.ok(jsHealthHtml.includes("openVerifyForm("), 'dhPrecisionCard must use openVerifyForm for form selection');
       assert.ok(jsHealthHtml.includes("openVerifyForm(null,"), 'dhScoreMuniTable must use openVerifyForm for municipality selection');
+    });
+  }
+
+  // -----------------------------------------------------------------
+  // 19. Universal DQA Findings Deep-Linking & Action Routing Tests
+  // -----------------------------------------------------------------
+  console.log('🔗 Testing Universal DQA Findings Deep-Linking & Action Routing (vendor/monitor/JS_Health.html, src/app.js, src/people.js, src/app.css)...');
+  {
+    const jsHealth = fs.readFileSync(path.join(ROOT, 'vendor', 'monitor', 'JS_Health.html'), 'utf8');
+    const appJs = fs.readFileSync(path.join(ROOT, 'src', 'app.js'), 'utf8');
+    const peopleJs = fs.readFileSync(path.join(ROOT, 'src', 'people.js'), 'utf8');
+    const appCss = fs.readFileSync(path.join(ROOT, 'src', 'app.css'), 'utf8');
+
+    test('DQA Findings Helper: dhFindingLink is defined and generates data-act="dqa-jump"', () => {
+      assert.ok(jsHealth.includes('function dhFindingLink('), 'dhFindingLink must be defined in JS_Health.html');
+      assert.ok(jsHealth.includes('data-act="dqa-jump"'), 'dhFindingLink must generate elements with data-act="dqa-jump"');
+      assert.ok(jsHealth.includes('dh-finding-link'), 'dhFindingLink must include dh-finding-link class');
+    });
+
+    test('Universal Check Links: All major check tables format finding values with dhFindingLink', () => {
+      const requiredChecks = ['noname', 'dup', 'cross', 'quorum', 'sequence', 'late', 'dates', 'multidate', 'attdup', 'names', 'bday', 'cv_missing', 'cv_sfmsc', 'cv_tagging', 'cv_gaps'];
+      requiredChecks.forEach(id => {
+        assert.ok(jsHealth.includes("dhFindingLink('" + id + "'"), 'JS_Health.html must link findings for check "' + id + '"');
+      });
+    });
+
+    test('Household Roster Filter: flag matching for presets without custom test functions is not inverted', () => {
+      // Must use === -1 (keeps matching flags) instead of !== -1 (which dropped them)
+      assert.ok(peopleJs.includes('r.flags.indexOf(flagObj.id) === -1'), 'Household Roster filtering must use === -1 to keep flagged records');
+      assert.strictEqual(peopleJs.includes('r.flags.indexOf(flagObj.id) !== -1'), false, 'Inverted !== -1 filter must be removed');
+    });
+
+    test('Router & Action Handlers: src/app.js handles dqa-jump and dqa-return', () => {
+      assert.ok(appJs.includes("act === 'dqa-jump'"), 'app.js must handle act === "dqa-jump"');
+      assert.ok(appJs.includes("act === 'dqa-return'"), 'app.js must handle act === "dqa-return"');
+      assert.ok(appJs.includes("function renderDqaBreadcrumb("), 'app.js must define renderDqaBreadcrumb');
+      assert.ok(appJs.includes("STATE.dqaOrigin"), 'app.js must track STATE.dqaOrigin');
+    });
+
+    test('Contextual Breadcrumbs: Modules render DQA return breadcrumbs', () => {
+      assert.ok(peopleJs.includes("renderDqaBreadcrumb()"), 'people.js must invoke renderDqaBreadcrumb');
+      assert.ok(appJs.includes("renderDqaBreadcrumb()"), 'app.js renderBrgys must invoke renderDqaBreadcrumb');
+      assert.ok(appCss.includes(".dh-finding-link"), 'app.css must define .dh-finding-link styling');
+      assert.ok(appCss.includes(".dqa-nav-breadcrumb"), 'app.css must define .dqa-nav-breadcrumb styling');
+    });
+  }
+
+  // -----------------------------------------------------------------
+  // 20. Duplicate Record Highlighting & Triage Tests in Attendance and Household
+  // -----------------------------------------------------------------
+  console.log('👥 Testing Duplicate Record Highlighting & Triage (src/people.js, src/app.js, src/app.css)...');
+  {
+    const peopleJs = fs.readFileSync(path.join(__dirname, '../src/people.js'), 'utf8');
+    const appJs = fs.readFileSync(path.join(__dirname, '../src/app.js'), 'utf8');
+    const appCss = fs.readFileSync(path.join(__dirname, '../src/app.css'), 'utf8');
+
+    test('Attendee Duplicate Detection: buildPeopleIndex counts sameAtt & sets duplicate flag with dupCount', () => {
+      assert.ok(peopleJs.includes('sameAtt = {}'), 'people.js must define sameAtt frequency index');
+      assert.ok(peopleJs.includes("sameAtt[ak] > 1"), 'people.js must test sameAtt frequency > 1');
+      assert.ok(peopleJs.includes("a.flags.push('duplicate')"), 'people.js must push duplicate flag for attendees');
+      assert.ok(peopleJs.includes("a.dupCount = sameAtt[ak]"), 'people.js must record dupCount on attendee records');
+      assert.ok(peopleJs.includes("duplicate: ['warn', 'Duplicate Attendee']"), 'FLAG_TEXT must define duplicate text');
+    });
+
+    test('Attendee Triage & Filters: getAttendeeTriageSummary and renderAttendeeTriageTray support duplicates', () => {
+      assert.ok(peopleJs.includes("duplicates = l.filter(function (r) { return r.flags && r.flags.indexOf('duplicate') !== -1; }).length"), 'getAttendeeTriageSummary must tally duplicates');
+      assert.ok(peopleJs.includes("data-act=\"att-triage\" data-v=\"duplicate\""), 'renderAttendeeTriageTray must include duplicate triage card');
+      assert.ok(peopleJs.includes("ATT_STATE.flag === 'duplicate'"), 'renderAttendees must filter by duplicate flag');
+      assert.ok(peopleJs.includes("v === 'duplicate'"), 'att-triage click handler must handle duplicate value');
+    });
+
+    test('Attendee Table Highlighting: renderAttendees applies row-duplicate class and badge-dup', () => {
+      assert.ok(peopleJs.includes("row-duplicate"), 'renderAttendees must apply row-duplicate class');
+      assert.ok(peopleJs.includes("badge-dup"), 'renderAttendees must render badge-dup');
+      assert.ok(peopleJs.includes("Duplicate"), 'renderAttendees must render Duplicate label in badge');
+    });
+
+    test('Household Duplicate Triage & Presets: getHouseholdTriageSummary and quick chips support duplicates', () => {
+      assert.ok(peopleJs.includes("rosterDuplicates = roster.filter"), 'getHouseholdTriageSummary must calculate rosterDuplicates');
+      assert.ok(peopleJs.includes("data-act=\"hh-triage\" data-v=\"duplicates\""), 'renderHouseholdTriageTray must include duplicates card');
+      assert.ok(peopleJs.includes("id: 'duplicates', label: 'All Duplicates'"), 'PEOPLE_FLAGS.households must define duplicates preset');
+      assert.ok(peopleJs.includes("h.dupCount = same[k]"), 'buildPeopleIndex must record dupCount on household records');
+    });
+
+    test('Household Roster Table Highlighting: renderHouseholds applies row-duplicate, row-cross-brgy and badges', () => {
+      assert.ok(peopleJs.includes("row-cross-brgy"), 'renderHouseholds must apply row-cross-brgy class for otherbrgy');
+      assert.ok(peopleJs.includes("badge-dup alert"), 'renderHouseholds must apply badge-dup alert for cross-barangay heads');
+      assert.ok(peopleJs.includes("Cross-Brgy"), 'renderHouseholds must render Cross-Brgy badge');
+    });
+
+    test('Profile & Cross-Module Action Router: openPerson hints and dqa-jump auto-selects duplicate filters', () => {
+      assert.ok(peopleJs.includes("a.flags.indexOf('duplicate') !== -1"), 'openPerson must inspect duplicate attendance flags');
+      assert.ok(appJs.includes("if (checkId === 'attdup') { ATT_STATE.flag = 'duplicate'; }"), 'dqa-jump must activate duplicate filter for attdup');
+      assert.ok(appJs.includes("if (checkId === 'dup' && !flag) HH_STATE.flag = 'twice';"), 'dqa-jump must activate twice filter for dup');
+      assert.ok(appJs.includes("if (checkId === 'cross' && !flag) HH_STATE.flag = 'otherbrgy';"), 'dqa-jump must activate otherbrgy filter for cross');
+    });
+
+    test('CSS Definitions: app.css defines row-duplicate, row-cross-brgy, badge-dup and dark theme support', () => {
+      assert.ok(appCss.includes("table.grid tr.row-duplicate td"), 'app.css must define tr.row-duplicate styles');
+      assert.ok(appCss.includes("table.grid tr.row-cross-brgy td"), 'app.css must define tr.row-cross-brgy styles');
+      assert.ok(appCss.includes(".badge-dup"), 'app.css must define .badge-dup styles');
+      assert.ok(appCss.includes(".badge-dup.alert"), 'app.css must define .badge-dup.alert styles');
+      assert.ok(appCss.includes("html.dark table.grid tr.row-duplicate td") || appCss.includes('[data-theme="dark"] table.grid tr.row-duplicate td'), 'app.css must provide dark theme duplicate styles');
+    });
+  }
+
+  // -----------------------------------------------------------------
+  // 21. Application Header Subtitle & Regional Attribution Tests
+  // -----------------------------------------------------------------
+  console.log('🏛️ Testing Subtitle Branding & Attribution (src/app.html, src/app.css, src/app.js)...');
+  {
+    const appHtml = fs.readFileSync(path.join(__dirname, '../src/app.html'), 'utf8');
+    const appCss = fs.readFileSync(path.join(__dirname, '../src/app.css'), 'utf8');
+    const appJs = fs.readFileSync(path.join(__dirname, '../src/app.js'), 'utf8');
+
+    test('Header Subtitle: src/app.html contains KALAHI-CIDSS PCRP and Caraga Region tags', () => {
+      assert.ok(appHtml.includes('<span class="brand-tag">KALAHI-CIDSS PCRP</span>'), 'app.html must contain KALAHI-CIDSS PCRP tag');
+      assert.ok(appHtml.includes('<span class="brand-tag region">Caraga Region</span>'), 'app.html must contain Caraga Region tag');
+      assert.ok(appHtml.includes('Offline Field Console · Monitor v@@VERSION@@'), 'app.html must contain Offline Field Console text');
+    });
+
+    test('Header CSS: src/app.css styles .brand-tag.region for light and dark modes', () => {
+      assert.ok(appCss.includes('.brand-tag.region'), 'app.css must define .brand-tag.region');
+      assert.ok(appCss.includes('html.dark .brand-tag.region') || appCss.includes('[data-theme="dark"] .brand-tag.region'), 'app.css must provide dark theme region tag styles');
+    });
+
+    test('About Attribution: src/app.js includes Caraga Region & Vibe coded by: kjahidalgo', () => {
+      assert.ok(appJs.includes('Caraga Region Implementation'), 'app.js must reference Caraga Region in About section');
+      assert.ok(appJs.includes('Vibe coded by: <strong>kjahidalgo</strong>'), 'app.js must include Vibe coded by: kjahidalgo in About section');
+    });
+  }
+
+  // -----------------------------------------------------------------
+  // 22. App Version Status in Subtitle & Automated Polling Tests
+  // -----------------------------------------------------------------
+  console.log('🔄 Testing Subtitle App Version Status & Automated Polling (src/app.html, src/app.css, src/app.js)...');
+  {
+    const appHtml = fs.readFileSync(path.join(__dirname, '../src/app.html'), 'utf8');
+    const appCss = fs.readFileSync(path.join(__dirname, '../src/app.css'), 'utf8');
+    const appJs = fs.readFileSync(path.join(__dirname, '../src/app.js'), 'utf8');
+
+    test('Header Cleanup: home-chip scope pill removed from top header in src/app.html', () => {
+      assert.ok(!appHtml.includes('id="home-chip"'), 'app.html top header must not contain home-chip');
+      assert.ok(appJs.includes("var homeChip = $('home-chip');\nif (homeChip)"), 'app.js must safely guard home-chip listener');
+    });
+
+    test('Header Subtitle Status Element: src/app.html contains brand-update-status anchor', () => {
+      assert.ok(appHtml.includes('<span id="brand-update-status" class="brand-status-wrap"></span>'), 'app.html must contain brand-update-status wrap');
+      assert.ok(appHtml.includes('<span class="brand-sep" aria-hidden="true">·</span>'), 'app.html must contain brand separator');
+    });
+
+    test('Subtitle Status CSS: app.css defines chips, pulse dots and dark theme rules', () => {
+      assert.ok(appCss.includes('.brand-status-chip.up-to-date'), 'app.css must define .brand-status-chip.up-to-date');
+      assert.ok(appCss.includes('.brand-status-chip.has-update'), 'app.css must define .brand-status-chip.has-update');
+      assert.ok(appCss.includes('.brand-status-chip.offline'), 'app.css must define .brand-status-chip.offline');
+      assert.ok(appCss.includes('.status-pulse-dot.good'), 'app.css must define .status-pulse-dot.good');
+      assert.ok(appCss.includes('.status-pulse-dot.alert'), 'app.css must define .status-pulse-dot.alert');
+      assert.ok(appCss.includes('@keyframes pulse-update'), 'app.css must define pulse-update keyframe animation');
+    });
+
+    test('Brand Update Logic: src/app.js defines renderBrandUpdateStatus and open-updates action', () => {
+      assert.ok(appJs.includes('function renderBrandUpdateStatus()'), 'app.js must define renderBrandUpdateStatus');
+      assert.ok(appJs.includes("Your app is up to date!"), 'renderBrandUpdateStatus must render "Your app is up to date!"');
+      assert.ok(appJs.includes("Update available:"), 'renderBrandUpdateStatus must render update available text');
+      assert.ok(appJs.includes("Field Offline"), 'renderBrandUpdateStatus must render Field Offline when disconnected');
+      assert.ok(appJs.includes("else if (act === 'open-updates')"), 'app.js router must handle open-updates action');
+      assert.ok(appJs.includes("sec.scrollIntoView({ behavior: 'smooth'"), 'open-updates must scroll to sec-updates');
+    });
+
+    test('Instant & Background Polling: startup check and 30-minute interval without 24hr block', () => {
+      assert.ok(appJs.includes("checkForUpdates(false);\n  }, 1200);"), 'app.js must trigger automated check on boot after short delay');
+      assert.ok(appJs.includes("30 * 60 * 1000"), 'app.js must configure 30-minute background poll interval');
+      assert.ok(!appJs.includes("Date.now() - last > 24 * 60 * 60 * 1000"), 'app.js must not restrict checks with 24hr limit');
     });
   }
 

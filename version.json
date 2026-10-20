@@ -1,16 +1,16 @@
 {
-  "version": "2.13.0",
-  "releaseDate": "2026-10-20",
-  "title": "PCRP Encoding and Data Quality Assessment Tool v2.13.0",
+  "version": "2.14.0",
+  "releaseDate": "2026-10-21",
+  "title": "PCRP Encoding and Data Quality Assessment Tool v2.14.0",
   "minAppVersion": "2.0.0",
   "downloadUrl": "https://raw.githubusercontent.com/hidalgokimjohn/pcrp-monitor-desktop/main/dist/PCRP%20Encoding%20and%20Data%20Quality%20Assessment%20Tool.html",
   "releaseUrl": "https://github.com/hidalgokimjohn/pcrp-monitor-desktop",
-  "fileSize": "1111 KB",
+  "fileSize": "1119 KB",
   "notes": [
-    "Triage action trays & quick filter presets across Overview, Municipalities, Barangays, Attendees, Households, Volunteers, BResT, and DQA Verification",
-    "DQA Field Form Verification split-pane workbench with sticky record sidebar, SM7 Table 8 precision indicators, and executive audit memo dialog",
-    "Household 70% quorum and BResT 30% marginalized mini progress bars with compliance threshold markers",
-    "Contextual floating helper tooltips and standard PCRP glossary popovers",
-    "Stage 2 CSPMC (8 specialized sub-committees + Bookkeeper) & MResT co-governance org charts with 50% women quota"
+    "Universal DQA finding deep links with contextual return breadcrumbs across all audit checks",
+    "Duplicate record visual highlights, inline badges, and quick filter presets in Attendance and Household modules",
+    "Persistent header subtitle version status chip with instant check and 30-minute automated polling",
+    "Streamlined Settings navigation with Municipal Scope as Section 1 and clean header layout",
+    "Caraga Region official branding and implementation attribution in About notice"
   ]
 }

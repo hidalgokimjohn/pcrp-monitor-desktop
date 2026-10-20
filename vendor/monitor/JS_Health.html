@@ -168,6 +168,30 @@ function dhDistinctMunis(rows, placesOf) {
   return Object.keys(s).length;
 }
 
+function dhFindingLink(checkId, r, val, count, title, extra) {
+  var bkey = r && r.province && r.municipality && r.barangay ? (r.province + '|' + r.municipality + '|' + r.barangay) : '';
+  var muniKey = r && r.province && r.municipality ? (r.province + '|' + r.municipality) : '';
+  var act = r && r.actCode ? r.actCode : '';
+  var nVal = count !== undefined ? count : (typeof val === 'number' ? val : 0);
+  var disp = typeof val === 'number' ? n(val) : String(val);
+  var extraAttrs = '';
+  if (extra) {
+    Object.keys(extra).forEach(function (k) {
+      if (extra[k] !== undefined && extra[k] !== null) extraAttrs += ' data-' + k + '="' + esc(String(extra[k])) + '"';
+    });
+  }
+  return '<button type="button" class="cell-link dh-finding-link" data-act="dqa-jump" ' +
+    'data-check="' + esc(checkId) + '" ' +
+    'data-brgy="' + esc(bkey) + '" ' +
+    'data-muni="' + esc(muniKey) + '" ' +
+    'data-actcode="' + esc(act) + '" ' +
+    'data-count="' + esc(String(nVal)) + '"' +
+    extraAttrs +
+    ' title="' + esc(title || ('Inspect in records (' + disp + ')')) + '">' +
+    '<strong>' + disp + '</strong> <i data-lucide="arrow-up-right" class="w-3 h-3 inline-ico"></i>' +
+  '</button>';
+}
+
 // ---- the checks ------------------------------------------------------
 
 /**
@@ -205,8 +229,8 @@ function dhChecks(o) {
               'Re-export and re-import the participants file.'],
       rows: function () { return h.unmappedSamples || []; }, places: one,
       cols: [col('Municipality', dhPlain, function (r) { return r.municipality; }), colProv, colBrgy,
-             col('Sequence', function (r) { return esc(r.seq || '—'); }, function (r) { return r.seq; }),
-             col('Activity name', function (r) { return esc(r.name || '—'); }, function (r) { return r.name; })],
+             col('Sequence', function (r) { return dhFindingLink('unmapped', r, r.seq || '—', 1, 'Search sequence in Attendees', { name: r.name, seq: r.seq }); }, function (r) { return r.seq; }),
+             col('Activity name', function (r) { return dhFindingLink('unmapped', r, r.name || '—', 1, 'Search activity name in Attendees', { name: r.name, seq: r.seq }); }, function (r) { return r.name; })],
       text: function (r) { return [r.province, r.municipality, r.barangay, r.seq, r.name]; },
       detail: function (r) { return 'Sequence "' + (r.seq || '') + '", name "' + (r.name || '') + '"'; }
     },
@@ -219,7 +243,8 @@ function dhChecks(o) {
               'If the municipality is switched off, switch it back on; otherwise correct the name or PSGC code in KCIS or the baseline.',
               'Re-import or click Recompute.'],
       rows: function () { return h.notInBaselineSamples || []; }, places: one,
-      cols: [col('Municipality (as exported)', dhPlain, function (r) { return r.municipality; }), colProv, colBrgy,
+      cols: [col('Municipality (as exported)', dhPlain, function (r) { return r.municipality; }), colProv,
+             col('Barangay', function (r) { return dhFindingLink('baseline', r, r.barangay || '—', 1, 'Check Baseline Reference Masterlist'); }, function (r) { return r.barangay; }),
              col('Activity', function (r) { return esc(r.activity || '—'); }, function (r) { return r.activity; })],
       text: function (r) { return [r.province, r.municipality, r.barangay, r.activity]; },
       detail: function (r) { return 'Activity ' + (r.activity || ''); }
@@ -233,7 +258,10 @@ function dhChecks(o) {
               'Encode the missing attendees, or correct "Is Present" in the household roster in KCIS.',
               'Re-export and re-import both files.'],
       rows: function () { return h.householdFlags || []; }, places: one,
-      cols: [colMuni, colProv, colBrgy, col('What does not add up', function (r) { return esc(r.issue); }, function (r) { return r.issue; })],
+      cols: [colMuni, colProv, colBrgy,
+             col('What does not add up', function (r) {
+               return dhFindingLink('quorum', r, r.issue, 1, 'Inspect Quorum Scorecard for ' + r.barangay, { search: r.barangay });
+             }, function (r) { return r.issue; })],
       text: function (r) { return [r.province, r.municipality, r.barangay, r.issue]; },
       detail: function (r) { return r.issue; }
     },
@@ -245,7 +273,10 @@ function dhChecks(o) {
       steps: ['Confirm with the barangay that the earlier activity was conducted.',
               'Encode the missing record in KCIS with its attendance sheet.'],
       rows: function () { return h.outOfSequenceRows || h.outOfSequenceSamples || []; }, places: one,
-      cols: [colMuni, colProv, colBrgy, col('Missing', function (r) { return esc(r.issue); }, function (r) { return r.issue; })],
+      cols: [colMuni, colProv, colBrgy,
+             col('Missing', function (r) {
+               return dhFindingLink('sequence', r, r.issue, 1, 'Inspect barangay activities for ' + r.barangay, { search: r.barangay });
+             }, function (r) { return r.issue; })],
       text: function (r) { return [r.province, r.municipality, r.barangay, r.issue]; },
       detail: function (r) { return r.issue; }
     },
@@ -264,7 +295,9 @@ function dhChecks(o) {
       },
       subRegion: rs ? n(rs.blankRows) + ' rows · ' + n(rs.blankPresent) + ' marked present, counted in K2' : '',
       cols: [colMuni, colProv, colBrgy, colAsm,
-             col('Rows with no name', function (r) { return '<strong>' + n(r.rows) + '</strong>'; }, function (r) { return r.rows; }, 'num'),
+             col('Rows with no name', function (r) {
+               return dhFindingLink('noname', r, r.rows, r.rows, 'Inspect in Household Roster Directory (' + n(r.rows) + ' rows with no name)', { flag: 'noname' });
+             }, function (r) { return r.rows; }, 'num'),
              col('Marked present', function (r) { return n(r.present); }, function (r) { return r.present; }, 'num')],
       text: function (r) { return [r.province, r.municipality, r.barangay, hhActLabel(r.actCode), String(r.rows), String(r.present)]; },
       detail: function (r) { return r.rows + ' rows with no name (' + r.present + ' marked present), ' + hhActLabel(r.actCode); }
@@ -284,9 +317,13 @@ function dhChecks(o) {
       },
       subRegion: rs ? n(rs.dupExtraRows) + ' extra rows · add ' + n(rs.dupExtraPresent) + ' present households to K2' : '',
       cols: [colMuni, colProv, colBrgy, colAsm,
-             col('Name', function (r) { return editor ? '<strong>' + esc(r.name) + '</strong>' : hidden; }, function (r) { return editor ? r.name : ''; }),
+             col('Name', function (r) {
+               return editor ? dhFindingLink('dup', r, r.name, r.times, 'Inspect duplicate entries in Household Roster', { flag: 'twice', name: r.name }) : hidden;
+             }, function (r) { return editor ? r.name : ''; }),
              col('Birthdate', function (r) { return editor ? esc(r.birthdate || '—') : hidden; }, function (r) { return editor ? r.birthdate : ''; }),
-             col('Listed', function (r) { return '<strong>' + n(r.times) + '×</strong>'; }, function (r) { return r.times; }, 'num'),
+             col('Listed', function (r) {
+               return dhFindingLink('dup', r, r.times + '×', r.times, 'Inspect duplicate entries in Household Roster', { flag: 'twice', name: r.name });
+             }, function (r) { return r.times; }, 'num'),
              col('Marked present', function (r) { return n(r.presentCount) + ' of ' + n(r.times); }, function (r) { return r.presentCount; }, 'num')],
       text: function (r) { return [r.province, r.municipality, r.barangay, r.name, r.birthdate, hhActLabel(r.actCode)]; },
       detail: function (r) { return (editor ? r.name + ', ' : '') + 'listed ' + r.times + '× (' + hhActLabel(r.actCode) + ')'; }
@@ -307,7 +344,9 @@ function dhChecks(o) {
         return n(lk) + ' likely · ' + n(rows.length - lk) + ' possible · ' + n(ax) + ' across municipalities';
       },
       subRegion: rs ? n(rs.crossLikely) + ' likely · ' + n(rs.crossPossible) + ' possible · ' + n(rs.crossAcrossMunicipalities) + ' across municipalities' : '',
-      cols: [col('Household head', function (r) { return editor ? '<strong>' + esc(r.name) + '</strong>' : hidden; }, function (r) { return editor ? r.name : ''; }),
+      cols: [col('Household head', function (r) {
+               return editor ? dhFindingLink('cross', r, r.name, 1, 'Search household head across barangays in Roster', { name: r.name }) : hidden;
+             }, function (r) { return editor ? r.name : ''; }),
              col('Birthdate', function (r) { return editor ? esc(r.birthdate || '—') : hidden; }, function (r) { return editor ? r.birthdate : ''; }),
              col('Match', function (r) {
                return '<span class="pill ' + (r.confidence === 'Likely' ? 'bad' : 'warn') + ' text-[10px] font-bold">' + esc(r.confidence) + '</span>' +
@@ -315,7 +354,9 @@ function dhChecks(o) {
              }, function (r) { return r.confidence + (r.acrossMunicipalities ? ' (across municipalities)' : ''); }),
              col('Listed in', function (r) {
                return r.barangays.map(function (b) {
-                 return '<div class="dh-place">' + esc(b.barangay) + ', ' + dhMuniCell(b) +
+                 var bRow = Object.assign({}, r, b);
+                 return '<div class="dh-place">' +
+                   dhFindingLink('cross', bRow, b.barangay, 1, 'Inspect ' + b.barangay + ' in Household Roster', { name: r.name }) + ', ' + dhMuniCell(b) +
                    '<span class="tiny"> · ' + esc(hhActLabel(b.actCode)) + (b.present ? ' · present' : ' · not present') +
                    (b.times > 1 ? ' · listed ' + b.times + '×' : '') + '</span></div>';
                }).join('');
@@ -339,6 +380,13 @@ function dhChecks(o) {
       why: 'Sex was left blank when the participant profile was encoded in KCIS.',
       steps: ['Complete the sex of each attendee in KCIS during post-assembly validation.'],
       rows: function () { return []; }, places: one, cols: [],
+      sub: function () {
+        return h.sexNotRecorded
+          ? '<button type="button" class="cell-link dh-finding-link" data-act="dqa-jump" data-check="sex" title="Inspect attendees in Attendees module">' +
+              '<strong>' + n(h.sexNotRecorded) + ' attendees</strong> <i data-lucide="arrow-up-right" class="w-3 h-3 inline-ico"></i>' +
+            '</button>'
+          : '';
+      },
       text: function () { return []; }, detail: function () { return ''; }
     }
   ]);
@@ -369,7 +417,7 @@ function dhQualityChecks(dq, col, colMuni, colProv, colPlace, colAct, one) {
       sub: function () { return dq.lateUndated ? n(dq.lateUndated) + ' more with no activity date, so they cannot be aged' : ''; },
       cols: [colMuni, colProv, colPlace, colAct,
              col('Activity date', function (r) { return esc(r.fieldDate || '—'); }, function (r) { return r.fieldDate; }),
-             col('Days since', function (r) { return '<strong>' + n(r.days) + '</strong>'; }, function (r) { return r.days; }, 'num')],
+             col('Days since', function (r) { return dhFindingLink('late', r, r.days, r.days, 'Inspect activity in Attendees module'); }, function (r) { return r.days; }, 'num')],
       text: place,
       detail: function (r) { return hhActLabel(r.actCode) + ': no attendees ' + r.days + ' days after ' + r.fieldDate; }
     },
@@ -383,7 +431,7 @@ function dhQualityChecks(dq, col, colMuni, colProv, colPlace, colAct, one) {
               'Re-export and re-import the participants file.'],
       rows: function () { return dq.dateIssues; }, places: one,
       cols: [colMuni, colProv, colPlace, colAct,
-             col('Problem', function (r) { return esc(r.problems.join(' · ')); }, function (r) { return r.problems.join('; '); }),
+             col('Problem', function (r) { return dhFindingLink('dates', r, r.problems.join(' · '), 1, 'Inspect activity date in Attendees module'); }, function (r) { return r.problems.join('; '); }),
              col('Dates in KCIS', function (r) { return '<span class="tiny">' + esc((r.dateStart || '—') + ' to ' + (r.dateEnd || '—')) + '</span>'; }, function (r) { return (r.dateStart || '') + ' to ' + (r.dateEnd || ''); })],
       text: function (r) { return place(r).concat(r.problems); },
       detail: function (r) { return hhActLabel(r.actCode) + ': ' + r.problems.join(', '); }
@@ -399,9 +447,11 @@ function dhQualityChecks(dq, col, colMuni, colProv, colPlace, colAct, one) {
       rows: function () { return dq.multiDate || []; }, places: one,
       cols: [colMuni, colProv, colPlace, colAct,
              col('Dates in KCIS', function (r) {
-               return r.sittings.map(function (x) {
-                 return '<div class="tiny">' + esc((x.start || '—') + (x.end && x.end !== x.start ? ' to ' + x.end : '')) + ' · ' + n(x.rows) + (x.rows === 1 ? ' row' : ' rows') + '</div>';
-               }).join('');
+               return dhFindingLink('multidate', r, r.sittings.length + ' sittings', r.sittings.length, 'Inspect sittings in Attendees module') +
+                 '<div class="tiny" style="margin-top:2px">' +
+                 r.sittings.map(function (x) {
+                   return esc((x.start || '—') + (x.end && x.end !== x.start ? ' to ' + x.end : '')) + ' · ' + n(x.rows) + (x.rows === 1 ? ' row' : ' rows');
+                 }).join(' ; ') + '</div>';
              }, function (r) { return r.sittings.map(function (x) { return (x.start || '') + ' to ' + (x.end || '') + ' (' + x.rows + ' rows)'; }).join(' ; '); })],
       text: function (r) { return place(r).concat(r.sittings.map(function (x) { return x.start || ''; })); },
       detail: function (r) { return hhActLabel(r.actCode) + ': ' + r.sittings.length + ' dates (' + r.sittings.map(function (x) { return x.start; }).join(', ') + ')'; }
@@ -417,8 +467,8 @@ function dhQualityChecks(dq, col, colMuni, colProv, colPlace, colAct, one) {
       rows: function () { return dq.attendeeDuplicates; }, places: one,
       sub: function (rows) { return dhUnit(sumRows(rows), 'extra row', 'extra rows'); },
       cols: [colMuni, colProv, colPlace, colAct,
-             col('People listed twice', function (r) { return '<strong>' + n(r.people) + '</strong>'; }, function (r) { return r.people; }, 'num'),
-             col('Extra rows', function (r) { return n(r.rows); }, function (r) { return r.rows; }, 'num')],
+             col('People listed twice', function (r) { return dhFindingLink('attdup', r, r.people, r.people, 'Inspect duplicate attendees in Attendees module'); }, function (r) { return r.people; }, 'num'),
+             col('Extra rows', function (r) { return dhFindingLink('attdup', r, r.rows, r.rows, 'Inspect extra rows in Attendees module'); }, function (r) { return r.rows; }, 'num')],
       text: place,
       detail: function (r) { return hhActLabel(r.actCode) + ': ' + r.people + (r.people === 1 ? ' person' : ' people') + ' listed twice (' + r.rows + ' extra rows)'; }
     },
@@ -432,7 +482,8 @@ function dhQualityChecks(dq, col, colMuni, colProv, colPlace, colAct, one) {
               'Re-export and re-import the file.'],
       rows: function () { return dq.nameIssues; }, places: one,
       cols: [colMuni, colProv, colPlace, colAct,
-             col('In', function (r) { return esc(r.source); }, function (r) { return r.source; }), rowsCol],
+             col('In', function (r) { return esc(r.source); }, function (r) { return r.source; }),
+             col('Rows', function (r) { return dhFindingLink('names', r, r.rows, r.rows, 'Inspect ' + r.rows + ' rows in ' + r.source, { source: r.source }); }, function (r) { return r.rows; }, 'num')],
       text: function (r) { return place(r).concat([r.source]); },
       detail: function (r) { return r.rows + ' row' + (r.rows === 1 ? '' : 's') + ' in the ' + r.source.toLowerCase() + ' (' + hhActLabel(r.actCode) + ')'; }
     },
@@ -446,7 +497,8 @@ function dhQualityChecks(dq, col, colMuni, colProv, colPlace, colAct, one) {
               'Re-export and re-import the household file.'],
       rows: function () { return dq.birthdateIssues; }, places: one,
       cols: [colMuni, colProv, colPlace, colAct,
-             col('Problem', function (r) { return esc(r.problem); }, function (r) { return r.problem; }), rowsCol],
+             col('Problem', function (r) { return esc(r.problem); }, function (r) { return r.problem; }),
+             col('Rows', function (r) { return dhFindingLink('bday', r, r.rows, r.rows, 'Inspect birthdates in Household Roster'); }, function (r) { return r.rows; }, 'num')],
       text: function (r) { return place(r).concat([r.problem]); },
       detail: function (r) { return r.rows + ' row' + (r.rows === 1 ? '' : 's') + ': ' + r.problem + ' (' + hhActLabel(r.actCode) + ')'; }
     }
@@ -482,7 +534,7 @@ function dhVolunteerChecks(o, col, colMuni, colProv, colBrgy, one) {
               'Re-export the Community Volunteer List and re-import it (Import & Setup › Step 3).'],
       rows: function () { return iss.missing; }, places: one,
       cols: [colMuni, colProv, colBrgy,
-             col('Not encoded', function (r) { return esc(r.missing.join(' and ')); }, function (r) { return r.missing.join(' and '); }),
+             col('Not encoded', function (r) { return dhFindingLink('cv_missing', r, r.missing.join(' and '), 1, 'View volunteer teams for ' + r.barangay); }, function (r) { return r.missing.join(' and '); }),
              col('1st BA', function (r) { return '<span class="tiny">' + esc(r.ba1Status === 'Complete' ? 'Complete' : 'No attendance sheet') + '</span>'; }, function (r) { return r.ba1Status; })],
       text: function (r) { return muniBrgy(r).concat(r.missing); },
       detail: function (r) { return r.missing.join(' and ') + ' not encoded'; }
@@ -497,7 +549,7 @@ function dhVolunteerChecks(o, col, colMuni, colProv, colBrgy, one) {
               'Re-export and re-import the Community Volunteer List.'],
       rows: function () { return iss.sfmscFix; }, places: one,
       cols: [colMuni, colProv, colBrgy,
-             col('What to fix', function (r) { return esc(r.reasons.join(' · ')); }, function (r) { return r.reasons.join('; '); }),
+             col('What to fix', function (r) { return dhFindingLink('cv_sfmsc', r, r.reasons.join(' · '), 1, 'Inspect SFMSC in Volunteers module', { body: 'SFMSC' }); }, function (r) { return r.reasons.join('; '); }),
              col('Chairpersons', function (r) { return n(r.chairs); }, function (r) { return r.chairs; }, 'num'),
              col('Members', function (r) { return n(r.members); }, function (r) { return r.members; }, 'num')],
       text: function (r) { return muniBrgy(r).concat(r.reasons); },
@@ -514,7 +566,7 @@ function dhVolunteerChecks(o, col, colMuni, colProv, colBrgy, one) {
       rows: function () { return tagging; }, places: one,
       cols: [colMuni, colProv, colBrgy,
              col('Problem', function (r) { return esc(r.problem) + (r.belongsTo ? '<div class="tiny">belongs to ' + esc(r.belongsTo) + '</div>' : ''); }, function (r) { return r.problem + (r.belongsTo ? ' (belongs to ' + r.belongsTo + ')' : ''); }),
-             rowsCol],
+             col('Volunteer rows', function (r) { return dhFindingLink('cv_tagging', r, r.rows, r.rows, 'Inspect in Volunteers module', { problem: r.problem }); }, function (r) { return r.rows; }, 'num')],
       text: function (r) { return muniBrgy(r).concat([r.problem, r.belongsTo]); },
       detail: function (r) { return r.rows + ' volunteer row' + (r.rows === 1 ? '' : 's') + ': ' + r.problem; }
     },
@@ -527,7 +579,8 @@ function dhVolunteerChecks(o, col, colMuni, colProv, colBrgy, one) {
               'Delete rows that are not real volunteers.',
               'Re-export and re-import the Community Volunteer List.'],
       rows: function () { return gaps; }, places: one,
-      cols: [colMuni, colProv, colBrgy, col('Problem', function (r) { return esc(r.problem); }, function (r) { return r.problem; }), rowsCol],
+      cols: [colMuni, colProv, colBrgy, col('Problem', function (r) { return esc(r.problem); }, function (r) { return r.problem; }),
+             col('Volunteer rows', function (r) { return dhFindingLink('cv_gaps', r, r.rows, r.rows, 'Inspect volunteer gaps in Volunteers module', { problem: r.problem }); }, function (r) { return r.rows; }, 'num')],
       text: function (r) { return muniBrgy(r).concat([r.problem]); },
       detail: function (r) { return r.rows + ' volunteer row' + (r.rows === 1 ? '' : 's') + ': ' + r.problem; }
     }
