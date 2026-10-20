@@ -1,0 +1,279 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1440 960" width="1440" height="960">
+  <defs>
+    <filter id="shadow-card" x="-5%" y="-5%" width="110%" height="110%">
+      <feDropShadow dx="0" dy="2" stdDeviation="4" flood-color="#0F172A" flood-opacity="0.06"/>
+    </filter>
+  </defs>
+
+  <rect x="0" y="0" width="1440" height="960" fill="#F8FAFC" />
+
+  
+    <!-- Top Header -->
+    <rect x="0" y="0" width="1440" height="70" fill="#0F172A" />
+    <!-- Brand Mark & Logo -->
+    <rect x="32" y="15" width="40" height="40" rx="8" fill="#0038A8" />
+    <path d="M44 35 L49 40 L60 27" fill="none" stroke="#FFFFFF" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" />
+    <text x="84" y="34" font-family="Inter, sans-serif" font-size="16" font-weight="700" fill="#FFFFFF">PCRP Encoding &amp; Data Quality Assessment Tool</text>
+    <text x="84" y="50" font-family="Inter, sans-serif" font-size="12" fill="#94A3B8">KALAHI-CIDSS PCRP · Offline Field Console · Monitor v2.4</text>
+
+    <!-- Scope Pill -->
+    <rect x="520" y="18" width="300" height="34" rx="17" fill="#1E293B" stroke="#334155" stroke-width="1" />
+    <circle cx="538" cy="35" r="5" fill="#16A34A" />
+    <text x="552" y="40" font-family="Inter, sans-serif" font-size="12" font-weight="600" fill="#F8FAFC">Scope: San Jose, Dinagat Islands · 12 Barangays</text>
+    <text x="790" y="39" font-family="Inter, sans-serif" font-size="11" fill="#64748B">Change ▾</text>
+
+    <!-- Right Header Actions -->
+    <rect x="1140" y="18" width="110" height="34" rx="6" fill="#1E293B" stroke="#334155" stroke-width="1" />
+    <text x="1195" y="40" font-family="Inter, sans-serif" font-size="12" font-weight="600" fill="#F8FAFC" text-anchor="middle">⚙ Settings</text>
+
+    <rect x="1265" y="18" width="145" height="34" rx="6" fill="#0038A8" />
+    <text x="1337" y="40" font-family="Inter, sans-serif" font-size="12" font-weight="600" fill="#FFFFFF" text-anchor="middle">↓ Export to Excel</text>
+  
+  
+    <rect x="0" y="70" width="1440" height="48" fill="#FFFFFF" stroke="#E2E8F0" stroke-width="1" />
+    
+      <g transform="translate(32, 0)">
+        <rect x="0" y="10" width="96" height="36" rx="6" fill="#EFF6FF" />
+        <text x="48" y="32" font-family="Inter, sans-serif" font-size="13" font-weight="700" fill="#0038A8" text-anchor="middle">Overview</text>
+        <rect x="12" y="44" width="72" height="3" rx="1.5" fill="#0038A8" />
+      </g>
+    
+      <g transform="translate(136, 0)">
+        
+        <text x="60" y="32" font-family="Inter, sans-serif" font-size="13" font-weight="500" fill="#475569" text-anchor="middle">KPI Summary</text>
+        
+      </g>
+    
+      <g transform="translate(264, 0)">
+        
+        <text x="72" y="32" font-family="Inter, sans-serif" font-size="13" font-weight="500" fill="#475569" text-anchor="middle">Municipalities</text>
+        
+      </g>
+    
+      <g transform="translate(416, 0)">
+        
+        <text x="52" y="32" font-family="Inter, sans-serif" font-size="13" font-weight="500" fill="#475569" text-anchor="middle">Barangays</text>
+        
+      </g>
+    
+      <g transform="translate(528, 0)">
+        
+        <text x="116" y="32" font-family="Inter, sans-serif" font-size="13" font-weight="500" fill="#475569" text-anchor="middle">Attendance &amp; Households ▾</text>
+        
+      </g>
+    
+      <g transform="translate(768, 0)">
+        
+        <text x="116" y="32" font-family="Inter, sans-serif" font-size="13" font-weight="500" fill="#475569" text-anchor="middle">Volunteers &amp; Committees ▾</text>
+        
+      </g>
+    
+      <g transform="translate(1008, 0)">
+        
+        <text x="36" y="32" font-family="Inter, sans-serif" font-size="13" font-weight="500" fill="#475569" text-anchor="middle">MResT</text>
+        
+      </g>
+    
+      <g transform="translate(1088, 0)">
+        
+        <text x="96" y="32" font-family="Inter, sans-serif" font-size="13" font-weight="500" fill="#475569" text-anchor="middle">DQA &amp; Verification ▾</text>
+        
+      </g>
+    
+  
+
+  <!-- Page Main Content Area -->
+  <g transform="translate(32, 138)">
+    
+    <!-- Top Filter & Context Bar -->
+    <rect x="0" y="0" width="1376" height="52" rx="10" fill="#FFFFFF" stroke="#E2E8F0" stroke-width="1" filter="url(#shadow-card)" />
+    <text x="24" y="32" font-family="Inter, sans-serif" font-size="14" font-weight="700" fill="#0F172A">Stage 1: Community Empowerment &amp; Social Mobilization Status</text>
+    <rect x="520" y="12" width="100" height="28" rx="14" fill="#0038A8" />
+    <text x="570" y="30" font-family="Inter, sans-serif" font-size="12" font-weight="700" fill="#FFFFFF" text-anchor="middle">Stage 1 Active</text>
+    <rect x="630" y="12" width="90" height="28" rx="14" fill="#F1F5F9" />
+    <text x="675" y="30" font-family="Inter, sans-serif" font-size="12" font-weight="600" fill="#64748B" text-anchor="middle">Stage 2</text>
+    <text x="1352" y="31" font-family="Inter, sans-serif" font-size="12" fill="#64748B" text-anchor="end">Data as of: Oct 18, 2026 (KCIS Pull)</text>
+
+    <!-- KPI Metric Cards Grid -->
+    <g transform="translate(0, 68)">
+      <!-- KPI 1 -->
+      <g transform="translate(0, 0)">
+        <rect x="0" y="0" width="260" height="106" rx="12" fill="#FFFFFF" stroke="#E2E8F0" stroke-width="1" filter="url(#shadow-card)" />
+        <text x="20" y="28" font-family="Inter, sans-serif" font-size="12" font-weight="600" fill="#64748B">TOTAL ATTENDANCE</text>
+        <text x="20" y="66" font-family="Inter, sans-serif" font-size="28" font-weight="800" fill="#0F172A">4,821</text>
+        <rect x="180" y="18" width="64" height="22" rx="11" fill="#DCFCE7" />
+        <text x="212" y="33" font-family="Inter, sans-serif" font-size="10" font-weight="700" fill="#15803D" text-anchor="middle">+12.4%</text>
+        <text x="20" y="90" font-family="Inter, sans-serif" font-size="11" fill="#475569">62.8% Female Participation</text>
+      </g>
+
+      <!-- KPI 2 -->
+      <g transform="translate(278, 0)">
+        <rect x="0" y="0" width="260" height="106" rx="12" fill="#FFFFFF" stroke="#E2E8F0" stroke-width="1" filter="url(#shadow-card)" />
+        <text x="20" y="28" font-family="Inter, sans-serif" font-size="12" font-weight="600" fill="#64748B">UNIQUE ATTENDEES</text>
+        <text x="20" y="66" font-family="Inter, sans-serif" font-size="28" font-weight="800" fill="#0F172A">2,145</text>
+        <text x="20" y="90" font-family="Inter, sans-serif" font-size="11" fill="#475569">Across 12 Barangays</text>
+      </g>
+
+      <!-- KPI 3 -->
+      <g transform="translate(556, 0)">
+        <rect x="0" y="0" width="260" height="106" rx="12" fill="#FFFFFF" stroke="#E2E8F0" stroke-width="1" filter="url(#shadow-card)" />
+        <text x="20" y="28" font-family="Inter, sans-serif" font-size="12" font-weight="600" fill="#64748B">70% QUORUM COMPLIANCE</text>
+        <text x="20" y="66" font-family="Inter, sans-serif" font-size="28" font-weight="800" fill="#15803D">10 / 12</text>
+        <rect x="180" y="18" width="64" height="22" rx="11" fill="#DCFCE7" />
+        <text x="212" y="33" font-family="Inter, sans-serif" font-size="10" font-weight="700" fill="#15803D" text-anchor="middle">83.3%</text>
+        <text x="20" y="90" font-family="Inter, sans-serif" font-size="11" fill="#15803D">2 Lacking Quorum</text>
+      </g>
+
+      <!-- KPI 4 -->
+      <g transform="translate(834, 0)">
+        <rect x="0" y="0" width="260" height="106" rx="12" fill="#FFFFFF" stroke="#E2E8F0" stroke-width="1" filter="url(#shadow-card)" />
+        <text x="20" y="28" font-family="Inter, sans-serif" font-size="12" font-weight="600" fill="#64748B">COMMUNITY VOLUNTEERS</text>
+        <text x="20" y="66" font-family="Inter, sans-serif" font-size="28" font-weight="800" fill="#0F172A">384</text>
+        <text x="20" y="90" font-family="Inter, sans-serif" font-size="11" fill="#475569">58.3% Women · 12 BResT Teams</text>
+      </g>
+
+      <!-- KPI 5 -->
+      <g transform="translate(1112, 0)">
+        <rect x="0" y="0" width="264" height="106" rx="12" fill="#FFFFFF" stroke="#E2E8F0" stroke-width="1" filter="url(#shadow-card)" />
+        <text x="20" y="28" font-family="Inter, sans-serif" font-size="12" font-weight="600" fill="#64748B">DQA INTEGRITY SCORE</text>
+        <text x="20" y="66" font-family="Inter, sans-serif" font-size="28" font-weight="800" fill="#0038A8">96.8%</text>
+        <rect x="184" y="18" width="64" height="22" rx="11" fill="#EFF6FF" />
+        <text x="216" y="33" font-family="Inter, sans-serif" font-size="10" font-weight="700" fill="#0038A8" text-anchor="middle">Grade A</text>
+        <text x="20" y="90" font-family="Inter, sans-serif" font-size="11" fill="#475569">Zero Duplicate Violations</text>
+      </g>
+    </g>
+
+    <!-- Pipeline Milestone Cards -->
+    <g transform="translate(0, 190)">
+      <rect x="0" y="0" width="1376" height="130" rx="12" fill="#FFFFFF" stroke="#E2E8F0" stroke-width="1" filter="url(#shadow-card)" />
+      <text x="24" y="32" font-family="Inter, sans-serif" font-size="14" font-weight="700" fill="#0F172A">Stage 1 Milestones Pipeline Progress (San Jose)</text>
+
+      <!-- Activity 1 -->
+      <g transform="translate(24, 52)">
+        <text x="0" y="16" font-family="Inter, sans-serif" font-size="12" font-weight="700" fill="#1E293B">1. 1st Barangay Assembly</text>
+        <text x="270" y="16" font-family="Inter, sans-serif" font-size="11" font-weight="600" fill="#15803D" text-anchor="end">100% Conducted</text>
+        <rect x="0" y="24" width="270" height="10" rx="5" fill="#E2E8F0" />
+        <rect x="0" y="24" width="270" height="10" rx="5" fill="#16A34A" />
+        <text x="0" y="50" font-family="Inter, sans-serif" font-size="11" fill="#64748B">12/12 Encoded · 70% Quorum Met</text>
+      </g>
+
+      <!-- Activity 2 -->
+      <g transform="translate(364, 52)">
+        <text x="0" y="16" font-family="Inter, sans-serif" font-size="12" font-weight="700" fill="#1E293B">2. BResT Formation &amp; Valid.</text>
+        <text x="270" y="16" font-family="Inter, sans-serif" font-size="11" font-weight="600" fill="#15803D" text-anchor="end">100% Completed</text>
+        <rect x="0" y="24" width="270" height="10" rx="5" fill="#E2E8F0" />
+        <rect x="0" y="24" width="270" height="10" rx="5" fill="#16A34A" />
+        <text x="0" y="50" font-family="Inter, sans-serif" font-size="11" fill="#64748B">12 Teams · 184 Volunteers</text>
+      </g>
+
+      <!-- Activity 3 -->
+      <g transform="translate(704, 52)">
+        <text x="0" y="16" font-family="Inter, sans-serif" font-size="12" font-weight="700" fill="#1E293B">3. PSA &amp; Action Planning</text>
+        <text x="270" y="16" font-family="Inter, sans-serif" font-size="11" font-weight="600" fill="#D97706" text-anchor="end">83.3% Encoded</text>
+        <rect x="0" y="24" width="270" height="10" rx="5" fill="#E2E8F0" />
+        <rect x="0" y="24" width="225" height="10" rx="5" fill="#F59E0B" />
+        <text x="0" y="50" font-family="Inter, sans-serif" font-size="11" fill="#64748B">10/12 Encoded · 2 In-Progress</text>
+      </g>
+
+      <!-- Activity 4 -->
+      <g transform="translate(1044, 52)">
+        <text x="0" y="16" font-family="Inter, sans-serif" font-size="12" font-weight="700" fill="#1E293B">4. 2nd Barangay Assembly</text>
+        <text x="270" y="16" font-family="Inter, sans-serif" font-size="11" font-weight="600" fill="#DC2626" text-anchor="end">58.3% Encoded</text>
+        <rect x="0" y="24" width="270" height="10" rx="5" fill="#E2E8F0" />
+        <rect x="0" y="24" width="157" height="10" rx="5" fill="#EF4444" />
+        <text x="0" y="50" font-family="Inter, sans-serif" font-size="11" fill="#64748B">7/12 Encoded · 5 Pending Upload</text>
+      </g>
+    </g>
+
+    <!-- Barangay Data Table Mockup -->
+    <g transform="translate(0, 336)">
+      <rect x="0" y="0" width="1376" height="450" rx="12" fill="#FFFFFF" stroke="#E2E8F0" stroke-width="1" filter="url(#shadow-card)" />
+      
+      <!-- Table Search & Toolbar -->
+      <text x="24" y="36" font-family="Inter, sans-serif" font-size="16" font-weight="700" fill="#0F172A">Barangay Progress &amp; Quorum Scorecard</text>
+      <rect x="940" y="16" width="260" height="34" rx="6" fill="#F8FAFC" stroke="#CBD5E1" stroke-width="1" />
+      <text x="960" y="38" font-family="Inter, sans-serif" font-size="12" fill="#94A3B8">🔍 Search barangay name...</text>
+      
+      <rect x="1212" y="16" width="140" height="34" rx="6" fill="#EFF6FF" stroke="#BFDBFE" stroke-width="1" />
+      <text x="1282" y="38" font-family="Inter, sans-serif" font-size="12" font-weight="600" fill="#0038A8" text-anchor="middle">↓ CSV Download</text>
+
+      <!-- Table Header Row -->
+      <g transform="translate(0, 64)">
+        <rect x="0" y="0" width="1376" height="40" fill="#F1F5F9" />
+        <text x="24" y="25" font-family="Inter, sans-serif" font-size="12" font-weight="700" fill="#475569">BARANGAY</text>
+        <text x="240" y="25" font-family="Inter, sans-serif" font-size="12" font-weight="700" fill="#475569">HOUSEHOLD POP.</text>
+        <text x="400" y="25" font-family="Inter, sans-serif" font-size="12" font-weight="700" fill="#475569">1ST BA ATTENDEES</text>
+        <text x="590" y="25" font-family="Inter, sans-serif" font-size="12" font-weight="700" fill="#475569">PARTICIPATION RATE</text>
+        <text x="790" y="25" font-family="Inter, sans-serif" font-size="12" font-weight="700" fill="#475569">70% QUORUM STATUS</text>
+        <text x="1020" y="25" font-family="Inter, sans-serif" font-size="12" font-weight="700" fill="#475569">BREST TEAM</text>
+        <text x="1230" y="25" font-family="Inter, sans-serif" font-size="12" font-weight="700" fill="#475569">ACTIONS</text>
+      </g>
+
+      <!-- Table Rows Mockup -->
+      <!-- Row 1 -->
+      <g transform="translate(0, 104)">
+        <rect x="0" y="0" width="1376" height="48" fill="#FFFFFF" stroke="#F1F5F9" stroke-width="1" />
+        <text x="24" y="30" font-family="Inter, sans-serif" font-size="13" font-weight="600" fill="#0F172A">Aurelio (Poblacion)</text>
+        <text x="240" y="30" font-family="Inter, sans-serif" font-size="13" fill="#334155">342 HH</text>
+        <text x="400" y="30" font-family="Inter, sans-serif" font-size="13" fill="#334155">288 HH</text>
+        <text x="590" y="30" font-family="Inter, sans-serif" font-size="13" font-weight="700" fill="#15803D">84.2%</text>
+        <rect x="790" y="12" width="110" height="24" rx="12" fill="#DCFCE7" />
+        <text x="845" y="28" font-family="Inter, sans-serif" font-size="11" font-weight="700" fill="#15803D" text-anchor="middle">✓ Quorum Met</text>
+        <text x="1020" y="30" font-family="Inter, sans-serif" font-size="13" fill="#334155">16 Members (Compliant)</text>
+        <text x="1230" y="30" font-family="Inter, sans-serif" font-size="13" font-weight="600" fill="#0038A8">View Details →</text>
+      </g>
+
+      <!-- Row 2 -->
+      <g transform="translate(0, 152)">
+        <rect x="0" y="0" width="1376" height="48" fill="#F8FAFC" stroke="#F1F5F9" stroke-width="1" />
+        <text x="24" y="30" font-family="Inter, sans-serif" font-size="13" font-weight="600" fill="#0F172A">Cuarinta</text>
+        <text x="240" y="30" font-family="Inter, sans-serif" font-size="13" fill="#334155">218 HH</text>
+        <text x="400" y="30" font-family="Inter, sans-serif" font-size="13" fill="#334155">178 HH</text>
+        <text x="590" y="30" font-family="Inter, sans-serif" font-size="13" font-weight="700" fill="#15803D">81.7%</text>
+        <rect x="790" y="12" width="110" height="24" rx="12" fill="#DCFCE7" />
+        <text x="845" y="28" font-family="Inter, sans-serif" font-size="11" font-weight="700" fill="#15803D" text-anchor="middle">✓ Quorum Met</text>
+        <text x="1020" y="30" font-family="Inter, sans-serif" font-size="13" fill="#334155">14 Members (Compliant)</text>
+        <text x="1230" y="30" font-family="Inter, sans-serif" font-size="13" font-weight="600" fill="#0038A8">View Details →</text>
+      </g>
+
+      <!-- Row 3 (Lacking Quorum) -->
+      <g transform="translate(0, 200)">
+        <rect x="0" y="0" width="1376" height="48" fill="#FEF2F2" stroke="#FEE2E2" stroke-width="1" />
+        <text x="24" y="30" font-family="Inter, sans-serif" font-size="13" font-weight="600" fill="#991B1B">Don Ruben Ecleo</text>
+        <text x="240" y="30" font-family="Inter, sans-serif" font-size="13" fill="#334155">450 HH</text>
+        <text x="400" y="30" font-family="Inter, sans-serif" font-size="13" fill="#334155">292 HH</text>
+        <text x="590" y="30" font-family="Inter, sans-serif" font-size="13" font-weight="700" fill="#DC2626">64.9%</text>
+        <rect x="790" y="12" width="126" height="24" rx="12" fill="#FEE2E2" />
+        <text x="853" y="28" font-family="Inter, sans-serif" font-size="11" font-weight="700" fill="#991B1B" text-anchor="middle">⚠ Quorum Not Met</text>
+        <text x="1020" y="30" font-family="Inter, sans-serif" font-size="13" fill="#991B1B">Needs Reseating</text>
+        <text x="1230" y="30" font-family="Inter, sans-serif" font-size="13" font-weight="600" fill="#DC2626">Resolve Issue →</text>
+      </g>
+
+      <!-- Row 4 -->
+      <g transform="translate(0, 248)">
+        <rect x="0" y="0" width="1376" height="48" fill="#FFFFFF" stroke="#F1F5F9" stroke-width="1" />
+        <text x="24" y="30" font-family="Inter, sans-serif" font-size="13" font-weight="600" fill="#0F172A">Jacquez</text>
+        <text x="240" y="30" font-family="Inter, sans-serif" font-size="13" fill="#334155">186 HH</text>
+        <text x="400" y="30" font-family="Inter, sans-serif" font-size="13" fill="#334155">148 HH</text>
+        <text x="590" y="30" font-family="Inter, sans-serif" font-size="13" font-weight="700" fill="#15803D">79.6%</text>
+        <rect x="790" y="12" width="110" height="24" rx="12" fill="#DCFCE7" />
+        <text x="845" y="28" font-family="Inter, sans-serif" font-size="11" font-weight="700" fill="#15803D" text-anchor="middle">✓ Quorum Met</text>
+        <text x="1020" y="30" font-family="Inter, sans-serif" font-size="13" fill="#334155">15 Members (Compliant)</text>
+        <text x="1230" y="30" font-family="Inter, sans-serif" font-size="13" font-weight="600" fill="#0038A8">View Details →</text>
+      </g>
+
+      <!-- Row 5 -->
+      <g transform="translate(0, 296)">
+        <rect x="0" y="0" width="1376" height="48" fill="#F8FAFC" stroke="#F1F5F9" stroke-width="1" />
+        <text x="24" y="30" font-family="Inter, sans-serif" font-size="13" font-weight="600" fill="#0F172A">Magsaysay</text>
+        <text x="240" y="30" font-family="Inter, sans-serif" font-size="13" fill="#334155">274 HH</text>
+        <text x="400" y="30" font-family="Inter, sans-serif" font-size="13" fill="#334155">210 HH</text>
+        <text x="590" y="30" font-family="Inter, sans-serif" font-size="13" font-weight="700" fill="#15803D">76.6%</text>
+        <rect x="790" y="12" width="110" height="24" rx="12" fill="#DCFCE7" />
+        <text x="845" y="28" font-family="Inter, sans-serif" font-size="11" font-weight="700" fill="#15803D" text-anchor="middle">✓ Quorum Met</text>
+        <text x="1020" y="30" font-family="Inter, sans-serif" font-size="13" fill="#334155">15 Members (Compliant)</text>
+        <text x="1230" y="30" font-family="Inter, sans-serif" font-size="13" font-weight="600" fill="#0038A8">View Details →</text>
+      </g>
+    </g>
+  </g>
+</svg>

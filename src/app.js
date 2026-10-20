@@ -6,7 +6,7 @@
 var PREFS_KEY = 'pcrp-desktop:v1';
 var LOADED = {};          // kind -> { file, sheet, rows }
 var IMPORT_ERRORS = [];   // { file, error }
-var STATE = { page: 'settings', stage: 1, prov: '', muniSearch: '', muniSort: { col: 'muni', dir: 'asc' }, muni: '', brgySearch: '', brgyFilter: 'all', brgySort: { col: 'brgy', dir: 'asc' }, ovSearch: '', ovSort: { col: 'seq', dir: 'asc' }, settingsSearch: '', settingsSort: { col: 'seq', dir: 'asc' }, computed: false, computedAt: null, ms: 0 };
+var STATE = { page: 'settings', stage: 1, prov: '', muniSearch: '', muniFilter: 'all', muniSort: { col: 'muni', dir: 'asc' }, muni: '', brgySearch: '', brgyFilter: 'all', brgySort: { col: 'brgy', dir: 'asc' }, ovSearch: '', ovSort: { col: 'seq', dir: 'asc' }, ovFilter: 'all', ovSeqFilter: '', settingsSearch: '', settingsSort: { col: 'seq', dir: 'asc' }, computed: false, computedAt: null, ms: 0 };
 var FIELD_VALUES = ['Not started', 'On-going', 'Completed'];
 
 var APP_VERSION = '@@VERSION@@';
@@ -218,6 +218,326 @@ function tblSort(list, col, dir, extractors) {
   });
 }
 
+// ===================================================================
+// FLOATING HELPER TOOLTIP POPOVER SYSTEM & PCRP GLOSSARY
+// ===================================================================
+
+var PCRP_GLOSSARY = {
+  'k2': {
+    title: 'K2 Household Quorum Standard',
+    badge: 'Policy: ≥70% Target',
+    desc: 'Mandatory quorum standard: At least 70% of registered beneficiary households in the barangay must be represented at the 1st Barangay Assembly (BA1).',
+    ref: 'SM1 §4.2 · Household Quorum'
+  },
+  'brest': {
+    title: 'Barangay Resilience Team (BResT)',
+    badge: 'Stage 1 Body',
+    desc: 'Community volunteer team formed in the 1st BA to lead disaster risk assessment, hazard spot mapping, and resilience planning. Must include at least 30% marginalized representation (women, IP, PWD). No chairperson needed.',
+    ref: 'SM1 §3.1 & BResT Policy'
+  },
+  'cspmc': {
+    title: 'CSPMC (CRSPMC)',
+    badge: 'Stage 2 Body',
+    desc: 'Community Resilience Sub-Project Management Committee: Community body executing and managing sub-projects, comprising 8 specialized sub-committees (PIT, PT, AIT, O&MT, CMSC, etc.).',
+    ref: 'SM1 §5 · Sub-Project Dev.'
+  },
+  'mrest': {
+    title: 'Municipal Resilience Team (MResT)',
+    badge: 'LGU Executive Body',
+    desc: 'Municipal multi-sectoral body established via Mayor\'s Executive Order (EO) to coordinate, review, and support community resilience projects across all barangays.',
+    ref: 'SM1 §2.3 · Municipal EO'
+  },
+  'prva': {
+    title: 'PRVA (Risk Assessment)',
+    badge: 'Stage 1 Milestone',
+    desc: 'Participatory Risk & Vulnerability Assessment: Community-driven hazard identification, spot mapping, and vulnerability profiling conducted by the BResT with community sectors.',
+    ref: 'SM1 §4.3 · PRVA Workshop'
+  },
+  'dqa': {
+    title: 'Data Quality Assessment (DQA)',
+    badge: 'SM7 Table 8',
+    desc: 'Verification of electronic KCIS data against physical paper source forms across 6 dimensions: Accuracy, Reliability, Completeness, Precision, Timeliness, and Integrity.',
+    ref: 'SM7 §6 · M&E Verification'
+  },
+  'kcis': {
+    title: 'KCIS Management System',
+    badge: 'Core Database',
+    desc: 'KALAHI-CIDSS Comprehensive Information System: National online repository for recording participant attendance, household profiles, volunteer registries, and sub-projects.',
+    ref: 'MIS Operational Guidelines'
+  },
+  'crip': {
+    title: 'CRIP Operational Cycle',
+    badge: '4-Stage Process',
+    desc: 'Community Resilience Implementation Process: Stage 1 (Assessment & Planning), Stage 2 (Sub-Project Development), Stage 3 (Community Implementation), and Stage 4 (Monitoring & Accountability).',
+    ref: 'Program Operations Manual'
+  },
+  'ba1': {
+    title: '1st Barangay Assembly (BA1)',
+    badge: 'Orientation & Selection',
+    desc: 'First community assembly: Project orientation, formation of the Barangay Resilience Team (BResT), and election of the Stakeholder & Feedback Mechanism Sub-Committee (SFMSC).',
+    ref: 'SM1 §4.1 · BA1 Guidelines'
+  },
+  'ba2': {
+    title: '2nd Barangay Assembly (BA2)',
+    badge: 'PRVA Validation',
+    desc: 'Community assembly where the BResT presents PRVA findings and spot maps to the community for validation and committee formation.',
+    ref: 'SM1 §4.4 · BA2 Guidelines'
+  },
+  'ba3': {
+    title: '3rd Barangay Assembly (BA3)',
+    badge: 'Sub-Project Approval',
+    desc: 'Stage 2 community assembly convened to review and formally approve the community resilience sub-project proposal before technical review.',
+    ref: 'SM1 §5.3 · BA3 Guidelines'
+  },
+  'ba4': {
+    title: '4th Barangay Assembly (BA4)',
+    badge: 'Accountability Reporting',
+    desc: 'Final assembly (Barangay Accountability Reporting / BAR): Community volunteers report on completed sub-projects, financial audits, physical turnover, and O&M plans.',
+    ref: 'SM1 §6.2 · Accountability'
+  },
+  'cmsc': {
+    title: 'Community Monitoring Sub-Committee (CMSC)',
+    badge: 'Independent Oversight',
+    desc: 'Independent committee under CSPMC that inspects civil works, monitors procurement, and verifies labor payments. Policy encourages inclusion of Stage 1 BResT alumni.',
+    ref: 'SM7 p. 15 · Annex L'
+  },
+  'pit': {
+    title: 'Project Implementation Team (PIT)',
+    badge: 'CSPMC Sub-Committee',
+    desc: 'Technical sub-committee supervising daily construction, managing on-site materials, maintaining labor logs, and reporting physical milestones.',
+    ref: 'SM1 §5.2 · Technical Execution'
+  },
+  'pt': {
+    title: 'Community Procurement Team (PT)',
+    badge: 'CSPMC Sub-Committee',
+    desc: 'Sub-committee handling canvassing, public bidding, quotation evaluations, and purchase orders in strict accordance with community procurement guidelines.',
+    ref: 'Community Procurement Manual'
+  },
+  'ait': {
+    title: 'Audit & Inventory Team (AIT)',
+    badge: 'CSPMC Sub-Committee',
+    desc: 'Independent oversight body reviewing cash vouchers, bank reconciliations, inventory deliveries, and warehouse stock records.',
+    ref: 'Financial Management Manual'
+  },
+  'omt': {
+    title: 'Operations & Maintenance Team (O&MT)',
+    badge: 'Sustainability Body',
+    desc: 'Community team creating the upkeep schedule, collecting maintenance funds, and preserving sub-project functionality after formal turnover.',
+    ref: 'O&M Sustainability Guidelines'
+  },
+  'sfmsc': {
+    title: 'Stakeholder & Feedback Mechanism (SFMSC)',
+    badge: 'Grievance Redress',
+    desc: 'Sub-committee managing the Grievance Redress System (GRS): installs suggestion boxes, records community concerns, logs feedback, and facilitates resolution.',
+    ref: 'SM1 §4.1 · GRS Framework'
+  },
+  'spdw': {
+    title: 'Sub-Project Development Workshop (SPDW)',
+    badge: 'Stage 2 Workshop',
+    desc: 'Technical workshop where volunteers and technical facilitators formulate Detailed Engineering Designs (DED), Program of Works (POW), and procurement plans.',
+    ref: 'SM1 §5.1 · SPDW Manual'
+  },
+  '7day': {
+    title: '7-Day Encoding Rule',
+    badge: 'Timeliness Standard',
+    desc: 'Data Health standard: field activity proceedings and attendance sheets must be encoded into the KCIS within 7 calendar days of the event conduct date.',
+    ref: 'SM7 §4 · Encoding Timeliness'
+  },
+  'marginalized': {
+    title: 'Marginalized Sector Quota',
+    badge: 'Policy: ≥30% Target',
+    desc: 'Affirmative action requirement: at least 30% of volunteer committee members must be from vulnerable sectors (Indigenous Peoples, PWD, solo parents, elderly).',
+    ref: 'BResT Composition Policy'
+  },
+  'femaleratio': {
+    title: 'Gender Inclusion Target',
+    badge: 'Target: ≥50% Women',
+    desc: 'Promotes women\'s leadership and active participation, aiming for at least 50% female representation in community assemblies and committees.',
+    ref: 'Gender & Development (GAD)'
+  },
+  'lacking': {
+    title: 'Lacking Encoding Status',
+    badge: 'Field Compliance',
+    desc: 'Activity marked as Completed in field conduct but missing from the KCIS database, or past the permissible encoding window.',
+    ref: 'Encoding Pipeline Rules'
+  },
+  'nosheet': {
+    title: 'No Sheet Status',
+    badge: 'Missing Attendance MOV',
+    desc: 'Activity encoded in KCIS with zero registered attendees, indicating that the physical paper attendance sheet has not yet been scanned and encoded.',
+    ref: 'Data Health Validation'
+  }
+};
+
+function helper(termKey, text, extraClass) {
+  var t = PCRP_GLOSSARY[termKey];
+  if (!t) return text || '';
+  return '<span class="helper-term' + (extraClass ? ' ' + extraClass : '') + '" data-term="' + attr(termKey) + '">' +
+    (text || esc(t.title)) + '</span>';
+}
+
+var _activeTooltipTarget = null;
+var _tooltipHideTimer = null;
+
+function showAppTooltip(target) {
+  var tip = $('app-tooltip');
+  if (!tip || !target) return;
+
+  var term = target.getAttribute('data-term');
+  var tipText = target.getAttribute('data-tooltip') || target.dataset.popoverTitle || target.getAttribute('title');
+  var tipTitle = target.getAttribute('data-tooltip-title') || '';
+  var tipBadge = target.getAttribute('data-tooltip-badge') || '';
+  var tipRef = target.getAttribute('data-tooltip-ref') || '';
+
+  // If term matches glossary, enrich it
+  if (term && PCRP_GLOSSARY[term]) {
+    var g = PCRP_GLOSSARY[term];
+    tipTitle = tipTitle || g.title;
+    tipBadge = tipBadge || g.badge;
+    tipText = tipText || g.desc;
+    tipRef = tipRef || g.ref;
+  } else if (!tipTitle && tipText) {
+    // If tipText mentions a known glossary keyword as standalone or prefix
+    var lowerText = tipText.toLowerCase().trim();
+    for (var k in PCRP_GLOSSARY) {
+      if (lowerText === k || lowerText.indexOf(k + ' ') === 0 || lowerText === PCRP_GLOSSARY[k].title.toLowerCase()) {
+        tipTitle = PCRP_GLOSSARY[k].title;
+        tipBadge = PCRP_GLOSSARY[k].badge;
+        tipRef = PCRP_GLOSSARY[k].ref;
+        break;
+      }
+    }
+  }
+
+  if (!tipText && !tipTitle) return;
+
+  if (_activeTooltipTarget && _activeTooltipTarget !== target && _activeTooltipTarget.dataset.popoverTitle) {
+    _activeTooltipTarget.setAttribute('title', _activeTooltipTarget.dataset.popoverTitle);
+    delete _activeTooltipTarget.dataset.popoverTitle;
+  }
+
+  var html = '';
+  if (tipTitle) {
+    html += '<div class="app-tooltip-header">' +
+      '<span class="app-tooltip-title">' + esc(tipTitle) + '</span>' +
+      (tipBadge ? '<span class="app-tooltip-badge">' + esc(tipBadge) + '</span>' : '') +
+    '</div>';
+  }
+  if (tipText) {
+    html += '<div class="app-tooltip-body">' + esc(tipText) + '</div>';
+  }
+  if (tipRef) {
+    html += '<div class="app-tooltip-footer"><span class="app-tooltip-footer-icon">📖</span> ' + esc(tipRef) + '</div>';
+  }
+
+  tip.innerHTML = '<div class="app-tooltip-arrow" id="app-tooltip-arrow"></div><div class="app-tooltip-content">' + html + '</div>';
+
+  _activeTooltipTarget = target;
+  if (_tooltipHideTimer) { clearTimeout(_tooltipHideTimer); _tooltipHideTimer = null; }
+
+  tip.style.visibility = 'hidden';
+  tip.style.display = 'block';
+  tip.classList.add('is-visible');
+
+  positionAppTooltip(target, tip);
+  tip.style.visibility = 'visible';
+
+  if (typeof gsap !== 'undefined' && !prefersReducedMotion) {
+    gsap.killTweensOf(tip);
+    gsap.fromTo(tip, { opacity: 0, scale: 0.95 }, { opacity: 1, scale: 1, duration: 0.15, ease: 'power2.out' });
+  }
+}
+
+function positionAppTooltip(target, tip) {
+  var tRect = target.getBoundingClientRect();
+  var tipRect = tip.getBoundingClientRect();
+  var arrow = $('app-tooltip-arrow');
+
+  var pad = 8;
+  var top = tRect.top - tipRect.height - pad;
+  var placement = 'top';
+
+  if (top < 10) {
+    top = tRect.bottom + pad;
+    placement = 'bottom';
+  }
+
+  var left = tRect.left + (tRect.width / 2) - (tipRect.width / 2);
+  var maxLeft = window.innerWidth - tipRect.width - 12;
+  var minLeft = 12;
+  left = Math.max(minLeft, Math.min(left, maxLeft));
+
+  tip.style.top = Math.round(top) + 'px';
+  tip.style.left = Math.round(left) + 'px';
+
+  tip.classList.remove('placement-top', 'placement-bottom');
+  tip.classList.add('placement-' + placement);
+
+  if (arrow) {
+    var targetCenterX = tRect.left + (tRect.width / 2);
+    var arrowLeft = targetCenterX - left - 4;
+    arrowLeft = Math.max(10, Math.min(arrowLeft, tipRect.width - 18));
+    arrow.style.left = Math.round(arrowLeft) + 'px';
+  }
+}
+
+function hideAppTooltip() {
+  var tip = $('app-tooltip');
+  if (!tip) return;
+  if (_activeTooltipTarget && _activeTooltipTarget.dataset.popoverTitle) {
+    _activeTooltipTarget.setAttribute('title', _activeTooltipTarget.dataset.popoverTitle);
+    delete _activeTooltipTarget.dataset.popoverTitle;
+  }
+  _activeTooltipTarget = null;
+  tip.classList.remove('is-visible');
+  tip.style.display = 'none';
+}
+
+function initTooltipEngine() {
+  if ($('app-tooltip')) return;
+  var tip = document.createElement('div');
+  tip.id = 'app-tooltip';
+  tip.className = 'app-tooltip';
+  tip.setAttribute('role', 'tooltip');
+  tip.setAttribute('aria-hidden', 'true');
+  tip.style.display = 'none';
+  document.body.appendChild(tip);
+
+  document.addEventListener('mouseover', function (e) {
+    if (e.target.closest('nav.tabs, .tabs, .nav-tab-group, .nav-tab-dropdown, header.top, .top-actions, .settings-menu, .sub-nav-tabs')) {
+      hideAppTooltip();
+      return;
+    }
+
+    var target = e.target.closest('[data-term], [data-tooltip], [data-helper], [title], .helper-term');
+    if (!target) return;
+
+    if (target.hasAttribute('title')) {
+      target.dataset.popoverTitle = target.getAttribute('title');
+      target.removeAttribute('title');
+    }
+
+    showAppTooltip(target);
+  }, { passive: true });
+
+  document.addEventListener('mouseout', function (e) {
+    var target = e.target.closest('[data-term], [data-tooltip], [data-helper], [data-popover-title], .helper-term');
+    if (!target) return;
+    if (_tooltipHideTimer) clearTimeout(_tooltipHideTimer);
+    _tooltipHideTimer = setTimeout(function () {
+      hideAppTooltip();
+    }, 60);
+  }, { passive: true });
+
+  window.addEventListener('scroll', function () {
+    if (_activeTooltipTarget) hideAppTooltip();
+  }, { passive: true });
+
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape' && _activeTooltipTarget) hideAppTooltip();
+  });
+}
+
 function sortTh(opts) {
   var isSorted = opts.curCol === opts.col;
   var ariaSort = isSorted ? (opts.dir === 'asc' ? 'ascending' : 'descending') : 'none';
@@ -229,7 +549,12 @@ function sortTh(opts) {
   var icoName = isSorted ? (opts.dir === 'asc' ? 'arrow-up' : 'arrow-down') : 'chevrons-up-down';
   return '<th class="' + cls.join(' ') + '" data-act="' + attr(opts.act) + '" data-col="' + attr(opts.col) + '"' +
     ' tabindex="0" role="button" aria-sort="' + ariaSort + '"' +
-    (opts.title ? ' title="' + attr(opts.title) + '"' : '') + '>' +
+    (opts.title ? ' title="' + attr(opts.title) + '"' : '') +
+    (opts.tooltip ? ' data-tooltip="' + attr(opts.tooltip) + '"' : '') +
+    (opts.term ? ' data-term="' + attr(opts.term) + '"' : '') +
+    (opts.tooltipTitle ? ' data-tooltip-title="' + attr(opts.tooltipTitle) + '"' : '') +
+    (opts.tooltipBadge ? ' data-tooltip-badge="' + attr(opts.tooltipBadge) + '"' : '') +
+    (opts.tooltipRef ? ' data-tooltip-ref="' + attr(opts.tooltipRef) + '"' : '') + '>' +
     '<div class="th-content">' +
       '<span class="th-label">' + opts.label + (opts.sub ? '<div class="tiny" style="text-transform:none">' + opts.sub + '</div>' : '') + '</span>' +
       '<span class="sort-ico">' + icon(icoName) + '</span>' +
@@ -1009,7 +1334,116 @@ function setTabsEnabled(on) {
 // Hooks the Data Health page calls.
 function openMuni(mKey) { STATE.muni = mKey; STATE.brgyFilter = 'all'; STATE.brgySearch = ''; go('brgys'); }
 function openPasskeyModal() {}
-function openHealthMemoModal() { $('memo-text').value = dhMemoText(); openModalAnimated($('memo-dialog')); }
+
+function renderExecutiveMemoHtml(text) {
+  if (!text) return '<p class="muted">No memo text available.</p>';
+  var lines = text.split('\n');
+  var out = [];
+  var inSummary = false;
+  var inActionItems = false;
+  var currentAction = false;
+  var footerLines = [];
+  var headerTitle = '';
+  var headerDate = '';
+
+  for (var h = 0; h < Math.min(lines.length, 10); h++) {
+    var hl = lines[h].trim();
+    if (hl.indexOf('DATA QUALITY') !== -1) headerTitle = hl;
+    if (hl.indexOf('Date of audit:') !== -1) headerDate = hl;
+  }
+  if (!headerTitle) headerTitle = 'Data Quality Assessment (DQA) Audit Memo';
+  out.push('<div style="text-align:center;padding-bottom:12px;margin-bottom:12px;border-bottom:1px solid var(--border-subtle);">' +
+    '<div class="tiny text-muted" style="text-transform:uppercase;font-weight:700;letter-spacing:0.04em">DSWD Field Office Caraga · Kalahi-CIDSS PCRP</div>' +
+    '<h2 style="margin:4px 0 2px;font-size:16px;color:var(--text-main);">' + esc(headerTitle) + '</h2>' +
+    (headerDate ? '<div class="tiny text-muted">' + esc(headerDate) + '</div>' : '') +
+  '</div>');
+
+  for (var i = 0; i < lines.length; i++) {
+    var line = lines[i].trim();
+    if (!line || line.indexOf('====') === 0) continue;
+
+    if (line.indexOf('DSWD FIELD OFFICE') !== -1 || line.indexOf('DATA QUALITY') !== -1 || line.indexOf('Date of audit:') !== -1) {
+      continue;
+    }
+
+    if (line.indexOf('I. SUMMARY') === 0) {
+      inSummary = true;
+      inActionItems = false;
+      out.push('<h3>I. Audit Summary</h3><ul class="memo-summary-list">');
+      continue;
+    }
+    if (line.indexOf('II. ACTION ITEMS') === 0) {
+      if (inSummary) { out.push('</ul>'); inSummary = false; }
+      inActionItems = true;
+      out.push('<h3>II. Priority Action Items</h3><div class="memo-action-items">');
+      continue;
+    }
+
+    if (inSummary) {
+      if (line.indexOf('• Status:') === 0) {
+        var isGood = line.indexOf('All checks passed') !== -1;
+        var isCrit = line.indexOf('Needs attention') !== -1;
+        var badgeCls = isGood ? 'pill good' : (isCrit ? 'pill bad' : 'pill warn');
+        out.push('<li><strong>Overall Status:</strong> <span class="' + badgeCls + ' text-[10px] font-bold">' + esc(line.replace('• Status:', '').trim()) + '</span></li>');
+      } else if (line.indexOf('• ') === 0) {
+        out.push('<li>' + esc(line.slice(2)) + '</li>');
+      }
+      continue;
+    }
+
+    if (inActionItems) {
+      if (/^\[\d+\]/.test(line)) {
+        if (currentAction) out.push('</div>');
+        var isCrit = line.indexOf('Critical') !== -1;
+        out.push('<div class="memo-action-box' + (isCrit ? ' critical' : '') + '">' +
+          '<div style="font-weight:700;font-size:13px;display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;">' +
+            '<span>' + esc(line) + '</span>' +
+            '<span class="pill ' + (isCrit ? 'bad' : 'warn') + ' text-[10px] font-bold">' + (isCrit ? 'CRITICAL' : 'TO VERIFY') + '</span>' +
+          '</div>');
+        currentAction = true;
+      } else if (line.indexOf('What to do:') === 0) {
+        out.push('<div style="font-size:12px;margin:4px 0 6px;color:var(--text-main);"><strong>SOP Guidance:</strong> ' + esc(line.replace('What to do:', '').trim()) + '</div>');
+      } else if (line.indexOf('- ') === 0) {
+        out.push('<div class="tiny muted" style="padding-left:12px;margin-bottom:2px;">• ' + esc(line.slice(2)) + '</div>');
+      } else if (line.indexOf('… and') === 0) {
+        out.push('<div class="tiny text-dim" style="padding-left:12px;font-style:italic;">' + esc(line) + '</div>');
+      } else if (line.indexOf('No open items') !== -1) {
+        out.push('<div class="p-3 text-good"><i data-lucide="check-circle-2"></i> All checks passed! No open action items.</div>');
+      } else {
+        footerLines.push(line);
+      }
+      continue;
+    }
+
+    footerLines.push(line);
+  }
+
+  if (inSummary) out.push('</ul>');
+  if (inActionItems && currentAction) out.push('</div></div>');
+  if (footerLines.length) {
+    out.push('<div style="margin-top:16px;padding-top:10px;border-top:1px solid var(--border-subtle);font-size:11.5px;color:var(--text-muted);font-style:italic;">' +
+      footerLines.map(esc).join('<br>') + '</div>');
+  }
+
+  return out.join('');
+}
+
+function openHealthMemoModal() {
+  var text = (typeof dhMemoText === 'function') ? dhMemoText() : 'No memo available.';
+  var ta = $('memo-text');
+  if (ta) ta.value = text;
+  var prevEl = $('memo-preview');
+  if (prevEl) prevEl.innerHTML = renderExecutiveMemoHtml(text);
+  var tabPrev = $('memo-tab-preview'), tabRaw = $('memo-tab-raw');
+  if (tabPrev && tabRaw && ta && prevEl) {
+    tabPrev.classList.add('active');
+    tabRaw.classList.remove('active');
+    prevEl.style.display = 'block';
+    ta.style.display = 'none';
+  }
+  openModalAnimated($('memo-dialog'));
+  refreshIcons($('memo-dialog'));
+}
 
 // ---- import --------------------------------------------------------------
 
@@ -1273,10 +1707,234 @@ function progressBar(ok, warn, total) {
     (ok ? '<i class="ok" style="width:' + w(ok) + '%"></i>' : '') + (warn ? '<i class="warn" style="width:' + w(warn) + '%"></i>' : '') + '</span>';
 }
 
+function quotaMiniProgressBar(count, total, targetRate, targetLabel) {
+  if (!total || total <= 0) {
+    return '<span class="tiny text-muted">—</span>';
+  }
+  var rate = count / total;
+  var pct = Math.max(0, Math.min(100, Math.round(rate * 100)));
+  var isMet = rate >= targetRate;
+  var statusCls = isMet ? 'is-met' : 'is-below';
+  var colorVar = isMet ? 'var(--good-text)' : 'var(--warn-text)';
+  var targetPct = Math.round(targetRate * 100);
+
+  return (
+    '<div class="quota-mini-cell" title="' + attr(n(count) + ' of ' + n(total) + ' (' + pct + '%). ' + targetLabel) + '">' +
+      '<div class="quota-label-row">' +
+        '<strong style="color:' + colorVar + '">' + n(count) + ' <span class="tiny" style="font-size:10.5px">(' + pct + '%)</span></strong>' +
+        '<span class="tiny muted" style="font-size:9.5px">' + targetPct + '% req</span>' +
+      '</div>' +
+      '<div class="quota-progress-wrap">' +
+        '<div class="quota-progress-bar ' + statusCls + '" style="width:' + pct + '%;' + (isMet ? 'background:var(--good);' : 'background:var(--warn);') + '"></div>' +
+        '<div class="quota-threshold-marker" style="left:' + targetPct + '%;" title="Target: ' + targetPct + '%"></div>' +
+      '</div>' +
+    '</div>'
+  );
+}
+
+// ---- Executive & Operational Overview Helpers ---------------------------------
+
+function getScopedCompositeMetrics() {
+  var isMuni = isMunicipalUser(), key = homeKey();
+  var h = (typeof home === 'function' ? home() : {}) || {};
+  var pipe = scopedPipeline();
+  var pipeTot = pipe.reduce(function (acc, p) {
+    acc.e += p.expected || 0;
+    acc.c += p.complete || 0;
+    acc.na += p.noAttendees || 0;
+    acc.ne += p.notEncoded || 0;
+    acc.b += p.backlog || 0;
+    return acc;
+  }, { e: 0, c: 0, na: 0, ne: 0, b: 0 });
+  var pipeRate = pipeTot.e > 0 ? (pipeTot.c / pipeTot.e) : 0;
+
+  var k2 = scopedK2();
+
+  var P = (typeof people === 'function') ? people() : { volunteers: [], mrest: [] };
+  var inScope = (typeof pScopeTest === 'function') ? pScopeTest() : function () { return true; };
+  var brgysInScope = (SNAP.barangayRows || []).filter(function (b) {
+    return isMuni ? (b.province + '|' + b.municipality === key) : (!STATE.prov || b.province === STATE.prov);
+  });
+  var totalBrgys = brgysInScope.length;
+  var brestCompliant = brgysInScope.filter(function (b) { return b.volunteers && b.volunteers.BREST && b.volunteers.BREST.status === 'Encoded'; }).length;
+  var brestRate = totalBrgys > 0 ? (brestCompliant / totalBrgys) : 0;
+
+  var munisList = (typeof baselineMunis === 'function') ? baselineMunis().filter(function (m) { return !STATE.prov || m.province === STATE.prov; }) : [];
+  var regionalMrestEnc = munisList.filter(function (m) {
+    return (P.mrest || []).some(function (r) { return r.province === m.province && r.municipality === m.municipality; });
+  }).length;
+
+  var compositeIndex = isMuni
+    ? Math.round(0.4 * (pipeRate * 100) + 0.3 * ((k2.rate ? Math.min(1, k2.rate / 0.7) : 0) * 100) + 0.3 * (brestRate * 100))
+    : Math.round(0.35 * (pipeRate * 100) + 0.25 * ((k2.rate ? Math.min(1, k2.rate / 0.7) : 0) * 100) + 0.25 * (brestRate * 100) + 0.15 * ((regionalMrestEnc / (munisList.length || 1)) * 100));
+
+  return {
+    isMuni: isMuni,
+    key: key,
+    h: h,
+    pipe: pipe,
+    pipeTot: pipeTot,
+    pipeRate: pipeRate,
+    k2: k2,
+    totalBrgys: totalBrgys,
+    brgysInScope: brgysInScope,
+    brestCompliant: brestCompliant,
+    brestRate: brestRate,
+    munisList: munisList,
+    regionalMrestEnc: regionalMrestEnc,
+    compositeIndex: isNaN(compositeIndex) ? 0 : compositeIndex
+  };
+}
+
+function getScopedTriageSummary(metrics) {
+  var brgys = metrics.brgysInScope || [];
+  var lackingBrgys = brgys.filter(function (b) { return (b.todo && b.todo.length > 0); });
+  var k2RiskBrgys = brgys.filter(function (b) { return b.hhListed > 0 && b.hhRate < 0.7; });
+
+  // Data health critical/verify in scope
+  var o = S.overview;
+  var keepScope = S.healthScope;
+  S.healthScope = metrics.key ? 'm:' + metrics.key : (STATE.prov ? 'p:' + STATE.prov : '');
+  var evs = (typeof dhEvaluateAll === 'function' && o) ? dhEvaluateAll(o, '').filter(function (e) { return !e.outOfScope; }) : [];
+  S.healthScope = keepScope;
+  var criticalEvs = evs.filter(function (e) { return e.status === 'critical'; });
+  var verifyEvs = evs.filter(function (e) { return e.status === 'verify'; });
+
+  return {
+    lackingCount: lackingBrgys.length,
+    k2RiskCount: k2RiskBrgys.length,
+    pendingSheetsTot: metrics.pipeTot.na,
+    lackingTot: metrics.pipeTot.b,
+    dqaCriticalCount: criticalEvs.reduce(function (s, e) { return s + (e.count || 0); }, 0),
+    dqaVerifyCount: verifyEvs.reduce(function (s, e) { return s + (e.count || 0); }, 0)
+  };
+}
+
+function renderOverviewTriageTray(triage) {
+  var items = [];
+  if (triage.lackingCount > 0) {
+    items.push(
+      '<button type="button" class="triage-item triage-bad" data-act="kpi-brgy" data-v="lacking" title="Filter barangays with lacking records">' +
+        '<div class="triage-item-info">' +
+          '<span class="triage-item-count">' + n(triage.lackingCount) + '</span>' +
+          '<span class="triage-item-label">Barangays with Backlog (&gt;3d)</span>' +
+        '</div>' +
+        '<span class="triage-item-arrow">' + icon('arrow-right') + '</span>' +
+      '</button>'
+    );
+  }
+  if (triage.k2RiskCount > 0) {
+    items.push(
+      '<button type="button" class="triage-item triage-warn" data-act="kpi-brgy" data-v="k2" title="Filter barangays failing K2 quorum">' +
+        '<div class="triage-item-info">' +
+          '<span class="triage-item-count">' + n(triage.k2RiskCount) + '</span>' +
+          '<span class="triage-item-label">Barangays Below K2 Quorum (&lt;70%)</span>' +
+        '</div>' +
+        '<span class="triage-item-arrow">' + icon('arrow-right') + '</span>' +
+      '</button>'
+    );
+  }
+  if (triage.pendingSheetsTot > 0) {
+    items.push(
+      '<button type="button" class="triage-item triage-warn" data-act="kpi-brgy" data-v="nosheet" title="Filter barangays missing signed attendance sheet">' +
+        '<div class="triage-item-info">' +
+          '<span class="triage-item-count">' + n(triage.pendingSheetsTot) + '</span>' +
+          '<span class="triage-item-label">Activities Pending Signed Sheet</span>' +
+        '</div>' +
+        '<span class="triage-item-arrow">' + icon('arrow-right') + '</span>' +
+      '</button>'
+    );
+  }
+  if (triage.dqaCriticalCount > 0) {
+    items.push(
+      '<button type="button" class="triage-item triage-bad" data-act="go" data-v="health" title="Open DQA Audit Scorecard to inspect critical errors">' +
+        '<div class="triage-item-info">' +
+          '<span class="triage-item-count">' + n(triage.dqaCriticalCount) + '</span>' +
+          '<span class="triage-item-label">Critical DQA Errors to Fix</span>' +
+        '</div>' +
+        '<span class="triage-item-arrow">' + icon('arrow-right') + '</span>' +
+      '</button>'
+    );
+  }
+
+  var isAllGood = items.length === 0;
+  var trayCls = isAllGood ? 'triage-tray all-good' : (triage.lackingCount > 0 || triage.dqaCriticalCount > 0 ? 'triage-tray has-critical' : 'triage-tray');
+  var badgeHtml = isAllGood
+    ? '<span class="triage-badge">All Optimal</span>'
+    : '<span class="triage-badge">' + items.length + ' Focus ' + (items.length === 1 ? 'Area' : 'Areas') + '</span>';
+
+  return (
+    '<div class="' + trayCls + '">' +
+      '<div class="triage-head">' +
+        '<div class="triage-title">' +
+          icon(isAllGood ? 'check-circle-2' : 'alert-circle') +
+          '<span>Operational Action Center (Immediate Priorities)</span> ' +
+          badgeHtml +
+        '</div>' +
+        (!isAllGood ? '<span class="tiny muted">Click any triage card to drill down directly into the affected records</span>' : '') +
+      '</div>' +
+      (isAllGood
+        ? '<div class="msg ok" style="margin:0">' + icon('check-circle-2') + ' <span><strong>Optimal Field State:</strong> Zero activity backlog, all physical attendance sheets attached, and K2 household quorum thresholds met.</span></div>'
+        : '<div class="triage-grid">' + items.join('') + '</div>'
+      ) +
+    '</div>'
+  );
+}
+
+function renderMilestoneStepper(pipe) {
+  if (!pipe || !pipe.length) return '';
+
+  var minRate = 1.0;
+  var bottleneckCode = '';
+  pipe.forEach(function (p) {
+    if (p.expected > 0) {
+      var r = p.complete / p.expected;
+      if (r < minRate || (r === minRate && p.backlog > 0)) {
+        minRate = r;
+        bottleneckCode = p.a.code;
+      }
+    }
+  });
+
+  var stepsHtml = pipe.map(function (p) {
+    var rate = p.expected > 0 ? (p.complete / p.expected) : 1;
+    var pct = Math.round(rate * 100);
+    var isComplete = rate >= 1 && p.expected > 0;
+    var isBottleneck = !isComplete && p.a.code === bottleneckCode && p.expected > 0;
+    var isFiltered = STATE.ovSeqFilter === p.a.code;
+    var stepCls = 'milestone-step' + (isComplete ? ' is-complete' : (isBottleneck ? ' is-bottleneck' : '')) + (isFiltered ? ' active' : '');
+
+    return (
+      '<button type="button" class="' + stepCls + '" data-act="ov-filter-seq" data-v="' + attr(p.a.code) + '" title="' + attr(p.a.label + ': ' + pctText(rate) + ' with signed sheet (' + n(p.complete) + ' of ' + n(p.expected) + ')') + '">' +
+        '<div class="step-top">' +
+          '<span class="step-seq-pill">Seq ' + esc(p.a.seq) + '</span>' +
+          '<span class="step-rate">' + pct + '%</span>' +
+        '</div>' +
+        '<div class="step-name">' + esc(p.a.label) + '</div>' +
+        '<div class="step-progress-mini"><div class="step-progress-mini-bar" style="width:' + pct + '%"></div></div>' +
+      '</button>'
+    );
+  }).join('');
+
+  return (
+    '<div class="milestone-stepper-card">' +
+      '<div class="milestone-stepper-head">' +
+        '<div class="milestone-stepper-title">' +
+          icon('git-commit') + ' <span>Stage ' + STATE.stage + ' Milestone Sequence Flow &amp; Bottlenecks</span>' +
+        '</div>' +
+        '<div class="tiny muted">' + (STATE.ovSeqFilter ? 'Filtering to Seq ' + esc(STATE.ovSeqFilter) + ' · Click again to show all milestones' : 'Click any milestone to filter the activities table below') + '</div>' +
+      '</div>' +
+      '<div class="milestone-stepper-track">' + stepsHtml + '</div>' +
+    '</div>'
+  );
+}
+
 // ---- overview -----------------------------------------------------------------
 
 function renderOverview() {
   var o = S.overview, pipe = scopedPipeline(), k2 = scopedK2(), cv = scopedVolunteers();
+  var metrics = getScopedCompositeMetrics();
+  var triage = getScopedTriageSummary(metrics);
   var tot = pipe.reduce(function (s, p) {
     s.e += p.expected; s.c += p.complete; s.na += p.noAttendees; s.ne += p.notEncoded; s.b += p.backlog; return s;
   }, { e: 0, c: 0, na: 0, ne: 0, b: 0 });
@@ -1292,7 +1950,13 @@ function renderOverview() {
     var tag = opts.act ? 'button type="button"' : 'div';
     var closeTag = opts.act ? 'button' : 'div';
     return '<' + tag + ' class="kpi ' + (opts.accent || '') + (opts.act ? ' clickable' : '') + '"' +
-      (opts.act ? ' data-act="' + opts.act + '" data-v="' + attr(opts.v || '') + '" title="' + attr(opts.title || '') + '"' : '') + '>' +
+      (opts.act ? ' data-act="' + opts.act + '" data-v="' + attr(opts.v || '') + '"' : '') +
+      (opts.title ? ' title="' + attr(opts.title) + '"' : '') +
+      (opts.tooltip ? ' data-tooltip="' + attr(opts.tooltip) + '"' : '') +
+      (opts.term ? ' data-term="' + attr(opts.term) + '"' : '') +
+      (opts.tooltipTitle ? ' data-tooltip-title="' + attr(opts.tooltipTitle) + '"' : '') +
+      (opts.tooltipBadge ? ' data-tooltip-badge="' + attr(opts.tooltipBadge) + '"' : '') +
+      (opts.tooltipRef ? ' data-tooltip-ref="' + attr(opts.tooltipRef) + '"' : '') + '>' +
       '<div><div class="kpi-top"><div class="kpi-label">' + opts.label + '</div>' +
       (opts.ico ? '<span class="kpi-icon">' + icon(opts.ico) + '</span>' : '') + '</div>' +
       '<div class="kpi-value">' + opts.value + '</div>' +
@@ -1311,7 +1975,12 @@ function renderOverview() {
   evs.forEach(function (e) { if (sevCount[e.status] !== undefined) sevCount[e.status]++; });
 
   var q = normSearch(STATE.ovSearch || '');
+  var currentOvFilter = STATE.ovFilter || 'all';
   var filteredPipe = pipe.filter(function (p) {
+    if (currentOvFilter === 'lacking' && p.backlog <= 0) return false;
+    if (currentOvFilter === 'nosheet' && p.noAttendees <= 0) return false;
+    if (currentOvFilter === 'complete' && (p.expected <= 0 || p.complete < p.expected)) return false;
+    if (STATE.ovSeqFilter && p.a.code !== STATE.ovSeqFilter) return false;
     if (!q) return true;
     var hay = normSearch(p.a.seq + ' ' + p.a.code + ' ' + p.a.label + ' ' + p.a.level + ' ' + p.a.field);
     return hay.indexOf(q) !== -1;
@@ -1346,8 +2015,13 @@ function renderOverview() {
     '<td class="num">' + n(tot.ne) + '</td><td class="num">' + (tot.b ? '<span style="color:var(--bad-text)">' + n(tot.b) + '</span>' : '0') + '</td>' +
     '<td><div class="cell-pct"><span>' + pctText(pctOf(tot.c, tot.e)) + ' <span class="tiny">(' + pctText(pctOf(totalCond, tot.e)) + ' recorded)</span></span>' + progressBar(tot.c, tot.na, tot.e) + '</div></td></tr>';
 
-  var th = function (col, label, num) {
-    return sortTh({ col: col, curCol: curCol, dir: curDir, label: label, num: num, act: 'ov-sort' });
+  var th = function (col, label, num, extra) {
+    var opts = { col: col, curCol: curCol, dir: curDir, label: label, num: num, act: 'ov-sort' };
+    if (extra) {
+      if (extra.tooltip) opts.tooltip = extra.tooltip;
+      if (extra.term) opts.term = extra.term;
+    }
+    return sortTh(opts);
   };
 
   var cvHtml = cv ? (S.overview.volunteers.bodies || []).map(function (b) {
@@ -1356,6 +2030,25 @@ function renderOverview() {
       '<span class="num">' + n(t.encoded) + '/' + n(t.expected) + (t.needsFix ? ' <span class="tiny" style="color:var(--warn-text)">+' + n(t.needsFix) + ' to fix</span>' : '') + '</span></div>';
   }).join('') + (cv.missing ? '<p class="tiny" style="color:var(--warn-text);font-weight:700;margin-top:8px">⚠ ' + n(cv.missing) + ' barangays: 1st BA encoded, volunteers not encoded. <button class="link" data-act="health-open" data-v="cv_missing">See the list</button></p>' : '')
     : '<p class="muted">Load the Community Volunteer List to track the BResT and SFMSC.</p>';
+
+  var ovFilters = [
+    { id: 'all', label: 'All Activities', count: pipe.length, cls: '' },
+    { id: 'lacking', label: 'Lacking / Backlog', count: pipe.filter(function (p) { return p.backlog > 0; }).length, cls: 'chip-bad' },
+    { id: 'nosheet', label: 'Pending Signed Sheet', count: pipe.filter(function (p) { return p.noAttendees > 0; }).length, cls: 'chip-warn' },
+    { id: 'complete', label: 'Complete (100%)', count: pipe.filter(function (p) { return p.expected > 0 && p.complete >= p.expected; }).length, cls: '' }
+  ];
+
+  var quickChipsHtml =
+    '<div class="quick-filter-bar">' +
+      ovFilters.map(function (f) {
+        var isAct = currentOvFilter === f.id && !STATE.ovSeqFilter;
+        return '<button type="button" class="quick-filter-chip' + (f.cls ? ' ' + f.cls : '') + (isAct ? ' active' : '') + '" data-act="ov-filter" data-v="' + f.id + '">' +
+          '<span>' + esc(f.label) + '</span>' +
+          '<span class="quick-filter-count">' + n(f.count) + '</span>' +
+        '</button>';
+      }).join('') +
+      (STATE.ovSeqFilter ? '<button type="button" class="quick-filter-chip active" data-act="ov-filter-seq" data-v="' + attr(STATE.ovSeqFilter) + '"><span>Filtered: Seq ' + esc(STATE.ovSeqFilter) + '</span> ✕</button>' : '') +
+    '</div>';
 
   $('ov-body').innerHTML =
     coverageBanner() +
@@ -1369,28 +2062,40 @@ function renderOverview() {
     stageSwitch() + (isMuni ? '' : provChips()) +
     '<div class="grid-kpi">' +
       kpiCard({
-        label: 'Records with attendance sheet',
+        label: 'Overall Readiness Index',
+        value: metrics.compositeIndex + '%',
+        sub: metrics.compositeIndex >= 80 ? 'Optimal implementation readiness' : (metrics.compositeIndex >= 60 ? 'Moderate compliance; address gaps' : 'High priority risk; immediate support'),
+        ico: 'gauge',
+        accent: metrics.compositeIndex >= 80 ? 'accent-good' : (metrics.compositeIndex >= 60 ? 'accent-warn' : 'accent-bad'),
+        tooltip: 'Weighted strategic readiness index across Pipeline completion, K2 quorum, and volunteer teams',
+        act: 'go', v: 'kpisummary', title: 'Open Executive KPI Scorecard'
+      }) +
+      kpiCard({
+        label: 'With attendance sheet',
         value: pctText(pctOf(tot.c, tot.e)),
         sub: n(tot.c) + ' of ' + n(tot.e) + ' Stage ' + STATE.stage + ' records complete',
         ico: 'check-circle-2',
         accent: tot.c === tot.e && tot.e > 0 ? 'accent-good' : '',
         bar: progressBar(tot.c, tot.na, tot.e),
+        tooltip: 'Total activities encoded with verified physical attendance sheet attached',
         act: 'kpi-brgy', v: 'all', title: 'Open Barangays view'
       }) +
       kpiCard({
-        label: 'Recorded without a sheet',
+        label: 'Pending signed sheet',
         value: n(tot.na),
         sub: 'Encoded in KCIS, attendance sheet still missing',
         ico: 'clock-alert',
         accent: tot.na > 0 ? 'accent-warn' : 'accent-good',
+        term: 'nosheet',
         act: 'kpi-brgy', v: 'nosheet', title: 'Filter barangays recorded without a sheet'
       }) +
       kpiCard({
-        label: 'Lacking records',
+        label: 'Critical backlog (lacking)',
         value: n(tot.b),
         sub: 'Past the 3-day window, or not encoded where field conduct is Completed',
         ico: 'alert-triangle',
         accent: tot.b > 0 ? 'accent-bad' : 'accent-good',
+        term: 'lacking',
         act: 'kpi-brgy', v: 'lacking', title: 'Filter barangays with lacking records'
       }) +
       kpiCard({
@@ -1400,26 +2105,30 @@ function renderOverview() {
         ico: 'users',
         accent: k2.rate === null ? 'accent-idle' : (k2.rate >= 0.7 ? 'accent-good' : 'accent-warn'),
         bar: k2.listed ? progressBar(k2.present, 0, k2.listed) : '',
+        term: 'k2',
         act: k2.listed ? 'kpi-brgy' : '', v: 'k2', title: 'Filter barangays with K2 below 70%'
       }) +
     '</div>' +
+    renderOverviewTriageTray(triage) +
+    renderMilestoneStepper(pipe) +
     '<div class="two-col">' +
       '<div class="card"><div class="card-head"><div><h3>Stage ' + STATE.stage + ' activities</h3><div class="tiny">Target vs. encoded records per activity</div></div>' +
         '<button class="btn ghost btn-sm" data-act="csv-pipeline">' + icon('download') + ' <span>CSV</span></button></div>' +
+        quickChipsHtml +
         '<div class="toolbar-row" style="margin-top:10px;margin-bottom:12px"><div class="filters" style="margin:0;flex:1">' +
           '<label class="field" style="flex:1"><span>Search activities</span><input type="search" id="ov-search" value="' + attr(STATE.ovSearch) + '" placeholder="Search activity, sequence, code, level…"></label>' +
-          (STATE.ovSearch ? '<button type="button" class="btn ghost btn-sm" data-act="ov-reset">' + icon('rotate-ccw') + ' <span>Reset</span></button>' : '') +
+          (STATE.ovSearch || STATE.ovFilter !== 'all' || STATE.ovSeqFilter ? '<button type="button" class="btn ghost btn-sm" data-act="ov-reset">' + icon('rotate-ccw') + ' <span>Reset filters</span></button>' : '') +
         '</div><span class="tiny">Showing <strong>' + n(sortedPipe.length) + '</strong> of <strong>' + n(pipe.length) + '</strong></span></div>' +
-        '<div class="legend"><span class="pill good">With attendance sheet</span><span class="pill warn">Recorded, no sheet</span><span>Not encoded means not in KCIS yet, not "not conducted".</span></div>' +
+        '<div class="legend"><span class="pill good">With attendance sheet</span><span class="pill warn">Recorded, pending sheet</span><span>Not encoded means not in KCIS yet, not "not conducted".</span></div>' +
         '<div class="table-wrap"><table class="grid"><thead><tr>' +
-          th('seq', 'Seq', true) +
-          th('activity', 'Activity') +
-          th('expected', 'Target', true) +
-          th('complete', 'With sheet', true) +
-          th('noAttendees', 'No sheet', true) +
-          th('notEncoded', 'Not encoded', true) +
-          th('backlog', 'Lacking', true) +
-          th('progress', 'Progress') +
+          th('seq', 'Seq', true, { tooltip: 'Standard activity sequence number in CRIP' }) +
+          th('activity', 'Activity', false, { tooltip: 'Official assembly or workshop milestone' }) +
+          th('expected', 'Target', true, { tooltip: 'Expected total activities for monitored barangays' }) +
+          th('complete', 'With sheet', true, { tooltip: 'Activities encoded with verified attendance sheet' }) +
+          th('noAttendees', 'Pending Sheet', true, { term: 'nosheet', tooltip: 'Encoded in KCIS, physical signed attendance sheet pending attachment' }) +
+          th('notEncoded', 'Not encoded', true, { tooltip: 'Activities not yet recorded in the KCIS database' }) +
+          th('backlog', 'Lacking', true, { term: 'lacking' }) +
+          th('progress', 'Progress', false, { tooltip: 'Completion percentage against targeted activities' }) +
         '</tr></thead><tbody>' + (rows || '<tr><td colspan="8" class="empty-state">No activity matches your search.</td></tr>') + totalRow + '</tbody></table></div></div>' +
       '<div>' +
         '<div class="card"><div class="card-head" style="margin-bottom:8px"><h3>1st BA community volunteers</h3>' +
@@ -1446,23 +2155,208 @@ function cvCell(v, code) {
   return n(x.encoded) + '/' + n(x.expected) + (x.needsFix ? ' <span class="tiny" style="color:var(--warn-text)">+' + n(x.needsFix) + '⚠</span>' : '');
 }
 
+function muniProgress(r, acts) {
+  var aList = acts || stageActs();
+  var totExp = 0, totComp = 0;
+  aList.forEach(function (a) {
+    var c = (r.cells && r.cells[a.code]) || {};
+    totExp += (c.expected || 0);
+    totComp += (c.complete || 0);
+  });
+  return totExp > 0 ? (totComp / totExp) : 0;
+}
+
+function getMuniTriageSummary(rows, acts, cvOn) {
+  var aList = acts || stageActs();
+  var isCv = (cvOn !== undefined) ? cvOn : (STATE.stage === 1 && S.overview && S.overview.volunteers && S.overview.volunteers.imported);
+  var lackingFn = function (r) {
+    return aList.reduce(function (s, a) { return s + (((r.cells && r.cells[a.code]) || {}).backlog || 0); }, 0);
+  };
+  var noSheetFn = function (r) {
+    return aList.reduce(function (s, a) { return s + (((r.cells && r.cells[a.code]) || {}).noAttendees || 0); }, 0);
+  };
+
+  var withBacklog = 0, totalLacking = 0;
+  var withNoSheet = 0, totalNoSheet = 0;
+  var k2Issues = 0;
+  var cvIssues = 0;
+  var compliant = 0;
+
+  (rows || []).forEach(function (r) {
+    var b = lackingFn(r);
+    var ns = noSheetFn(r);
+    var k = muniK2(r);
+    var kBad = (STATE.stage === 1 && k !== null && k < 0.7);
+    var cvBad = false;
+    if (isCv && r.volunteers) {
+      var B = r.volunteers.BREST, S = r.volunteers.SFMSC;
+      cvBad = (B && (B.encoded < B.expected || B.needsFix > 0)) || (S && (S.encoded < S.expected || S.needsFix > 0));
+    }
+
+    if (b > 0) { withBacklog++; totalLacking += b; }
+    if (ns > 0) { withNoSheet++; totalNoSheet += ns; }
+    if (kBad) k2Issues++;
+    if (cvBad) cvIssues++;
+    if (b === 0 && ns === 0 && !kBad && !cvBad) compliant++;
+  });
+
+  return {
+    totalMunis: (rows || []).length,
+    munisWithBacklog: withBacklog,
+    totalLackingRecords: totalLacking,
+    munisWithNoSheet: withNoSheet,
+    totalNoSheetRecords: totalNoSheet,
+    munisK2Issue: k2Issues,
+    munisCvIssue: cvIssues,
+    munisCompliant: compliant
+  };
+}
+
+function renderMuniTriageTray(summary, cvOn) {
+  var isCv = (cvOn !== undefined) ? cvOn : (STATE.stage === 1 && S.overview && S.overview.volunteers && S.overview.volunteers.imported);
+  var items = [];
+  var total = summary.totalMunis;
+
+  // 1. All Monitored LGUs
+  items.push(
+    '<button type="button" class="triage-item' + ((!STATE.muniFilter || STATE.muniFilter === 'all') ? ' active-triage' : '') + '" data-act="mu-filter" data-v="all" title="View all monitored municipalities in scope">' +
+      '<div class="triage-item-info">' +
+        '<span class="triage-item-count">' + n(total) + '</span>' +
+        '<span class="triage-item-label">Monitored LGUs</span>' +
+      '</div>' +
+      '<span class="triage-item-arrow">' + icon('arrow-right') + '</span>' +
+    '</button>'
+  );
+
+  // 2. Backlog
+  if (summary.munisWithBacklog > 0) {
+    items.push(
+      '<button type="button" class="triage-item triage-bad' + (STATE.muniFilter === 'lacking' ? ' active-triage' : '') + '" data-act="mu-filter" data-v="lacking" title="Filter municipalities with unencoded backlog records (>3 days overdue)">' +
+        '<div class="triage-item-info">' +
+          '<span class="triage-item-count">' + n(summary.munisWithBacklog) + '</span>' +
+          '<span class="triage-item-label">LGUs with Backlog (' + n(summary.totalLackingRecords) + ' records)</span>' +
+        '</div>' +
+        '<span class="triage-item-arrow">' + icon('arrow-right') + '</span>' +
+      '</button>'
+    );
+  }
+
+  // 3. Pending Sheets
+  if (summary.munisWithNoSheet > 0) {
+    items.push(
+      '<button type="button" class="triage-item triage-warn' + (STATE.muniFilter === 'nosheet' ? ' active-triage' : '') + '" data-act="mu-filter" data-v="nosheet" title="Filter municipalities with activities recorded without signed attendance sheets">' +
+        '<div class="triage-item-info">' +
+          '<span class="triage-item-count">' + n(summary.munisWithNoSheet) + '</span>' +
+          '<span class="triage-item-label">Pending Signed Sheets (' + n(summary.totalNoSheetRecords) + ')</span>' +
+        '</div>' +
+        '<span class="triage-item-arrow">' + icon('arrow-right') + '</span>' +
+      '</button>'
+    );
+  }
+
+  // 4. K2 Quorum Alert (Stage 1 only)
+  if (STATE.stage === 1 && summary.munisK2Issue > 0) {
+    items.push(
+      '<button type="button" class="triage-item triage-warn' + (STATE.muniFilter === 'k2' ? ' active-triage' : '') + '" data-act="mu-filter" data-v="k2" title="Filter municipalities where 1st Barangay Assembly household quorum is below 70%">' +
+        '<div class="triage-item-info">' +
+          '<span class="triage-item-count">' + n(summary.munisK2Issue) + '</span>' +
+          '<span class="triage-item-label">LGUs Below 70% Quorum</span>' +
+        '</div>' +
+        '<span class="triage-item-arrow">' + icon('arrow-right') + '</span>' +
+      '</button>'
+    );
+  }
+
+  // 5. Volunteer Gaps (Stage 1 with cvOn)
+  if (isCv && summary.munisCvIssue > 0) {
+    items.push(
+      '<button type="button" class="triage-item triage-warn' + (STATE.muniFilter === 'cv' ? ' active-triage' : '') + '" data-act="mu-filter" data-v="cv" title="Filter municipalities with missing or invalid BResT/SFMSC volunteer records">' +
+        '<div class="triage-item-info">' +
+          '<span class="triage-item-count">' + n(summary.munisCvIssue) + '</span>' +
+          '<span class="triage-item-label">LGUs with Volunteer Gaps</span>' +
+        '</div>' +
+        '<span class="triage-item-arrow">' + icon('arrow-right') + '</span>' +
+      '</button>'
+    );
+  }
+
+  // 6. Compliant LGUs
+  items.push(
+    '<button type="button" class="triage-item triage-good' + (STATE.muniFilter === 'compliant' ? ' active-triage' : '') + '" data-act="mu-filter" data-v="compliant" title="Filter municipalities with zero backlog and all milestone standards met">' +
+      '<div class="triage-item-info">' +
+        '<span class="triage-item-count">' + n(summary.munisCompliant) + '</span>' +
+        '<span class="triage-item-label">Fully Compliant LGUs</span>' +
+      '</div>' +
+      '<span class="triage-item-arrow">' + icon('arrow-right') + '</span>' +
+    '</button>'
+  );
+
+  var isAllGood = summary.munisWithBacklog === 0 && summary.munisWithNoSheet === 0 && summary.munisK2Issue === 0 && (!isCv || summary.munisCvIssue === 0);
+  var trayCls = isAllGood ? 'triage-tray all-good' : (summary.munisWithBacklog > 0 ? 'triage-tray has-critical' : 'triage-tray');
+  var issuesCount = (summary.munisWithBacklog > 0 ? 1 : 0) + (summary.munisWithNoSheet > 0 ? 1 : 0) + (summary.munisK2Issue > 0 ? 1 : 0) + (isCv && summary.munisCvIssue > 0 ? 1 : 0);
+  var badgeHtml = isAllGood
+    ? '<span class="triage-badge">All LGUs Compliant</span>'
+    : '<span class="triage-badge">' + issuesCount + ' Focus ' + (issuesCount === 1 ? 'Area' : 'Areas') + '</span>';
+
+  return (
+    '<div class="' + trayCls + '">' +
+      '<div class="triage-head">' +
+        '<div class="triage-title">' +
+          icon(isAllGood ? 'check-circle-2' : 'alert-circle') +
+          '<span>Municipal Operations Triage & Performance</span> ' +
+          badgeHtml +
+        '</div>' +
+        (!isAllGood ? '<span class="tiny muted">Click any triage metric to isolate the affected municipalities</span>' : '') +
+      '</div>' +
+      '<div class="triage-grid">' + items.join('') + '</div>' +
+    '</div>'
+  );
+}
+
 function muniTableData() {
   var q = normSearch(STATE.muniSearch);
   var acts = stageActs();
-  var lacking = function (r) { return acts.reduce(function (s, a) { return s + ((r.cells[a.code] || {}).backlog || 0); }, 0); };
-  var filtered = matrixRows().filter(function (r) { return !q || normSearch(r.municipality + ' ' + r.province).indexOf(q) !== -1; });
+  var cvOn = STATE.stage === 1 && S.overview && S.overview.volunteers && S.overview.volunteers.imported;
+  var lacking = function (r) { return acts.reduce(function (s, a) { return s + (((r.cells && r.cells[a.code]) || {}).backlog || 0); }, 0); };
+  var noSheet = function (r) { return acts.reduce(function (s, a) { return s + (((r.cells && r.cells[a.code]) || {}).noAttendees || 0); }, 0); };
+  var filter = STATE.muniFilter || 'all';
+
+  var filtered = matrixRows().filter(function (r) {
+    if (q && normSearch(r.municipality + ' ' + r.province).indexOf(q) === -1) return false;
+    if (filter === 'lacking') return lacking(r) > 0;
+    if (filter === 'nosheet') return noSheet(r) > 0;
+    if (filter === 'k2') { var k = muniK2(r); return k !== null && k < 0.7; }
+    if (filter === 'cv') {
+      if (!r.volunteers) return false;
+      var B = r.volunteers.BREST, S = r.volunteers.SFMSC;
+      return (B && (B.encoded < B.expected || B.needsFix > 0)) || (S && (S.encoded < S.expected || S.needsFix > 0));
+    }
+    if (filter === 'compliant') {
+      var k = muniK2(r);
+      var kIssue = (STATE.stage === 1 && k !== null && k < 0.7);
+      var cvIssue = false;
+      if (cvOn && r.volunteers) {
+        var B = r.volunteers.BREST, S = r.volunteers.SFMSC;
+        cvIssue = (B && (B.encoded < B.expected || B.needsFix > 0)) || (S && (S.encoded < S.expected || S.needsFix > 0));
+      }
+      return lacking(r) === 0 && noSheet(r) === 0 && !kIssue && !cvIssue;
+    }
+    return true;
+  });
+
   var curCol = (STATE.muniSort && STATE.muniSort.col) || 'muni';
   var curDir = (STATE.muniSort && STATE.muniSort.dir) || 'asc';
   var extractors = {
     muni: function (r) { return r.municipality + ' ' + r.province; },
     lacking: function (r) { return lacking(r); },
     k2: function (r) { return muniK2(r); },
+    rate: function (r) { return muniProgress(r, acts); },
     BREST: function (r) { var x = (r.volunteers && r.volunteers.BREST); return x ? x.encoded : null; },
     SFMSC: function (r) { var x = (r.volunteers && r.volunteers.SFMSC); return x ? x.encoded : null; }
   };
   acts.forEach(function (a) {
     extractors['act_' + a.code] = function (r) {
-      var c = r.cells[a.code];
+      var c = r.cells && r.cells[a.code];
       return c ? (c.complete || 0) : null;
     };
   });
@@ -1470,66 +2364,140 @@ function muniTableData() {
 }
 
 function renderMunis() {
-  var acts = stageActs(), rows = muniTableData(), cvOn = STATE.stage === 1 && S.overview.volunteers && S.overview.volunteers.imported;
-  var lacking = function (r) { return acts.reduce(function (s, a) { return s + ((r.cells[a.code] || {}).backlog || 0); }, 0); };
+  var acts = stageActs();
+  var baseRows = matrixRows();
+  var cvOn = STATE.stage === 1 && S.overview && S.overview.volunteers && S.overview.volunteers.imported;
+  var summary = getMuniTriageSummary(baseRows, acts, cvOn);
+  var rows = muniTableData();
+
+  var lacking = function (r) { return acts.reduce(function (s, a) { return s + (((r.cells && r.cells[a.code]) || {}).backlog || 0); }, 0); };
   var cell = function (c, a) {
     if (!c || (a.prioOnly && !c.expected)) return '<td class="num tiny">—</td>';
-    return '<td><div class="cell-pct"><span class="num">' + n(c.complete) + '/' + n(c.expected) + (c.noAttendees ? ' <span class="tiny" style="color:var(--warn-text)">+' + n(c.noAttendees) + '</span>' : '') + '</span>' +
+    return '<td><div class="cell-pct"><span class="num">' + n(c.complete) + '/' + n(c.expected) +
+      (c.noAttendees ? ' <span class="tiny" style="color:var(--warn-text)" title="' + n(c.noAttendees) + ' records pending signed attendance sheet">+' + n(c.noAttendees) + '</span>' : '') +
+      '</span>' +
       progressBar(c.complete, c.noAttendees, c.expected) + '</div></td>';
   };
+
   var body = rows.map(function (r) {
     var k = muniK2(r);
+    var pRate = muniProgress(r, acts);
+    var pPct = Math.round(pRate * 100);
     var mine = homeKey() === r.province + '|' + r.municipality;
     return '<tr class="click' + (mine ? ' mine' : '') + '" data-act="muni" data-v="' + attr(r.province + '|' + r.municipality) + '" tabindex="0">' +
-      '<td class="sticky"><strong>' + esc(r.municipality) + '</strong>' + (mine ? ' <span class="pill good">Yours</span>' : '') + '<div class="tiny">' + esc(r.province) + '</div></td>' +
-      acts.map(function (a) { return cell(r.cells[a.code], a); }).join('') +
+      '<td class="sticky">' +
+        '<div style="display:flex;align-items:center;justify-content:space-between;gap:6px">' +
+          '<strong>' + esc(r.municipality) + '</strong>' +
+          (mine ? ' <span class="pill good">Yours</span>' : '') +
+        '</div>' +
+        '<div class="tiny text-muted">' + esc(r.province) + '</div>' +
+        '<div style="margin-top:4px">' +
+          '<div class="step-progress-mini" style="height:3px" title="' + pPct + '% stage pipeline complete">' +
+            '<div class="step-progress-mini-bar" style="width:' + pPct + '%;' + (pRate >= 1 ? 'background:var(--good);' : '') + '"></div>' +
+          '</div>' +
+          '<div class="tiny" style="color:var(--text-dim);margin-top:2px;font-size:10px;display:flex;justify-content:space-between">' +
+            '<span>' + pPct + '% complete</span>' +
+            '<span class="link" style="font-size:9.5px">Drill down →</span>' +
+          '</div>' +
+        '</div>' +
+      '</td>' +
+      acts.map(function (a) { return cell(r.cells && r.cells[a.code], a); }).join('') +
       '<td class="num">' + (lacking(r) ? '<strong style="color:var(--bad-text)">' + n(lacking(r)) + '</strong>' : '0') + '</td>' +
       (STATE.stage === 1 ? '<td class="num">' + (k === null ? '<span class="tiny">not reported</span>' : '<span style="color:' + (k >= 0.7 ? 'var(--good-text)' : 'var(--warn-text)') + ';font-weight:700">' + pctText(k) + '</span>') + '</td>' : '') +
       (cvOn ? '<td class="num">' + cvCell(r.volunteers, 'BREST') + '</td><td class="num">' + cvCell(r.volunteers, 'SFMSC') + '</td>' : '') +
     '</tr>';
   }).join('');
-  var hasFilter = !!(STATE.prov || STATE.muniSearch);
+
+  var hasFilter = !!(STATE.prov || STATE.muniSearch || (STATE.muniFilter && STATE.muniFilter !== 'all'));
   var curCol = (STATE.muniSort && STATE.muniSort.col) || 'muni';
   var curDir = (STATE.muniSort && STATE.muniSort.dir) || 'asc';
-  var th = function (col, label, num, sub, title, sticky) {
-    return sortTh({ col: col, curCol: curCol, dir: curDir, label: label, num: num, sub: sub, title: title, sticky: sticky, act: 'mu-sort' });
+  var th = function (col, label, num, sub, title, sticky, term) {
+    return sortTh({ col: col, curCol: curCol, dir: curDir, label: label, num: num, sub: sub, title: title, sticky: sticky, term: term, act: 'mu-sort' });
   };
+
+  var quickFilters = [
+    { id: 'all', label: 'All LGUs', count: summary.totalMunis, cls: '' },
+    { id: 'lacking', label: '🚨 With Backlog', count: summary.munisWithBacklog, cls: 'chip-bad' },
+    { id: 'nosheet', label: '⚠️ Pending Sheet', count: summary.munisWithNoSheet, cls: 'chip-warn' }
+  ];
+  if (STATE.stage === 1) {
+    quickFilters.push({ id: 'k2', label: '👥 Quorum < 70%', count: summary.munisK2Issue, cls: 'chip-warn' });
+  }
+  if (cvOn) {
+    quickFilters.push({ id: 'cv', label: '🎗️ Volunteer Gaps', count: summary.munisCvIssue, cls: 'chip-warn' });
+  }
+  quickFilters.push({ id: 'compliant', label: '✓ On Track', count: summary.munisCompliant, cls: 'chip-good' });
+
+  var activeFilter = STATE.muniFilter || 'all';
+  var quickChipsHtml = '<div class="quick-filter-bar">' +
+    '<span class="tiny text-muted" style="font-weight:700;margin-right:4px;">Quick Presets:</span>' +
+    quickFilters.map(function (f) {
+      var isActive = activeFilter === f.id;
+      return '<button type="button" class="quick-filter-chip' + (f.cls ? ' ' + f.cls : '') + (isActive ? ' active' : '') + '" data-act="mu-filter" data-v="' + f.id + '">' +
+        '<span>' + f.label + '</span>' +
+        '<span class="tiny" style="opacity:0.85">(' + n(f.count) + ')</span>' +
+      '</button>';
+    }).join('') +
+  '</div>';
+
+  var isMuni = isMunicipalUser();
+
   $('mu-body').innerHTML =
-    '<div class="card"><div class="card-head"><div><h2>Municipalities</h2><div class="muted">Records with an attendance sheet / target per activity (+ recorded without a sheet). Click a municipality for its barangays.</div></div>' +
-      '<button class="btn ghost btn-sm" data-act="csv-munis">' + icon('download') + ' <span>CSV</span></button></div>' +
+    renderMuniTriageTray(summary, cvOn) +
+    '<div class="card">' +
+      '<div class="card-head">' +
+        '<div>' +
+          '<h2>Municipalities</h2>' +
+          '<div class="muted">Records with signed attendance sheet / expected target per activity (+ recorded without sheet). Click any municipality row to drill down into its barangays.</div>' +
+        '</div>' +
+        '<button class="btn ghost btn-sm" data-act="csv-munis">' + icon('download') + ' <span>CSV</span></button>' +
+      '</div>' +
       stageSwitch() +
-      '<div class="toolbar-row"><div class="filters" style="margin:0">' +
-        '<label class="field"><span>Province</span><select data-act="prov-select">' + ['<option value="">Whole region</option>'].concat(provinces().map(function (p) {
-          return '<option value="' + attr(p) + '"' + (STATE.prov === p ? ' selected' : '') + '>' + esc(p) + '</option>'; })).join('') + '</select></label>' +
-        '<label class="field"><span>Search</span><input type="search" id="mu-search" value="' + attr(STATE.muniSearch) + '" placeholder="Municipality or province…"></label>' +
-        (hasFilter ? '<button type="button" class="btn ghost btn-sm" data-act="muni-reset">' + icon('rotate-ccw') + ' <span>Reset filters</span></button>' : '') +
-      '</div><span class="tiny">Showing <strong>' + n(rows.length) + '</strong> ' + (rows.length === 1 ? 'municipality' : 'municipalities') + '</span></div>' +
+      '<div class="toolbar-row">' +
+        '<div class="filters" style="margin:0">' +
+          (!isMuni ? '<label class="field"><span>Province</span><select data-act="prov-select">' + ['<option value="">Whole region</option>'].concat(provinces().map(function (p) {
+            return '<option value="' + attr(p) + '"' + (STATE.prov === p ? ' selected' : '') + '>' + esc(p) + '</option>'; })).join('') + '</select></label>' : '') +
+          '<label class="field"><span>Search</span><input type="search" id="mu-search" value="' + attr(STATE.muniSearch) + '" placeholder="Municipality or province…"></label>' +
+          (hasFilter ? '<button type="button" class="btn ghost btn-sm" data-act="muni-reset">' + icon('rotate-ccw') + ' <span>Reset filters</span></button>' : '') +
+        '</div>' +
+        '<span class="tiny">Showing <strong>' + n(rows.length) + '</strong> of <strong>' + n(baseRows.length) + '</strong> ' + (baseRows.length === 1 ? 'municipality' : 'municipalities') + '</span>' +
+      '</div>' +
+      quickChipsHtml +
       '<div class="table-wrap"><table class="grid"><thead><tr>' +
-        th('muni', 'Municipality (' + rows.length + ')', false, null, null, true) +
+        th('muni', 'Municipality (' + rows.length + ')', false, null, 'Click row to view barangays in this municipality', true) +
         acts.map(function (a) { return th('act_' + a.code, esc(a.code), false, 'Seq ' + esc(a.seq), a.label); }).join('') +
-        th('lacking', 'Lacking', true) +
-        (STATE.stage === 1 ? th('k2', 'K2 (1st BA)', true) : '') +
-        (cvOn ? th('BREST', 'BResT', true) + th('SFMSC', 'SFMSC', true) : '') +
-      '</tr></thead><tbody>' + (body || '<tr><td colspan="30" class="empty-state">No municipality matches your filter.</td></tr>') + '</tbody></table></div>' +
+        th('lacking', 'Lacking', true, null, 'Unencoded records (conducted in field > 3 days ago but missing in KCIS)') +
+        (STATE.stage === 1 ? th('k2', 'K2 (1st BA)', true, null, 'Percentage of listed households present in 1st BA (quorum threshold: 70%)', false, 'k2') : '') +
+        (cvOn ? th('BREST', 'BResT', true, null, 'Barangay Resiliency Team volunteer composition', false, 'brest') + th('SFMSC', 'SFMSC', true, null, 'Sub-Project Financial Management Support Committee volunteers') : '') +
+      '</tr></thead><tbody>' + (body || '<tr><td colspan="30" class="empty-state">No municipality matches your active filter or search criteria.</td></tr>') + '</tbody></table></div>' +
     '</div>';
+
   bindSearch('mu-search', function (v) { STATE.muniSearch = v; renderMunis(); });
+  refreshIcons($('mu-body'));
 }
 
 // ---- barangays ---------------------------------------------------------------
 
 var BRGY_FILTERS = [
   { id: 'all', label: 'All barangays', test: function () { return true; } },
-  { id: 'lacking', label: 'Lacking records', test: function (b) { return (b.owed || 0) > 0; } },
-  { id: 'nosheet', label: 'Recorded without sheet', test: function (b) { return Object.keys(b.activities).some(function (k) { return b.activities[k].status === 'No Attendees' && !b.activities[k].notApplicable; }); } },
+  { id: 'lacking', label: 'Lacking records', test: function (b) { return ((b.todo && b.todo.length) || (b.owed || 0)) > 0; } },
+  { id: 'nosheet', label: 'Recorded without sheet', test: function (b) { return Object.keys(b.activities || {}).some(function (k) { return b.activities[k].status === 'No Attendees' && !b.activities[k].notApplicable; }); } },
   { id: 'k2', label: 'K2 below 70%', test: function (b) { return b.hhListed > 0 && b.hhRate < 0.7; } },
   { id: 'cv', label: 'Volunteers missing', test: function (b) { return !!b.volunteers && Object.keys(b.volunteers).some(function (k) { return b.volunteers[k].status === 'Not encoded'; }); } },
-  { id: 'sfmsc', label: 'SFMSC to fix', test: function (b) { return !!b.volunteers && b.volunteers.SFMSC && b.volunteers.SFMSC.status === 'Needs fixing'; } }
+  { id: 'sfmsc', label: 'SFMSC to fix', test: function (b) { return !!b.volunteers && b.volunteers.SFMSC && b.volunteers.SFMSC.status === 'Needs fixing'; } },
+  { id: 'compliant', label: 'Compliant / On-track', test: function (b) {
+    var hasLacking = ((b.todo && b.todo.length) || (b.owed || 0)) > 0;
+    var hasNoSheet = Object.keys(b.activities || {}).some(function (k) { return b.activities[k].status === 'No Attendees' && !b.activities[k].notApplicable; });
+    var k2Bad = (STATE.stage === 1 && b.hhListed > 0 && b.hhRate < 0.7);
+    var cvBad = (STATE.stage === 1 && !!b.volunteers && Object.keys(b.volunteers).some(function (k) { return b.volunteers[k].status === 'Not encoded' || b.volunteers[k].status === 'Needs fixing'; }));
+    return !hasLacking && !hasNoSheet && !k2Bad && !cvBad;
+  } }
 ];
 
 function brgyStatusPill(x, a) {
   if (!x || x.notApplicable || x.status === 'N/A') return '<span class="tiny">—</span>';
-  if (x.status === 'Complete') return '<span class="pill good" title="' + attr(n(x.attendees) + ' attendees') + '">✓ ' + n(x.attendees) + '</span>';
-  if (x.status === 'No Attendees') return '<span class="pill warn" title="Encoded, attendance sheet missing">No sheet</span>';
+  if (x.status === 'Complete') return '<span class="pill good" title="' + attr(n(x.attendees) + ' attendees recorded with signed attendance sheet') + '">✓ ' + n(x.attendees) + '</span>';
+  if (x.status === 'No Attendees') return '<span class="pill warn" title="Activity encoded in KCIS, signed physical attendance sheet pending upload">Pending Sheet</span>';
   return '<span class="pill ' + (a.field === 'Completed' ? 'bad' : 'idle') + '" title="Not in KCIS' + (a.field === 'Completed' ? ' (field conduct: Completed)' : '') + '">○</span>';
 }
 function cvPill(v, code) {
@@ -1537,6 +2505,177 @@ function cvPill(v, code) {
   var x = v[code], cls = x.status === 'Encoded' ? 'good' : x.status === 'Needs fixing' ? 'warn' : 'bad';
   return '<span class="pill ' + cls + '" title="' + attr(x.status + (x.reasons && x.reasons.length ? ': ' + x.reasons.join(', ') : '')) + '">' + esc(x.status === 'Encoded' ? '✓ ' + x.members : x.status === 'Needs fixing' ? '⚠ ' + x.members : '○') + '</span>' +
     (x.reasons && x.reasons.length ? '<div class="tiny">' + esc(x.reasons.join(' · ')) + '</div>' : '');
+}
+
+function brgyProgress(b, acts) {
+  var aList = acts || stageActs();
+  var exp = 0, comp = 0;
+  aList.forEach(function (a) {
+    if (a.level === 'Municipal') return;
+    var x = b.activities && b.activities[a.code];
+    if (!x || x.notApplicable || x.status === 'N/A') return;
+    exp++;
+    if (x.status === 'Complete') comp++;
+  });
+  return exp > 0 ? comp / exp : 0;
+}
+
+function getBrgyTriageSummary(all, acts, cvOn) {
+  var isCv = (cvOn !== undefined) ? cvOn : (STATE.stage === 1 && S.overview && S.overview.volunteers && S.overview.volunteers.imported);
+
+  var lackingCount = 0, totalLacking = 0;
+  var noSheetCount = 0, totalNoSheet = 0;
+  var k2RiskCount = 0;
+  var cvGapsCount = 0;
+  var sfmscFixCount = 0;
+  var compliantCount = 0;
+
+  (all || []).forEach(function (b) {
+    var lackItems = ((b.todo && b.todo.length) || 0) + (b.owed || 0);
+    var hasLacking = lackItems > 0;
+
+    var noSheetActs = 0;
+    Object.keys(b.activities || {}).forEach(function (k) {
+      var act = b.activities[k];
+      if (act && act.status === 'No Attendees' && !act.notApplicable) noSheetActs++;
+    });
+    var hasNoSheet = noSheetActs > 0;
+
+    var k2Risk = (STATE.stage === 1 && b.hhListed > 0 && b.hhRate < 0.7);
+
+    var cvGaps = false, sfmscFix = false;
+    if (isCv && b.volunteers) {
+      if (b.volunteers.BREST && b.volunteers.BREST.status === 'Not encoded') cvGaps = true;
+      if (b.volunteers.SFMSC) {
+        if (b.volunteers.SFMSC.status === 'Not encoded') cvGaps = true;
+        if (b.volunteers.SFMSC.status === 'Needs fixing') sfmscFix = true;
+      }
+    }
+
+    if (hasLacking) { lackingCount++; totalLacking += lackItems; }
+    if (hasNoSheet) { noSheetCount++; totalNoSheet += noSheetActs; }
+    if (k2Risk) k2RiskCount++;
+    if (cvGaps) cvGapsCount++;
+    if (sfmscFix) sfmscFixCount++;
+
+    if (!hasLacking && !hasNoSheet && !k2Risk && !cvGaps && !sfmscFix) {
+      compliantCount++;
+    }
+  });
+
+  return {
+    totalBrgys: (all || []).length,
+    lackingBrgys: lackingCount,
+    totalLackingItems: totalLacking,
+    noSheetBrgys: noSheetCount,
+    totalNoSheetActivities: totalNoSheet,
+    k2RiskBrgys: k2RiskCount,
+    cvGapsBrgys: cvGapsCount,
+    sfmscFixBrgys: sfmscFixCount,
+    compliantBrgys: compliantCount
+  };
+}
+
+function renderBrgyTriageTray(summary, cvOn) {
+  var isCv = (cvOn !== undefined) ? cvOn : (STATE.stage === 1 && S.overview && S.overview.volunteers && S.overview.volunteers.imported);
+  var items = [];
+  var total = summary.totalBrgys;
+
+  // 1. All Monitored Barangays
+  items.push(
+    '<button type="button" class="triage-item' + ((!STATE.brgyFilter || STATE.brgyFilter === 'all') ? ' active-triage' : '') + '" data-act="brgy-filter" data-v="all" title="View all monitored barangays in this municipality">' +
+      '<div class="triage-item-info">' +
+        '<span class="triage-item-count">' + n(total) + '</span>' +
+        '<span class="triage-item-label">Monitored Barangays</span>' +
+      '</div>' +
+      '<span class="triage-item-arrow">' + icon('arrow-right') + '</span>' +
+    '</button>'
+  );
+
+  // 2. Backlog
+  if (summary.lackingBrgys > 0) {
+    items.push(
+      '<button type="button" class="triage-item triage-bad' + (STATE.brgyFilter === 'lacking' ? ' active-triage' : '') + '" data-act="brgy-filter" data-v="lacking" title="Filter barangays with unencoded activities (>3 days overdue)">' +
+        '<div class="triage-item-info">' +
+          '<span class="triage-item-count">' + n(summary.lackingBrgys) + '</span>' +
+          '<span class="triage-item-label">Barangays with Backlog (' + n(summary.totalLackingItems) + ' items)</span>' +
+        '</div>' +
+        '<span class="triage-item-arrow">' + icon('arrow-right') + '</span>' +
+      '</button>'
+    );
+  }
+
+  // 3. Pending Sheets
+  if (summary.noSheetBrgys > 0) {
+    items.push(
+      '<button type="button" class="triage-item triage-warn' + (STATE.brgyFilter === 'nosheet' ? ' active-triage' : '') + '" data-act="brgy-filter" data-v="nosheet" title="Filter barangays with activities recorded without signed attendance sheets">' +
+        '<div class="triage-item-info">' +
+          '<span class="triage-item-count">' + n(summary.noSheetBrgys) + '</span>' +
+          '<span class="triage-item-label">Pending Signed Sheets (' + n(summary.totalNoSheetActivities) + ')</span>' +
+        '</div>' +
+        '<span class="triage-item-arrow">' + icon('arrow-right') + '</span>' +
+      '</button>'
+    );
+  }
+
+  // 4. K2 Quorum Alert (Stage 1 only)
+  if (STATE.stage === 1 && summary.k2RiskBrgys > 0) {
+    items.push(
+      '<button type="button" class="triage-item triage-warn' + (STATE.brgyFilter === 'k2' ? ' active-triage' : '') + '" data-act="brgy-filter" data-v="k2" title="Filter barangays where 1st Barangay Assembly household quorum is below 70%">' +
+        '<div class="triage-item-info">' +
+          '<span class="triage-item-count">' + n(summary.k2RiskBrgys) + '</span>' +
+          '<span class="triage-item-label">Barangays Below 70% Quorum</span>' +
+        '</div>' +
+        '<span class="triage-item-arrow">' + icon('arrow-right') + '</span>' +
+      '</button>'
+    );
+  }
+
+  // 5. Volunteer Gaps & Fixes (Stage 1 with cvOn)
+  if (isCv && (summary.cvGapsBrgys > 0 || summary.sfmscFixBrgys > 0)) {
+    var vCount = summary.cvGapsBrgys + summary.sfmscFixBrgys;
+    items.push(
+      '<button type="button" class="triage-item triage-warn' + (STATE.brgyFilter === 'cv' || STATE.brgyFilter === 'sfmsc' ? ' active-triage' : '') + '" data-act="brgy-filter" data-v="cv" title="Filter barangays with missing or invalid BResT/SFMSC volunteer records">' +
+        '<div class="triage-item-info">' +
+          '<span class="triage-item-count">' + n(vCount) + '</span>' +
+          '<span class="triage-item-label">Volunteer Gaps & Fixes</span>' +
+        '</div>' +
+        '<span class="triage-item-arrow">' + icon('arrow-right') + '</span>' +
+      '</button>'
+    );
+  }
+
+  // 6. Compliant Barangays
+  items.push(
+    '<button type="button" class="triage-item triage-good' + (STATE.brgyFilter === 'compliant' ? ' active-triage' : '') + '" data-act="brgy-filter" data-v="compliant" title="Filter barangays with zero backlog and all milestone standards met">' +
+      '<div class="triage-item-info">' +
+        '<span class="triage-item-count">' + n(summary.compliantBrgys) + '</span>' +
+        '<span class="triage-item-label">Fully Compliant Barangays</span>' +
+      '</div>' +
+      '<span class="triage-item-arrow">' + icon('arrow-right') + '</span>' +
+    '</button>'
+  );
+
+  var isAllGood = summary.lackingBrgys === 0 && summary.noSheetBrgys === 0 && summary.k2RiskBrgys === 0 && (!isCv || (summary.cvGapsBrgys === 0 && summary.sfmscFixBrgys === 0));
+  var trayCls = isAllGood ? 'triage-tray all-good' : (summary.lackingBrgys > 0 ? 'triage-tray has-critical' : 'triage-tray');
+  var issuesCount = (summary.lackingBrgys > 0 ? 1 : 0) + (summary.noSheetBrgys > 0 ? 1 : 0) + (summary.k2RiskBrgys > 0 ? 1 : 0) + (isCv && (summary.cvGapsBrgys > 0 || summary.sfmscFixBrgys > 0) ? 1 : 0);
+  var badgeHtml = isAllGood
+    ? '<span class="triage-badge">All Barangays Compliant</span>'
+    : '<span class="triage-badge">' + issuesCount + ' Focus ' + (issuesCount === 1 ? 'Area' : 'Areas') + '</span>';
+
+  return (
+    '<div class="' + trayCls + '">' +
+      '<div class="triage-head">' +
+        '<div class="triage-title">' +
+          icon(isAllGood ? 'check-circle-2' : 'alert-circle') +
+          '<span>Barangay Operations Triage & Pipeline Status</span> ' +
+          badgeHtml +
+        '</div>' +
+        (!isAllGood ? '<span class="tiny muted">Click any triage card or quick filter chip below to isolate specific barangays</span>' : '') +
+      '</div>' +
+      '<div class="triage-grid">' + items.join('') + '</div>' +
+    '</div>'
+  );
 }
 
 function brgyRows(displayActsOverride) {
@@ -1551,6 +2690,7 @@ function brgyRows(displayActsOverride) {
   var extractors = {
     brgy: function (b) { return b.barangay; },
     k2: function (b) { return b.hhListed ? b.hhRate : null; },
+    rate: function (b) { return brgyProgress(b, acts); },
     BREST: function (b) { var v = b.volunteers && b.volunteers.BREST; return v ? (v.status === 'Encoded' ? 2 : v.status === 'Needs fixing' ? 1 : 0) : null; },
     SFMSC: function (b) { var v = b.volunteers && b.volunteers.SFMSC; return v ? (v.status === 'Encoded' ? 2 : v.status === 'Needs fixing' ? 1 : 0) : null; },
     lacking: function (b) { return (b.todo && b.todo.length) || (b.owed || 0); }
@@ -1580,6 +2720,7 @@ function renderBrgys() {
   var hideMuni = STATE.brgyHideMuni !== false;
   var displayActs = hideMuni ? acts.filter(function (a) { return a.level !== 'Municipal'; }) : acts;
   var all = (SNAP.barangayRows || []).filter(function (b) { return b.province + '|' + b.municipality === STATE.muni; });
+  var summary = getBrgyTriageSummary(all, acts, cvOn);
   var rows = brgyRows(displayActs);
   var opts = '', lastProv = '';
   munis.forEach(function (m) {
@@ -1588,30 +2729,64 @@ function renderBrgys() {
     opts += '<option value="' + attr(v) + '"' + (STATE.muni === v ? ' selected' : '') + '>' + esc(m.municipality) + '</option>';
   });
   opts += '</optgroup>';
-  var bq = normSearch(STATE.brgySearch);
-  var baseAll = bq ? all.filter(function (b) { return normSearch(b.barangay).indexOf(bq) !== -1; }) : all;
-  var cards = BRGY_FILTERS.map(function (f) {
-    var c = baseAll.filter(f.test).length;
-    if (f.id === 'cv' || f.id === 'sfmsc') { if (!cvOn) return ''; }
-    var cardCls = f.id === 'lacking' && c > 0 ? 'fc-bad' : ((f.id === 'nosheet' || f.id === 'k2' || f.id === 'sfmsc') && c > 0 ? 'fc-warn' : '');
-    return '<button type="button" class="filter-card' + (cardCls ? ' ' + cardCls : '') + (STATE.brgyFilter === f.id ? ' active' : '') + '" data-act="brgy-filter" data-v="' + f.id + '">' +
-      '<span class="fc-label">' + esc(f.label) + '</span>' +
-      '<span class="fc-count">' + n(c) + '</span>' +
-    '</button>';
-  }).join('');
+
+  var quickFilters = [
+    { id: 'all', label: 'All Barangays', count: summary.totalBrgys, cls: '' },
+    { id: 'lacking', label: '🚨 With Backlog', count: summary.lackingBrgys, cls: 'chip-bad' },
+    { id: 'nosheet', label: '⚠️ Pending Sheet', count: summary.noSheetBrgys, cls: 'chip-warn' }
+  ];
+  if (STATE.stage === 1) {
+    quickFilters.push({ id: 'k2', label: '👥 Quorum < 70%', count: summary.k2RiskBrgys, cls: 'chip-warn' });
+  }
+  if (cvOn) {
+    quickFilters.push({ id: 'cv', label: '🎗️ Missing Volunteers', count: summary.cvGapsBrgys, cls: 'chip-warn' });
+    if (summary.sfmscFixBrgys > 0) {
+      quickFilters.push({ id: 'sfmsc', label: '⚙️ SFMSC to Fix', count: summary.sfmscFixBrgys, cls: 'chip-warn' });
+    }
+  }
+  quickFilters.push({ id: 'compliant', label: '✓ On Track', count: summary.compliantBrgys, cls: 'chip-good' });
+
+  var activeFilter = STATE.brgyFilter || 'all';
+  var quickChipsHtml = '<div class="quick-filter-bar">' +
+    '<span class="tiny text-muted" style="font-weight:700;margin-right:4px;">Quick Presets:</span>' +
+    quickFilters.map(function (f) {
+      var isActive = activeFilter === f.id;
+      return '<button type="button" class="quick-filter-chip' + (f.cls ? ' ' + f.cls : '') + (isActive ? ' active' : '') + '" data-act="brgy-filter" data-v="' + f.id + '">' +
+        '<span>' + f.label + '</span>' +
+        '<span class="tiny" style="opacity:0.85">(' + n(f.count) + ')</span>' +
+      '</button>';
+    }).join('') +
+  '</div>';
+
   // every cell opens the people behind it in the dedicated module
   var link = function (v, html, title) { return '<button type="button" class="cell-link" data-act="p-open" data-v="' + attr(v) + '" title="' + attr(title) + '">' + html + '</button>'; };
   var body = rows.map(function (b) {
     var bkey = b.province + '|' + b.municipality + '|' + b.barangay;
-    var lackCount = (b.todo && b.todo.length) || 0;
+    var lackCount = (b.todo && b.todo.length) || (b.owed || 0);
     var lackCell = lackCount > 0
       ? '<button type="button" class="btn bad btn-xs lacking-btn" data-act="open-lacking" data-brgy="' + attr(bkey) + '" title="Click to view all ' + lackCount + ' lacking items and data quality findings">' +
           icon('alert-circle') + ' <span>' + n(lackCount) + ' lacking</span>' +
         '</button>'
       : '<span class="pill good tiny" title="All monitored activities encoded">✓ 0 lacking</span>';
 
-    return '<tr><td class="sticky"><strong>' + esc(b.barangay) + '</strong>' + (b.stage2Prio && STATE.stage === 2 ? ' <span class="pill idle">Prio</span>' : '') +
-        '<div><button type="button" class="link tiny" data-act="p-open" data-v="' + attr('attendees#' + bkey) + '">Attendees ›</button></div></td>' +
+    var pRate = brgyProgress(b, displayActs);
+    var pPct = Math.round(pRate * 100);
+
+    return '<tr><td class="sticky">' +
+        '<div style="display:flex;align-items:center;justify-content:space-between;gap:6px">' +
+          '<strong>' + esc(b.barangay) + '</strong>' +
+          (b.stage2Prio && STATE.stage === 2 ? ' <span class="pill idle">Prio</span>' : '') +
+        '</div>' +
+        '<div style="margin-top:4px">' +
+          '<div class="step-progress-mini" style="height:3px" title="' + pPct + '% stage activities completed">' +
+            '<div class="step-progress-mini-bar" style="width:' + pPct + '%;' + (pRate >= 1 ? 'background:var(--good);' : '') + '"></div>' +
+          '</div>' +
+          '<div class="tiny" style="color:var(--text-dim);margin-top:2px;font-size:10px;display:flex;justify-content:space-between;align-items:center">' +
+            '<span>' + pPct + '% complete</span>' +
+            '<button type="button" class="link tiny" data-act="p-open" data-v="' + attr('attendees#' + bkey) + '" style="font-size:9.5px">Attendees ›</button>' +
+          '</div>' +
+        '</div>' +
+      '</td>' +
       displayActs.map(function (a) {
         if (a.level === 'Municipal') {
           return '<td class="cell-muni-muted" title="' + attr(a.label + ' is conducted at the Municipal level') + '"><span class="tiny">—</span></td>';
@@ -1625,18 +2800,20 @@ function renderBrgys() {
       (cvOn ? '<td>' + link('volunteers#' + bkey + '#BREST', cvPill(b.volunteers, 'BREST'), 'See BResT') + '</td><td>' + link('volunteers#' + bkey + '#SFMSC', cvPill(b.volunteers, 'SFMSC'), 'See SFMSC') + '</td>' : '') +
       '<td>' + lackCell + '</td></tr>';
   }).join('');
+
   var parts = STATE.muni.split('|');
-  var hasFilter = !!(STATE.brgySearch || STATE.brgyFilter !== 'all');
+  var hasFilter = !!(STATE.brgySearch || (STATE.brgyFilter && STATE.brgyFilter !== 'all'));
   var curCol = (STATE.brgySort && STATE.brgySort.col) || 'brgy';
   var curDir = (STATE.brgySort && STATE.brgySort.dir) || 'asc';
-  var th = function (col, label, num, sub, title, sticky, extraClass) {
-    return sortTh({ col: col, curCol: curCol, dir: curDir, label: label, num: num, sub: sub, title: title, sticky: sticky, act: 'bg-sort', extraClass: extraClass });
+  var th = function (col, label, num, sub, title, sticky, extraClass, term, tooltip) {
+    return sortTh({ col: col, curCol: curCol, dir: curDir, label: label, num: num, sub: sub, title: title, sticky: sticky, act: 'bg-sort', extraClass: extraClass, term: term, tooltip: tooltip });
   };
   var muniControl = isMuni
     ? '<div class="static-val">' + icon('map-pin') + ' <span>Municipality: <strong>' + esc(parts[1] || '') + '</strong> (' + esc(parts[0] || '') + ')</span> <span class="role-badge field">PEA / MDM Scope</span></div>'
     : '<label class="field"><span>Municipality</span><select data-act="muni-select">' + opts + '</select></label>';
 
   $('bg-body').innerHTML =
+    renderBrgyTriageTray(summary, cvOn) +
     '<div class="card"><div class="card-head"><div><h2>Barangays · ' + esc(parts[1] || '') + ' <span class="muted" style="font-weight:400">(' + esc(parts[0] || '') + ')</span></h2>' +
       '<div class="muted">' + n(all.length) + ' monitored barangays. Click any cell to inspect the attendees, roster, or volunteers.</div></div>' +
       '<button class="btn ghost btn-sm" data-act="csv-brgys">' + icon('download') + ' <span>CSV</span></button></div>' +
@@ -1648,24 +2825,30 @@ function renderBrgys() {
           '<input type="checkbox" id="chk-hide-muni" data-act="toggle-hide-muni"' + (hideMuni ? ' checked' : '') + '> <span>Hide municipal activities</span>' +
         '</label>' +
         (hasFilter ? '<button type="button" class="btn ghost btn-sm" data-act="brgy-reset">' + icon('rotate-ccw') + ' <span>Reset filters</span></button>' : '') +
-      '</div><div class="legend" style="margin:0"><span class="pill good">✓ Attendees</span><span class="pill warn">No sheet</span><span class="pill idle">○ Not in KCIS</span>' +
-      (!hideMuni ? '<span class="pill idle" style="opacity:0.65">— Municipal (N/A)</span>' : '') +
+      '</div><div class="legend" style="margin:0">' +
+        '<span class="pill good">✓ Attendees</span>' +
+        '<span class="pill warn">Pending Sheet</span>' +
+        '<span class="pill idle">○ Not in KCIS</span>' +
+        (!hideMuni ? '<span class="pill idle" style="opacity:0.65">— Municipal (N/A)</span>' : '') +
       '</div></div>' +
-      '<div class="filter-cards">' + cards + '</div>' +
+      '<div class="toolbar-row" style="margin-top:0;margin-bottom:6px"><span class="tiny">Showing <strong>' + n(rows.length) + '</strong> of <strong>' + n(all.length) + '</strong> ' + (all.length === 1 ? 'barangay' : 'barangays') + '</span></div>' +
+      quickChipsHtml +
       '<div class="table-wrap"><table class="grid"><thead><tr>' +
-        th('brgy', 'Barangay (' + rows.length + ')', false, null, null, true) +
+        th('brgy', 'Barangay (' + rows.length + ')', false, null, 'Monitored barangay name', true) +
         displayActs.map(function (a) {
-          var isMuni = a.level === 'Municipal';
-          var sub = 'Seq ' + esc(a.seq) + (isMuni ? ' · Muni' : '');
-          return th('act_' + a.code, esc(a.code), false, sub, a.label + (isMuni ? ' (Municipal Level)' : ''), false, isMuni ? 'th-muni-muted' : '');
+          var isM = a.level === 'Municipal';
+          var sub = 'Seq ' + esc(a.seq) + (isM ? ' · Muni' : '');
+          return th('act_' + a.code, esc(a.code), false, sub, a.label + (isM ? ' (Municipal Level)' : ''), false, isM ? 'th-muni-muted' : '');
         }).join('') +
-        (STATE.stage === 1 ? th('k2', 'K2', true) : '') +
-        (cvOn ? th('BREST', 'BResT') + th('SFMSC', 'SFMSC') : '') +
-        th('lacking', 'Lacking', true) +
-      '</tr></thead><tbody>' + (body || '<tr><td colspan="30" class="empty-state">No barangay matches these filters.</td></tr>') + '</tbody></table></div>' +
+        (STATE.stage === 1 ? th('k2', 'K2', true, null, '1st BA Household Quorum (threshold: ≥ 70%)', false, '', 'k2') : '') +
+        (cvOn ? th('BREST', 'BResT', false, null, 'Barangay Resiliency Team volunteers', false, '', 'brest') + th('SFMSC', 'SFMSC', false, null, 'Sub-Project Financial Management Support Committee volunteers', false, '', 'sfmsc') : '') +
+        th('lacking', 'Lacking', true, null, 'Unencoded activities conducted in field > 3 days ago', false, '', 'lacking') +
+      '</tr></thead><tbody>' + (body || '<tr><td colspan="30" class="empty-state">No barangay matches your active filter or search criteria.</td></tr>') + '</tbody></table></div>' +
     '</div>';
   bindSearch('bg-search', function (v) { STATE.brgySearch = v; renderBrgys(); });
+  refreshIcons($('bg-body'));
 }
+
 
 // ---- KPI Summary -------------------------------------------------------------
 
@@ -1679,28 +2862,17 @@ function renderKpiSummary() {
     return;
   }
 
-  var isMuni = isMunicipalUser(), key = homeKey();
-  var h = home() || {};
+  var metrics = getScopedCompositeMetrics();
+  var isMuni = metrics.isMuni, key = metrics.key, h = metrics.h;
   var scopeTitle = isMuni
     ? (h.municipality ? h.municipality + ' (' + h.province + ')' : 'Assigned Municipality')
     : (STATE.prov ? STATE.prov + ' Province' : 'Caraga Region (All Monitored LGUs)');
 
-  // 1. Pipeline Metrics
-  var pipe = scopedPipeline();
-  var pipeTot = pipe.reduce(function (acc, p) {
-    acc.e += p.expected || 0;
-    acc.c += p.complete || 0;
-    acc.na += p.noAttendees || 0;
-    acc.ne += p.notEncoded || 0;
-    acc.b += p.backlog || 0;
-    return acc;
-  }, { e: 0, c: 0, na: 0, ne: 0, b: 0 });
-  var pipeRate = pipeTot.e > 0 ? (pipeTot.c / pipeTot.e) : 0;
+  var pipe = metrics.pipe, pipeTot = metrics.pipeTot, pipeRate = metrics.pipeRate;
+  var k2 = metrics.k2, totalBrgys = metrics.totalBrgys, brgysInScope = metrics.brgysInScope;
+  var brestCompliant = metrics.brestCompliant, brestRate = metrics.brestRate;
+  var munisList = metrics.munisList, regionalMrestEnc = metrics.regionalMrestEnc, compositeIndex = metrics.compositeIndex;
 
-  // 2. K2 Quorum Metrics
-  var k2 = scopedK2();
-
-  // 3. People / Volunteer Inclusion Metrics
   var P = people(), inScope = pScopeTest();
   var volsInScope = P.volunteers.filter(inScope);
   var totVols = volsInScope.length;
@@ -1708,29 +2880,11 @@ function renderKpiSummary() {
   var margVols = volsInScope.filter(function (v) { return v.sex === 'female' || v.ip || v.pwd; }).length;
   var chairVols = volsInScope.filter(function (v) { return v.chair; }).length;
 
-  // 4. BResT Metrics
-  var brgysInScope = (SNAP.barangayRows || []).filter(function (b) {
-    return isMuni ? (b.province + '|' + b.municipality === key) : (!STATE.prov || b.province === STATE.prov);
-  });
-  var totalBrgys = brgysInScope.length;
-  var brestCompliant = brgysInScope.filter(function (b) { return b.volunteers && b.volunteers.BREST && b.volunteers.BREST.status === 'Encoded'; }).length;
   var brestIssues = brgysInScope.filter(function (b) { return b.volunteers && b.volunteers.BREST && b.volunteers.BREST.status === 'Needs fixing'; }).length;
-  var brestRate = totalBrgys > 0 ? (brestCompliant / totalBrgys) : 0;
-
-  // 5. MResT Metrics
   var mrestList = (P.mrest || []).filter(inScope);
   var mrestEncoded = mrestList.length > 0;
   var eoTag = isMuni ? ((typeof vfTag === 'function') ? vfTag('mrest|' + (h.province || '') + '|' + (h.municipality || '') + '||MREST') : null) : null;
   var eoVerified = eoTag && eoTag.rows && Object.keys(eoTag.rows).length > 0;
-  var munisList = baselineMunis().filter(function (m) { return !STATE.prov || m.province === STATE.prov; });
-  var regionalMrestEnc = munisList.filter(function (m) {
-    return (P.mrest || []).some(function (r) { return r.province === m.province && r.municipality === m.municipality; });
-  }).length;
-
-  // 6. Overall Composite Index
-  var compositeIndex = isMuni
-    ? Math.round(0.4 * (pipeRate * 100) + 0.3 * ((k2.rate ? Math.min(1, k2.rate / 0.7) : 0) * 100) + 0.3 * (brestRate * 100))
-    : Math.round(0.35 * (pipeRate * 100) + 0.25 * ((k2.rate ? Math.min(1, k2.rate / 0.7) : 0) * 100) + 0.25 * (brestRate * 100) + 0.15 * ((regionalMrestEnc / (munisList.length || 1)) * 100));
 
   // Executive Header Hero
   var heroHtml =
@@ -1751,32 +2905,32 @@ function renderKpiSummary() {
   var cardsHtml =
     '<div class="kpi-section-title">' + icon('gauge') + ' <span>Tier 1 Strategic Performance Index</span></div>' +
     '<div class="kpi-mini-grid">' +
-      '<div class="kpi-mini-card ' + (pipeRate >= 0.8 ? 'accent-good' : (pipeRate >= 0.5 ? 'accent-warn' : 'accent-bad')) + '">' +
+      '<div class="kpi-mini-card ' + (pipeRate >= 0.8 ? 'accent-good' : (pipeRate >= 0.5 ? 'accent-warn' : 'accent-bad')) + '" data-tooltip="Percentage of expected Stage ' + STATE.stage + ' activities encoded with verified physical attendance sheet">' +
         '<div class="kpi-mini-label">Pipeline Completion (Attn Sheet)</div>' +
         '<div class="kpi-mini-val">' + pctText(pipeRate) + '</div>' +
         '<div class="kpi-mini-sub">' + n(pipeTot.c) + ' of ' + n(pipeTot.e) + ' Stage ' + STATE.stage + ' target activities</div>' +
       '</div>' +
-      '<div class="kpi-mini-card ' + (k2.rate !== null && k2.rate >= 0.7 ? 'accent-good' : (k2.rate !== null ? 'accent-warn' : 'accent-idle')) + '">' +
+      '<div class="kpi-mini-card ' + (k2.rate !== null && k2.rate >= 0.7 ? 'accent-good' : (k2.rate !== null ? 'accent-warn' : 'accent-idle')) + '" data-term="k2">' +
         '<div class="kpi-mini-label">K2 Assembly Quorum (≥70%)</div>' +
         '<div class="kpi-mini-val">' + (k2.rate !== null ? pctText(k2.rate) : '—') + '</div>' +
         '<div class="kpi-mini-sub">' + (k2.listed ? n(k2.present) + ' of ' + n(k2.listed) + ' households (' + n(k2.met) + ' brgys met)' : 'Load households export') + '</div>' +
       '</div>' +
-      '<div class="kpi-mini-card accent-good">' +
+      '<div class="kpi-mini-card accent-good" data-term="femaleratio">' +
         '<div class="kpi-mini-label">Volunteer Inclusion &amp; Leadership</div>' +
         '<div class="kpi-mini-val">' + (totVols ? pctText(pctOf(womenVols, totVols)) : '—') + '</div>' +
         '<div class="kpi-mini-sub">' + n(womenVols) + ' women (' + pctText(pctOf(margVols, totVols || 1)) + ' marginalized) · ' + n(chairVols) + ' chairs</div>' +
       '</div>' +
-      '<div class="kpi-mini-card ' + (brestCompliant === totalBrgys && totalBrgys > 0 ? 'accent-good' : (brestRate >= 0.5 ? 'accent-warn' : 'accent-bad')) + '">' +
+      '<div class="kpi-mini-card ' + (brestCompliant === totalBrgys && totalBrgys > 0 ? 'accent-good' : (brestRate >= 0.5 ? 'accent-warn' : 'accent-bad')) + '" data-term="brest">' +
         '<div class="kpi-mini-label">BResT Formation Compliance</div>' +
         '<div class="kpi-mini-val">' + pctText(brestRate) + '</div>' +
         '<div class="kpi-mini-sub">' + n(brestCompliant) + ' of ' + n(totalBrgys) + ' teams compliant with active lead</div>' +
       '</div>' +
-      '<div class="kpi-mini-card ' + (isMuni ? (eoVerified ? 'accent-good' : (mrestEncoded ? 'accent-warn' : 'accent-bad')) : (regionalMrestEnc === munisList.length ? 'accent-good' : 'accent-warn')) + '">' +
+      '<div class="kpi-mini-card ' + (isMuni ? (eoVerified ? 'accent-good' : (mrestEncoded ? 'accent-warn' : 'accent-bad')) : (regionalMrestEnc === munisList.length ? 'accent-good' : 'accent-warn')) + '" data-term="mrest">' +
         '<div class="kpi-mini-label">MResT Institutionalization</div>' +
         '<div class="kpi-mini-val">' + (isMuni ? (eoVerified ? '✓ EO Verified' : (mrestEncoded ? '✓ Encoded' : '○ Pending')) : n(regionalMrestEnc) + ' / ' + n(munisList.length)) + '</div>' +
         '<div class="kpi-mini-sub">' + (isMuni ? (eoVerified ? 'Matched against Mayor\'s EO' : (mrestEncoded ? 'Pending EO precision tag' : 'No MResT committee in KCIS')) : 'Municipal LGUs with encoded MResT') + '</div>' +
       '</div>' +
-      '<div class="kpi-mini-card ' + (compositeIndex >= 80 ? 'accent-good' : (compositeIndex >= 60 ? 'accent-warn' : 'accent-bad')) + '">' +
+      '<div class="kpi-mini-card ' + (compositeIndex >= 80 ? 'accent-good' : (compositeIndex >= 60 ? 'accent-warn' : 'accent-bad')) + '" data-tooltip="Weighted composite performance index across Pipeline completion, K2 Quorum, BResT formation, and MResT institutionalization" data-tooltip-title="Overall Composite Readiness" data-tooltip-badge="Strategic Metric">' +
         '<div class="kpi-mini-label">Overall Composite Readiness</div>' +
         '<div class="kpi-mini-val" style="color:' + (compositeIndex >= 80 ? 'var(--good-text)' : (compositeIndex >= 60 ? 'var(--warn-text)' : 'var(--bad-text)')) + '">' + compositeIndex + '%</div>' +
         '<div class="kpi-mini-sub">' + (compositeIndex >= 80 ? 'Optimal implementation readiness' : (compositeIndex >= 60 ? 'Moderate compliance; address gaps' : 'Requires high priority field support')) + '</div>' +
@@ -2508,7 +3662,7 @@ document.addEventListener('click', function (ev) {
   else if (act === 'prov') { STATE.prov = v || ''; renderPage(); updateTabBadges(); }
   else if (act === 'go') go(v);
   else if (act === 'muni') openMuni(v);
-  else if (act === 'muni-reset') { STATE.prov = ''; STATE.muniSearch = ''; renderMunis(); updateTabBadges(); }
+  else if (act === 'muni-reset') { STATE.prov = ''; STATE.muniSearch = ''; STATE.muniFilter = 'all'; renderMunis(); updateTabBadges(); }
   else if (act === 'brgy-filter') { STATE.brgyFilter = v; renderBrgys(); }
   else if (act === 'brgy-reset') { STATE.brgyFilter = 'all'; STATE.brgySearch = ''; renderBrgys(); }
   else if (act === 'kpi-brgy') { STATE.muni = homeKey() || STATE.muni; STATE.brgyFilter = v || 'all'; go('brgys'); }
@@ -2569,7 +3723,23 @@ document.addEventListener('click', function (ev) {
     }
     renderOverview();
   }
-  else if (act === 'ov-reset') { STATE.ovSearch = ''; renderOverview(); }
+  else if (act === 'ov-filter') {
+    STATE.ovFilter = t.getAttribute('data-v') || 'all';
+    STATE.ovSeqFilter = '';
+    renderOverview();
+  }
+  else if (act === 'ov-filter-seq') {
+    var seqCode = t.getAttribute('data-v') || '';
+    STATE.ovSeqFilter = (STATE.ovSeqFilter === seqCode) ? '' : seqCode;
+    STATE.ovFilter = 'all';
+    renderOverview();
+  }
+  else if (act === 'ov-reset') {
+    STATE.ovSearch = '';
+    STATE.ovFilter = 'all';
+    STATE.ovSeqFilter = '';
+    renderOverview();
+  }
   else if (act === 'mu-sort') {
     var col = t.getAttribute('data-col');
     if (STATE.muniSort.col === col) {
@@ -2578,6 +3748,10 @@ document.addEventListener('click', function (ev) {
       STATE.muniSort.col = col;
       STATE.muniSort.dir = (col === 'muni') ? 'asc' : 'desc';
     }
+    renderMunis();
+  }
+  else if (act === 'mu-filter') {
+    STATE.muniFilter = v || 'all';
     renderMunis();
   }
   else if (act === 'bg-sort') {
@@ -2860,6 +4034,29 @@ $('memo-save').addEventListener('click', function () {
   saveBlob(new Blob([$('memo-text').value], { type: 'text/plain;charset=utf-8' }), 'PCRP_data_health_memo_' + stamp() + '.txt');
 });
 
+var tabPrev = $('memo-tab-preview'), tabRaw = $('memo-tab-raw'), pnlPrev = $('memo-preview'), taText = $('memo-text');
+if (tabPrev && tabRaw && pnlPrev && taText) {
+  tabPrev.addEventListener('click', function () {
+    tabPrev.classList.add('active');
+    tabRaw.classList.remove('active');
+    pnlPrev.style.display = 'block';
+    taText.style.display = 'none';
+  });
+  tabRaw.addEventListener('click', function () {
+    tabRaw.classList.add('active');
+    tabPrev.classList.remove('active');
+    pnlPrev.style.display = 'none';
+    taText.style.display = 'block';
+    taText.select();
+  });
+}
+var btnPrint = $('memo-print');
+if (btnPrint) {
+  btnPrint.addEventListener('click', function () {
+    window.print();
+  });
+}
+
 $('home-chip').addEventListener('click', function () { openScopeDialog(); });
 
 function initSettingsScrollSpy() {
@@ -2899,6 +4096,7 @@ renderSettings();
 renderStatus();
 updateTabBadges();
 initSettingsScrollSpy();
+initTooltipEngine();
 var secPrefs = typeof PCRP_CRYPTO !== 'undefined' ? PCRP_CRYPTO.getSecurityPrefs() : null;
 if (secPrefs && secPrefs.enabled && secPrefs.pinHash) {
   PCRP_CRYPTO.lockSession('Workstation session protected by PIN.');

@@ -185,6 +185,178 @@ function dhPrecisionSummary(inScope) {
   return t;
 }
 function openVerify() { go('verify'); }
+function openVerifyForm(formKey, muniKey) {
+  if (formKey && VF_FORMS[formKey]) VERIFY.ui.form = formKey;
+  if (muniKey) {
+    if (muniKey.indexOf('|') !== -1) {
+      VERIFY.ui.muni = muniKey;
+    } else if (typeof baselineMunis === 'function') {
+      var bList = baselineMunis();
+      var found = bList && bList.find(function (m) {
+        return normKey(m.municipality) === normKey(muniKey);
+      });
+      VERIFY.ui.muni = found ? (found.province + '|' + found.municipality) : muniKey;
+    } else {
+      VERIFY.ui.muni = muniKey;
+    }
+  }
+  VERIFY.ui.open = '';
+  go('verify');
+}
+
+// ===================================================================
+// DQA FIELD FORM VERIFICATION TRIAGE & PRECISION HELPERS
+// ===================================================================
+
+function getVerifyTriageSummary(recs) {
+  var list = recs || [];
+  var totalRecords = list.length;
+  var verifiedRecords = 0;
+  var completeRecords = 0;
+  var sampleRecords = 0;
+  var todoRecords = 0;
+  var recordsWithIssues = 0;
+  var totalChecked = 0;
+  var totalMatch = 0;
+  var totalDiffers = 0;
+  var totalAbsent = 0;
+  var totalNotEncoded = 0;
+  var totalEncoded = 0;
+  var totalFormCount = 0;
+  var encodedWithForm = 0;
+
+  list.forEach(function (r) {
+    var s = vfStats(r);
+    totalEncoded += s.encoded;
+    if (s.checked > 0) {
+      verifiedRecords++;
+      totalChecked += s.checked;
+      totalMatch += s.match;
+      totalDiffers += s.differs;
+      totalAbsent += s.absent;
+    } else {
+      todoRecords++;
+    }
+    if (s.done) completeRecords++;
+    if (s.sample) sampleRecords++;
+    if (s.issues > 0) recordsWithIssues++;
+
+    if (s.formCount !== null) {
+      totalFormCount += s.formCount;
+      encodedWithForm += s.encoded;
+      if (s.formCount > s.encoded) {
+        totalNotEncoded += (s.formCount - s.encoded);
+      }
+    }
+  });
+
+  var totalIssues = totalDiffers + totalAbsent + totalNotEncoded;
+  var agreementRate = totalChecked > 0 ? (totalMatch / totalChecked) : null;
+  var factor = encodedWithForm > 0 ? (totalFormCount / encodedWithForm) : null;
+  var verifyRate = totalRecords > 0 ? (verifiedRecords / totalRecords) : 0;
+  var completeRate = totalRecords > 0 ? (completeRecords / totalRecords) : 0;
+
+  return {
+    totalRecords: totalRecords,
+    verifiedRecords: verifiedRecords,
+    completeRecords: completeRecords,
+    sampleRecords: sampleRecords,
+    todoRecords: todoRecords,
+    recordsWithIssues: recordsWithIssues,
+    totalChecked: totalChecked,
+    totalMatch: totalMatch,
+    totalDiffers: totalDiffers,
+    totalAbsent: totalAbsent,
+    totalNotEncoded: totalNotEncoded,
+    totalIssues: totalIssues,
+    totalEncoded: totalEncoded,
+    totalFormCount: totalFormCount,
+    agreementRate: agreementRate,
+    factor: factor,
+    verifyRate: verifyRate,
+    completeRate: completeRate
+  };
+}
+
+function renderVerifyTriageTray(summary, formKey) {
+  var isAllGood = summary.totalRecords > 0 && summary.completeRecords === summary.totalRecords && summary.totalIssues === 0;
+  var F = VF_FORMS[formKey] || VF_FORMS.att;
+  var items = [];
+
+  // 1. All Records
+  items.push(
+    '<button type="button" class="triage-item' + (VERIFY.ui.show === 'all' ? ' active-triage' : '') + '" data-act="vf-triage" data-v="all" title="View all ' + n(summary.totalRecords) + ' monitored ' + esc(F.label) + ' records">' +
+      '<div class="triage-item-info">' +
+        '<span class="triage-item-count">' + n(summary.totalRecords) + '</span>' +
+        '<span class="triage-item-label">' + esc(F.label) + ' Records</span>' +
+      '</div>' +
+      '<span class="triage-item-arrow">' + icon('arrow-right') + '</span>' +
+    '</button>'
+  );
+
+  // 2. Fully Verified & Compliant
+  items.push(
+    '<button type="button" class="triage-item triage-good' + (VERIFY.ui.show === 'done' ? ' active-triage' : '') + '" data-act="vf-triage" data-v="done" title="Filter records where all encoded rows were cross-checked against physical paper MOV">' +
+      '<div class="triage-item-info">' +
+        '<span class="triage-item-count">' + n(summary.completeRecords) + ' <span class="tiny">(' + n(summary.verifiedRecords) + ' active)</span></span>' +
+        '<span class="triage-item-label">Verified Compliant</span>' +
+      '</div>' +
+      '<span class="triage-item-arrow">' + icon('arrow-right') + '</span>' +
+    '</button>'
+  );
+
+  // 3. Discrepancies & Items to Fix
+  var hasIssues = summary.recordsWithIssues > 0;
+  items.push(
+    '<button type="button" class="triage-item ' + (hasIssues ? 'triage-warn' : 'triage-good') + (VERIFY.ui.show === 'issues' ? ' active-triage' : '') + '" data-act="vf-triage" data-v="issues" title="Filter records with discrepancies (spelling, sex, missing on form, or un-encoded paper names)">' +
+      '<div class="triage-item-info">' +
+        '<span class="triage-item-count">' + n(summary.recordsWithIssues) + ' <span class="tiny">(' + n(summary.totalIssues) + ' items)</span></span>' +
+        '<span class="triage-item-label">' + (hasIssues ? 'Items to Fix in KCIS' : 'Zero Discrepancies') + '</span>' +
+      '</div>' +
+      '<span class="triage-item-arrow">' + icon('arrow-right') + '</span>' +
+    '</button>'
+  );
+
+  // 4. Audit Sample (10% Random Draw)
+  items.push(
+    '<button type="button" class="triage-item' + (VERIFY.ui.show === 'sample' ? ' active-triage' : '') + '" data-act="vf-triage" data-v="sample" title="Filter records selected in the SM7 10% random verification sample">' +
+      '<div class="triage-item-info">' +
+        '<span class="triage-item-count">' + n(summary.sampleRecords) + '</span>' +
+        '<span class="triage-item-label">10% Audit Sample</span>' +
+      '</div>' +
+      '<span class="triage-item-arrow">' + icon('arrow-right') + '</span>' +
+    '</button>'
+  );
+
+  // 5. Pending Paper Review
+  if (summary.todoRecords > 0) {
+    items.push(
+      '<button type="button" class="triage-item triage-bad' + (VERIFY.ui.show === 'todo' ? ' active-triage' : '') + '" data-act="vf-triage" data-v="todo" title="Filter records pending review against physical paper form">' +
+        '<div class="triage-item-info">' +
+          '<span class="triage-item-count">' + n(summary.todoRecords) + '</span>' +
+          '<span class="triage-item-label">Pending Review</span>' +
+        '</div>' +
+        '<span class="triage-item-arrow">' + icon('arrow-right') + '</span>' +
+      '</button>'
+    );
+  }
+
+  return (
+    '<div class="triage-tray' + (isAllGood ? ' all-good' : (summary.recordsWithIssues > 0 ? ' has-critical' : '')) + '">' +
+      '<div class="triage-head">' +
+        '<div class="triage-title">' +
+          icon('clipboard-check') + ' <span>DQA Field Form Verification Action Center</span>' +
+        '</div>' +
+        '<div class="triage-badge">' +
+          (isAllGood ? 'All Verified Compliant' : (summary.recordsWithIssues > 0 ? summary.recordsWithIssues + ' with Issues' : (summary.todoRecords + ' Pending Review'))) +
+        '</div>' +
+      '</div>' +
+      '<div class="triage-grid">' +
+        items.join('') +
+      '</div>' +
+    '</div>'
+  );
+}
 
 // ---- tagging ------------------------------------------------------------------------
 
@@ -289,6 +461,23 @@ function vfUpdateInPlace(recKey, rk, status, what) {
   // Update filter card counts
   vfRefreshFilterCardCounts(rec);
 
+  // Update active sidebar item if present in split-pane workbench
+  var sideItem = document.querySelector('.vf-side-item.active');
+  if (sideItem) {
+    var rate = s.encoded > 0 ? Math.round((s.checked / s.encoded) * 100) : 0;
+    var metaSpan = sideItem.querySelector('.vf-side-item-meta .tiny');
+    if (metaSpan) metaSpan.textContent = n(s.checked) + '/' + n(s.encoded) + ' checked (' + rate + '%)';
+    var pBar = sideItem.querySelector('.vf-side-progress-bar');
+    if (pBar) pBar.style.width = rate + '%';
+  }
+
+  // Update precision progress bar in editor if present
+  var precWrap = document.querySelector('.vf-editor .quota-mini-cell');
+  if (precWrap && s.checked > 0 && typeof quotaMiniProgressBar === 'function') {
+    var pParent = precWrap.parentElement;
+    if (pParent) pParent.innerHTML = quotaMiniProgressBar(s.match, s.checked, 0.95, 'SM7 Precision Standard: ≥95% agreement');
+  }
+
   return true;
 }
 
@@ -381,6 +570,50 @@ function vfStatusPill(s) {
 
 function vfPct(v) { return v === null ? '—' : (Math.round(v * 1000) / 10).toFixed(1) + '%'; }
 
+function vfRecordSidebar(recs, activeKey, u) {
+  var q = normSearch(u.sidebarSearch || '');
+  var baseList = recs || [];
+  var list = baseList.filter(function (r) {
+    var s = vfStats(r);
+    if (u.show === 'todo' && s.checked) return false;
+    if (u.show === 'sample' && !s.sample) return false;
+    if (u.show === 'issues' && !s.issues) return false;
+    if (u.show === 'done' && !s.done) return false;
+    return !q || normSearch((r.municipality || '') + ' ' + (r.barangay || '') + ' ' + (r.label || '')).indexOf(q) !== -1;
+  });
+
+  var items = list.map(function (r) {
+    var s = vfStats(r);
+    var isCurrent = r.key === activeKey;
+    var rate = s.encoded > 0 ? Math.round((s.checked / s.encoded) * 100) : 0;
+    var badge = s.done ? (s.issues ? '<span class="pill warn text-[10px] font-bold">Issues (' + n(s.issues) + ')</span>' : '<span class="pill good text-[10px] font-bold">✓ Verified</span>')
+                       : (s.checked > 0 ? '<span class="pill text-[10px] font-bold">' + rate + '%</span>' : '<span class="tiny text-muted">To verify</span>');
+    return '<button type="button" class="vf-side-item' + (isCurrent ? ' active' : '') + '" data-act="vf-open" data-v="' + attr(r.key) + '">' +
+      '<div class="vf-side-item-head">' +
+        '<strong title="' + attr(r.barangay || 'Municipal level') + '">' + esc(r.barangay || 'Municipal level') + '</strong>' +
+        badge +
+      '</div>' +
+      '<div class="vf-side-item-sub" title="' + attr(r.label) + '">' + esc(r.label) + '</div>' +
+      '<div class="vf-side-item-meta">' +
+        '<span class="tiny">' + n(s.checked) + '/' + n(s.encoded) + ' checked (' + rate + '%)</span>' +
+        (s.formCount !== null ? '<span class="tiny muted">Form: ' + n(s.formCount) + '</span>' : '') +
+      '</div>' +
+      '<div class="vf-side-progress"><div class="vf-side-progress-bar" style="width:' + rate + '%;"></div></div>' +
+    '</button>';
+  }).join('');
+
+  return '<aside class="vf-sidebar">' +
+    '<div class="vf-sidebar-head">' +
+      '<button type="button" class="btn ghost btn-sm" data-act="vf-back" title="Return to full table view">' + icon('arrow-left') + ' <span>All Records</span></button>' +
+      '<span class="tiny" style="font-weight:700">' + n(list.length) + ' of ' + n(baseList.length) + '</span>' +
+    '</div>' +
+    '<div class="vf-sidebar-search-wrap">' +
+      '<input type="search" id="vf-sidebar-search" placeholder="Search sidebar…" value="' + attr(u.sidebarSearch || '') + '">' +
+    '</div>' +
+    '<div class="vf-sidebar-list">' + (items || '<div class="empty-state tiny" style="padding:16px 8px">No records match filter.</div>') + '</div>' +
+  '</aside>';
+}
+
 function renderVerify(keepScroll) {
   var body = $('vf-body');
   if (!body) return;
@@ -396,8 +629,17 @@ function renderVerify(keepScroll) {
 
   if (!STATE.computed) { body.innerHTML = subNav + '<div class="card"><p class="muted">Load the exports first.</p></div>'; return; }
   var u = VERIFY.ui, F = VF_FORMS[u.form];
+  var recs = vfScoped();
+
   if (u.open && vfFind(u.open)) {
-    body.innerHTML = subNav + vfRecordView(vfFind(u.open));
+    var activeRec = vfFind(u.open);
+    body.innerHTML = subNav +
+      '<div class="vf-workbench">' +
+        vfRecordSidebar(recs, u.open, u) +
+        '<main class="vf-editor">' +
+          vfRecordView(activeRec) +
+        '</main>' +
+      '</div>';
     afterVerifyRender();
     if (keepScroll !== false) {
       var newWrap = body.querySelector('.table-wrap');
@@ -410,6 +652,10 @@ function renderVerify(keepScroll) {
           activeRow.scrollIntoView({ block: 'nearest', behavior: 'auto' });
         }
       }
+    }
+    var activeSideItem = body.querySelector('.vf-side-item.active');
+    if (activeSideItem) {
+      activeSideItem.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
     }
     return;
   }
@@ -447,22 +693,47 @@ function renderVerify(keepScroll) {
     formCards +
     '<div class="toolbar-row"><div class="filters" style="margin:0">' + formSel + muniSel + bySel + '</div></div>';
 
-  var recs = vfScoped();
   if (!recs) {
     body.innerHTML = subNav + head + '<div class="empty-state">Load the Community Volunteer List to verify ' + esc(F.units) + '.</div></div>';
     afterVerifyRender(); return;
   }
   var t = vfTotals(recs);
-  var totIssues = t.differs + t.absent + t.notEncoded;
-  var kpi = function (label, val, sub, accent, showVal) {
+  var summary = getVerifyTriageSummary(recs);
+  var totIssues = summary.totalIssues;
+
+  var kpi = function (label, val, sub, accent, showVal, progressHtml) {
     return '<button type="button" class="kpi clickable ' + (accent || '') + '" data-act="vf-show-btn" data-v="' + (showVal || 'all') + '">' +
-      '<div class="kpi-label">' + label + '</div><div class="kpi-value">' + val + '</div>' + (sub ? '<div class="kpi-sub">' + sub + '</div>' : '') + '</button>';
+      '<div class="kpi-label">' + label + '</div><div class="kpi-value">' + val + '</div>' +
+      (progressHtml ? '<div style="margin:6px 0 4px">' + progressHtml + '</div>' : '') +
+      (sub ? '<div class="kpi-sub">' + sub + '</div>' : '') + '</button>';
   };
   var kpis = '<div class="grid-kpi">' +
-    kpi('Records verified', n(t.verified) + ' <span class="tiny">of ' + n(t.records) + '</span>', n(t.complete) + ' fully checked' + (t.sample ? ' · ' + n(t.sample) + ' in the sample' : ''), t.complete ? 'accent-good' : '', 'done') +
-    kpi('Rows matching the form', vfPct(t.agreement), t.checked ? n(t.match) + ' of ' + n(t.checked) + ' rows checked' : 'nothing checked yet', t.agreement !== null && t.agreement >= 0.95 ? 'accent-good' : (t.checked ? 'accent-warn' : 'accent-idle'), 'all') +
-    kpi('On the form ÷ encoded', t.factor === null ? '—' : t.factor.toFixed(2), t.factor === null ? 'enter the count on the form' : n(t.form) + ' on the forms, ' + n(t.encodedWithForm) + ' encoded', t.factor === 1 ? 'accent-good' : 'accent-idle', 'all') +
-    kpi('Items to fix in KCIS', n(totIssues), [t.differs ? n(t.differs) + ' differ' : '', t.absent ? n(t.absent) + ' not on the form' : '', t.notEncoded ? n(t.notEncoded) + ' on the form, not encoded' : ''].filter(Boolean).join(' · ') || 'No discrepancies tagged', totIssues ? 'accent-bad' : 'accent-good', 'issues') +
+    kpi('Records verified',
+      n(t.verified) + ' <span class="tiny">of ' + n(t.records) + '</span>',
+      n(t.complete) + ' fully checked' + (t.sample ? ' · ' + n(t.sample) + ' in the sample' : ''),
+      t.complete && t.complete === t.records ? 'accent-good' : (t.verified ? 'accent-idle' : ''),
+      'done',
+      (typeof quotaMiniProgressBar === 'function' && t.records > 0 ? quotaMiniProgressBar(t.complete, t.records, 1.0, 'Fully verified quota: 100% of records') : '')
+    ) +
+    kpi('Rows matching the form',
+      vfPct(t.agreement),
+      t.checked ? n(t.match) + ' of ' + n(t.checked) + ' rows checked' : 'nothing checked yet',
+      t.agreement !== null && t.agreement >= 0.95 ? 'accent-good' : (t.checked ? 'accent-warn' : 'accent-idle'),
+      'all',
+      (typeof quotaMiniProgressBar === 'function' && t.checked > 0 ? quotaMiniProgressBar(t.match, t.checked, 0.95, 'SM7 Precision Target: ≥95% agreement') : '')
+    ) +
+    kpi('On the form ÷ encoded',
+      t.factor === null ? '—' : t.factor.toFixed(2),
+      t.factor === null ? 'enter the count on the form' : n(t.form) + ' on the forms, ' + n(t.encodedWithForm) + ' encoded',
+      t.factor === 1 ? 'accent-good' : 'accent-idle',
+      'all'
+    ) +
+    kpi('Items to fix in KCIS',
+      n(totIssues),
+      [t.differs ? n(t.differs) + ' differ' : '', t.absent ? n(t.absent) + ' not on the form' : '', t.notEncoded ? n(t.notEncoded) + ' on form, un-encoded' : ''].filter(Boolean).join(' · ') || 'No discrepancies tagged',
+      totIssues ? 'accent-bad' : 'accent-good',
+      'issues'
+    ) +
   '</div>';
 
   var q = normSearch(u.search || '');
@@ -475,18 +746,24 @@ function renderVerify(keepScroll) {
   var cRecIssues = baseList.filter(function (r) { return vfStats(r).issues; }).length;
   var cRecDone = baseList.filter(function (r) { return vfStats(r).done; }).length;
 
-  var recCard = function (id, label, cnt, colorCls) {
-    return '<button type="button" class="filter-card' + (colorCls ? ' ' + colorCls : '') + (u.show === id ? ' active' : '') + '" data-act="vf-show-btn" data-v="' + id + '">' +
-      '<span class="fc-label">' + esc(label) + '</span>' +
-      '<span class="fc-count">' + n(cnt) + '</span>' +
-    '</button>';
-  };
-  var showCards = '<div class="filter-cards" style="margin:8px 0 10px">' +
-    recCard('all', 'All Records', cRecAll) +
-    recCard('todo', 'Not Verified', cRecTodo) +
-    recCard('sample', 'In Sample', cRecSample) +
-    recCard('issues', 'With Items to Fix', cRecIssues, 'fc-warn') +
-    recCard('done', 'Fully Verified', cRecDone, 'fc-good') +
+  var quickFilters = [
+    { id: 'all', label: 'All Records', count: cRecAll },
+    { id: 'done', label: '✓ Fully Verified', count: cRecDone, cls: 'chip-good' },
+    { id: 'issues', label: '⚠️ Discrepancies', count: cRecIssues, cls: 'chip-warn' },
+    { id: 'sample', label: '🎯 In 10% Sample', count: cRecSample, cls: '' },
+    { id: 'todo', label: '○ Pending Review', count: cRecTodo, cls: 'chip-bad' }
+  ];
+  var activeShow = u.show || 'all';
+  var quickChipsHtml = '<div class="quick-filter-bar" style="margin:8px 0 10px;">' +
+    '<span class="tiny text-muted" style="font-weight:700;margin-right:4px;">Quick Presets:</span>' +
+    quickFilters.map(function (f) {
+      var isActive = activeShow === f.id;
+      return '<button type="button" class="quick-filter-chip' + (f.cls ? ' ' + f.cls : '') + (isActive ? ' active' : '') + '" data-act="vf-chip" data-v="' + f.id + '">' +
+        '<span>' + f.label + '</span>' +
+        '<span class="tiny" style="opacity:0.85">(' + n(f.count) + ')</span>' +
+      '</button>';
+    }).join('') +
+    (activeShow !== 'all' || u.search ? '<button type="button" class="quick-filter-chip chip-reset" data-act="vf-reset-filters" style="margin-left:auto">' + icon('rotate-ccw') + ' <span>Reset filters</span></button>' : '') +
   '</div>';
 
   var list = recs.filter(function (r) {
@@ -505,6 +782,7 @@ function renderVerify(keepScroll) {
     label: function (r) { return r.label; },
     encoded: function (r) { return vfStats(r).encoded; },
     form: function (r) { var s = vfStats(r); return s.formCount === null ? -1 : s.formCount; },
+    progress: function (r) { var s = vfStats(r); return s.encoded > 0 ? (s.checked / s.encoded) : 0; },
     status: function (r) { var s = vfStats(r); return s.done ? 3 : (s.issues ? 1 : (s.checked ? 2 : 0)); },
     by: function (r) { return vfStats(r).by || ''; }
   };
@@ -512,32 +790,42 @@ function renderVerify(keepScroll) {
 
   var rows = list.map(function (r) {
     var s = vfStats(r);
+    var progressCell = '<td style="min-width:115px;">' +
+      (typeof quotaMiniProgressBar === 'function'
+        ? quotaMiniProgressBar(s.checked, s.encoded, 1.0, 'Rows cross-checked against paper MOV')
+        : '<span class="tiny">' + n(s.checked) + ' / ' + n(s.encoded) + '</span>') +
+      '</td>';
     return '<tr class="click" data-act="vf-open" data-v="' + attr(r.key) + '" tabindex="0">' +
       '<td><strong>' + esc(r.barangay || 'Municipal level') + '</strong>' + (region && !u.muni ? ' <span class="tiny">' + esc(r.municipality) + '</span>' : '') + '</td>' +
       '<td>' + esc(r.label) + '</td><td class="num">' + n(s.encoded) + '</td>' +
       '<td class="num">' + (s.formCount === null ? '<span class="tiny">—</span>' : n(s.formCount)) + '</td>' +
+      progressCell +
       '<td>' + vfStatusPill(s) + '</td><td class="tiny">' + esc(s.by || '—') + '</td></tr>';
   }).join('');
 
-  var th = function (col, label, num) {
-    return sortTh({ col: col, curCol: curCol, dir: curDir, label: label, num: num, act: 'vf-sort' });
+  var th = function (col, label, num, tooltip, title) {
+    return sortTh({ col: col, curCol: curCol, dir: curDir, label: label, num: num, tooltip: tooltip, title: title, act: 'vf-sort' });
   };
 
   var table = list.length
     ? '<div class="table-wrap"><table class="grid"><thead><tr>' +
-        th('brgy', 'Barangay') +
-        th('label', u.form === 'cv' ? 'Body' : 'Activity') +
-        th('encoded', 'Encoded', true) +
-        th('form', 'On the form', true) +
-        th('status', 'Status') +
-        th('by', 'Checked by') +
+        th('brgy', 'Barangay', false, 'Barangay coverage or Municipal-wide level', 'Barangay name') +
+        th('label', u.form === 'cv' ? 'Body' : 'Activity', false, 'Type of assembly, training, or committee body', 'Activity or volunteer body') +
+        th('encoded', 'Encoded', true, 'Number of individual rows encoded in KCIS database', 'Encoded rows in KCIS') +
+        th('form', 'On Form', true, 'Total headcount recorded on physical paper MOV', 'Count on physical form') +
+        th('progress', 'Check Progress', false, 'Percentage of rows cross-checked against physical paper MOV', 'Verification completion progress') +
+        th('status', 'Status', false, 'Current DQA compliance and verification tagging state', 'DQA Status') +
+        th('by', 'Checked by', false, 'Staff or PEA/ACT member who performed the paper cross-check', 'Verifier name') +
       '</tr></thead><tbody>' + rows + '</tbody></table></div>'
     : '<div class="empty-state">No records match these filters.</div>';
-  body.innerHTML = subNav + head + kpis +
+  body.innerHTML = subNav +
+    renderVerifyTriageTray(summary, u.form) +
+    head +
+    kpis +
     '<div class="toolbar-row" style="margin-top:10px;margin-bottom:6px"><div class="filters" style="margin:0;flex:1"><label class="field" style="flex:1"><span>Search records</span><input data-act="vf-search" id="vf-search" placeholder="Barangay or activity…" value="' + attr(u.search) + '"></label>' +
     (u.search ? '<button type="button" class="btn ghost btn-sm" data-act="vf-search-reset">' + icon('rotate-ccw') + ' <span>Reset</span></button>' : '') +
     '</div><span class="tiny">Showing <strong>' + n(list.length) + '</strong> of <strong>' + n(recs.length) + '</strong></span></div>' +
-    showCards +
+    quickChipsHtml +
     table + '<p class="tiny" style="margin-top:8px">Click a record to check it against the form. The tags stay on this PC with the saved data and go into "Save to a file".</p></div>';
   afterVerifyRender();
   if (keepScroll !== false) {
@@ -643,6 +931,7 @@ function vfRecordView(rec) {
       (notEnc ? '<span class="bad-t"><strong>' + n(notEnc) + '</strong> on the form but not encoded</span>' : '') +
       (s.formCount !== null && s.encoded ? '<span>On the form ÷ encoded: <strong>' + (s.formCount / s.encoded).toFixed(2) + '</strong></span>' : '') +
     '</div>' +
+    (s.checked > 0 && typeof quotaMiniProgressBar === 'function' ? '<div style="margin:6px 0 10px;">' + quotaMiniProgressBar(s.match, s.checked, 0.95, 'SM7 Precision Target: ≥95% agreement') + '</div>' : '') +
     '<div class="vf-kbd-bar">' +
       '<span><strong>Quick keys:</strong></span>' +
       '<span><kbd class="vf-kbd">1</kbd> or <kbd class="vf-kbd">M</kbd> Matches</span>' +
@@ -677,6 +966,7 @@ function afterVerifyRender() {
   refreshIcons($('vf-body'));
   bindSearch('vf-search', function (v) { VERIFY.ui.search = v; renderVerify(); });
   bindSearch('vf-item-search', function (v) { VERIFY.ui.itemSearch = v; renderVerify(); });
+  bindSearch('vf-sidebar-search', function (v) { VERIFY.ui.sidebarSearch = v; renderVerify(true); });
 }
 
 /** Every tagged row and every record with a form count, for the DQA report. Holds names. */
@@ -715,14 +1005,19 @@ document.addEventListener('click', function (ev) {
   if (act === 'vf-open') { VERIFY.ui.open = el.getAttribute('data-v'); VERIFY.ui.rowIdx = -1; renderVerify(); window.scrollTo(0, 0); }
   else if (act === 'vf-back') { VERIFY.ui.open = ''; renderVerify(); }
   else if (act === 'vf-form-btn') { VERIFY.ui.form = el.getAttribute('data-v'); VERIFY.ui.open = ''; renderVerify(); }
-  else if (act === 'vf-show-btn') { VERIFY.ui.show = el.getAttribute('data-v'); renderVerify(); }
+  else if (act === 'vf-show-btn' || act === 'vf-triage' || act === 'vf-chip') { VERIFY.ui.show = el.getAttribute('data-v'); renderVerify(); }
+  else if (act === 'vf-reset-filters') {
+    VERIFY.ui.show = 'all';
+    VERIFY.ui.search = '';
+    renderVerify();
+  }
   else if (act === 'vf-sort') {
     var col = el.getAttribute('data-col');
     if (VERIFY.ui.sortCol === col) {
       VERIFY.ui.sortDir = VERIFY.ui.sortDir === 'asc' ? 'desc' : 'asc';
     } else {
       VERIFY.ui.sortCol = col;
-      VERIFY.ui.sortDir = (col === 'encoded' || col === 'form') ? 'desc' : 'asc';
+      VERIFY.ui.sortDir = (col === 'encoded' || col === 'form' || col === 'progress') ? 'desc' : 'asc';
     }
     renderVerify();
   }

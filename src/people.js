@@ -481,6 +481,111 @@ var PSTATE = { view: 'attendees', scope: 'home', brgy: '', act: '', body: '', fl
 // MODULE 1: ATTENDEES (Activity Attendance Tracking)
 // ===================================================================
 
+function getAttendeeTriageSummary(list) {
+  var l = list || [];
+  var total = l.length;
+  var women = l.filter(function (r) { return r.sex === 'female'; }).length;
+  var men = l.filter(function (r) { return r.sex === 'male'; }).length;
+  var uniqueNames = {};
+  l.forEach(function (r) { if (r.key) uniqueNames[r.key] = true; });
+  var uniqueCount = Object.keys(uniqueNames).length;
+  var volunteers = l.filter(function (r) { return r.flags && r.flags.indexOf('volunteer') !== -1; }).length;
+  var missingName = l.filter(function (r) { return r.flags && r.flags.indexOf('noname') !== -1; }).length;
+  var womenRate = total > 0 ? (women / total) : 0;
+
+  return {
+    total: total,
+    uniqueCount: uniqueCount,
+    women: women,
+    womenRate: womenRate,
+    men: men,
+    volunteers: volunteers,
+    missingName: missingName
+  };
+}
+
+function renderAttendeeTriageTray(summary) {
+  var items = [];
+  var isAllGood = summary.missingName === 0 && summary.womenRate >= 0.5;
+
+  // 1. All Attendees
+  items.push(
+    '<button type="button" class="triage-item' + (ATT_STATE.sex === 'all' && ATT_STATE.flag === 'all' ? ' active-triage' : '') + '" data-act="att-triage" data-v="all" title="View all recorded attendee records">' +
+      '<div class="triage-item-info">' +
+        '<span class="triage-item-count">' + n(summary.total) + '</span>' +
+        '<span class="triage-item-label">Total Attendees (' + n(summary.uniqueCount) + ' unique)</span>' +
+      '</div>' +
+      '<span class="triage-item-arrow">' + icon('arrow-right') + '</span>' +
+    '</button>'
+  );
+
+  // 2. Women Participation (GSI ≥50%)
+  var womenIsGood = summary.womenRate >= 0.5;
+  items.push(
+    '<button type="button" class="triage-item ' + (womenIsGood ? 'triage-good' : 'triage-warn') + (ATT_STATE.sex === 'female' ? ' active-triage' : '') + '" data-act="att-triage" data-v="female" title="Filter female attendee records (GSI Target ≥50%)">' +
+      '<div class="triage-item-info">' +
+        '<span class="triage-item-count">' + pctText(summary.womenRate) + '</span>' +
+        '<span class="triage-item-label">Women Participation (' + n(summary.women) + ')</span>' +
+      '</div>' +
+      '<span class="triage-item-arrow">' + icon('arrow-right') + '</span>' +
+    '</button>'
+  );
+
+  // 3. Men Participants
+  items.push(
+    '<button type="button" class="triage-item' + (ATT_STATE.sex === 'male' ? ' active-triage' : '') + '" data-act="att-triage" data-v="male" title="Filter male attendee records">' +
+      '<div class="triage-item-info">' +
+        '<span class="triage-item-count">' + n(summary.men) + '</span>' +
+        '<span class="triage-item-label">Men Participants</span>' +
+      '</div>' +
+      '<span class="triage-item-arrow">' + icon('arrow-right') + '</span>' +
+    '</button>'
+  );
+
+  // 4. Community Volunteers Attending
+  items.push(
+    '<button type="button" class="triage-item triage-good' + (ATT_STATE.flag === 'volunteer' ? ' active-triage' : '') + '" data-act="att-triage" data-v="volunteer" title="Filter attendees who are also cross-matched community volunteers">' +
+      '<div class="triage-item-info">' +
+        '<span class="triage-item-count">' + n(summary.volunteers) + '</span>' +
+        '<span class="triage-item-label">Volunteers Attending</span>' +
+      '</div>' +
+      '<span class="triage-item-arrow">' + icon('arrow-right') + '</span>' +
+    '</button>'
+  );
+
+  // 5. Data Integrity: Missing Names
+  if (summary.missingName > 0) {
+    items.push(
+      '<button type="button" class="triage-item triage-bad' + (ATT_STATE.flag === 'noname' ? ' active-triage' : '') + '" data-act="att-triage" data-v="noname" title="Filter attendee records missing valid participant names">' +
+        '<div class="triage-item-info">' +
+          '<span class="triage-item-count">' + n(summary.missingName) + '</span>' +
+          '<span class="triage-item-label">Missing Names (Alerts)</span>' +
+        '</div>' +
+        '<span class="triage-item-arrow">' + icon('arrow-right') + '</span>' +
+      '</button>'
+    );
+  }
+
+  var trayCls = summary.missingName > 0 ? 'triage-tray has-critical' : (isAllGood ? 'triage-tray all-good' : 'triage-tray');
+  var badgeHtml = isAllGood
+    ? '<span class="triage-badge">GSI Target Met &amp; Clean Data</span>'
+    : '<span class="triage-badge">' + (summary.missingName > 0 ? summary.missingName + ' Data Alerts' : 'GSI Attention Needed') + '</span>';
+
+  return (
+    '<div class="' + trayCls + '">' +
+      '<div class="triage-head">' +
+        '<div class="triage-title">' +
+          icon(isAllGood ? 'check-circle-2' : 'alert-circle') +
+          '<span>Activity Attendees Operations &amp; Gender Balance</span> ' +
+          badgeHtml +
+        '</div>' +
+        '<span class="tiny muted">Click any triage card to filter attendees by gender or data validation status</span>' +
+      '</div>' +
+      '<div class="triage-grid">' + items.join('') + '</div>' +
+    '</div>'
+  );
+}
+
 function renderAttendees() {
   var body = $('att-body');
   if (!body) return;
@@ -524,14 +629,14 @@ function renderAttendees() {
     return true;
   });
 
-  // KPIs
-  var totalEncoded = list.length;
-  var womenCount = list.filter(function (r) { return r.sex === 'female'; }).length;
-  var uniqueNames = {};
-  list.forEach(function (r) { if (r.key) uniqueNames[r.key] = true; });
-  var uniqueCount = Object.keys(uniqueNames).length;
-  var coveredActs = {};
-  list.forEach(function (r) { coveredActs[r.act] = true; });
+  // KPIs & Triage
+  var triage = getAttendeeTriageSummary(list);
+  var totalEncoded = triage.total;
+  var womenCount = triage.women;
+  var womenRate = triage.womenRate;
+  var uniqueCount = triage.uniqueCount;
+  var volunteerCount = triage.volunteers;
+  var flaggedCount = triage.missingName;
 
   // Sorting
   var curCol = ATT_STATE.sortCol || 'name';
@@ -560,8 +665,8 @@ function renderAttendees() {
     '</tr>';
   }).join('');
 
-  var th = function (col, label, num) {
-    return sortTh({ col: col, curCol: curCol, dir: curDir, label: label, num: num, act: 'att-sort' });
+  var th = function (col, label, num, title) {
+    return sortTh({ col: col, curCol: curCol, dir: curDir, label: label, num: num, title: title, act: 'att-sort' });
   };
 
   var baseForSex = list.filter(function (r) {
@@ -573,15 +678,6 @@ function renderAttendees() {
     return true;
   });
 
-  var sexCards = ['all', 'female', 'male'].map(function (s) {
-    var cnt = s === 'all' ? baseForSex.length : baseForSex.filter(function (r) { return r.sex === s; }).length;
-    var lbl = s === 'all' ? 'All Sexes' : (s === 'female' ? 'Women' : 'Men');
-    return '<button type="button" class="filter-card' + (ATT_STATE.sex === s ? ' active' : '') + '" data-act="att-sex" data-v="' + s + '">' +
-      '<span class="fc-label">' + esc(lbl) + '</span>' +
-      '<span class="fc-count">' + n(cnt) + '</span>' +
-    '</button>';
-  }).join('');
-
   var baseForFlag = list.filter(function (r) {
     if (ATT_STATE.brgy && (r.province + '|' + r.municipality + '|' + r.barangay !== ATT_STATE.brgy)) return false;
     if (ATT_STATE.act && r.act !== ATT_STATE.act) return false;
@@ -590,14 +686,38 @@ function renderAttendees() {
     return true;
   });
 
-  var flagCards = PEOPLE_FLAGS.attendees.map(function (f) {
+  var sexFilters = [
+    { id: 'all', label: 'All Sexes', count: baseForSex.length, cls: '' },
+    { id: 'female', label: '👩 Women', count: baseForSex.filter(function (r) { return r.sex === 'female'; }).length, cls: 'chip-good' },
+    { id: 'male', label: '👨 Men', count: baseForSex.filter(function (r) { return r.sex === 'male'; }).length, cls: '' }
+  ];
+
+  var flagFilters = PEOPLE_FLAGS.attendees.map(function (f) {
     var cnt = f.id === 'all' ? baseForFlag.length : baseForFlag.filter(function (r) { return r.flags.indexOf(f.id) !== -1; }).length;
-    var col = f.id === 'volunteer' ? 'fc-good' : (f.id === 'noname' ? 'fc-warn' : '');
-    return '<button type="button" class="filter-card' + (col ? ' ' + col : '') + (ATT_STATE.flag === f.id ? ' active' : '') + '" data-act="att-flag" data-v="' + f.id + '">' +
-      '<span class="fc-label">' + esc(f.label) + '</span>' +
-      '<span class="fc-count">' + n(cnt) + '</span>' +
-    '</button>';
-  }).join('');
+    var col = f.id === 'volunteer' ? 'chip-good' : (f.id === 'noname' ? 'chip-warn' : '');
+    var ico = f.id === 'volunteer' ? '🎗️ ' : (f.id === 'noname' ? '⚠️ ' : '');
+    return { id: f.id, label: ico + f.label, count: cnt, cls: col };
+  });
+
+  var quickChipsHtml = '<div class="quick-filter-bar">' +
+    '<span class="tiny text-muted" style="font-weight:700;margin-right:4px;">Gender / Sex:</span>' +
+    sexFilters.map(function (f) {
+      var isActive = ATT_STATE.sex === f.id;
+      return '<button type="button" class="quick-filter-chip' + (f.cls ? ' ' + f.cls : '') + (isActive ? ' active' : '') + '" data-act="att-sex" data-v="' + f.id + '">' +
+        '<span>' + f.label + '</span>' +
+        '<span class="tiny" style="opacity:0.85">(' + n(f.count) + ')</span>' +
+      '</button>';
+    }).join('') +
+    '<span class="sep" style="margin:0 6px;color:var(--border-strong)">|</span>' +
+    '<span class="tiny text-muted" style="font-weight:700;margin-right:4px;">Cross-checks:</span>' +
+    flagFilters.map(function (f) {
+      var isActive = ATT_STATE.flag === f.id;
+      return '<button type="button" class="quick-filter-chip' + (f.cls ? ' ' + f.cls : '') + (isActive ? ' active' : '') + '" data-act="att-flag" data-v="' + f.id + '">' +
+        '<span>' + f.label + '</span>' +
+        '<span class="tiny" style="opacity:0.85">(' + n(f.count) + ')</span>' +
+      '</button>';
+    }).join('') +
+  '</div>';
 
   var scopeBanner = isMuni
     ? '<div class="static-val">' + icon('map-pin') + ' <span>Municipality: <strong>' + esc(home().municipality) + '</strong> (' + esc(home().province) + ')</span> <span class="role-badge field">PEA / MDM Scope</span></div>'
@@ -607,6 +727,8 @@ function renderAttendees() {
     '<button type="button" class="sub-nav-btn active">' + icon('calendar-check') + ' <span>Attendees Directory</span></button>' +
     '<button type="button" class="sub-nav-btn" data-go="households">' + icon('home') + ' <span>Household Participation</span></button>' +
   '</div>';
+
+  var hasFilter = !!(ATT_STATE.brgy || ATT_STATE.act || ATT_STATE.sex !== 'all' || ATT_STATE.flag !== 'all' || ATT_STATE.search);
 
   body.innerHTML = subNav +
     '<div class="card">' +
@@ -619,35 +741,259 @@ function renderAttendees() {
       '</div>' +
       '<div class="grid-kpi">' +
         '<div class="kpi"><div class="kpi-label">Total Attendees Encoded</div><div class="kpi-value">' + n(totalEncoded) + '</div><div class="kpi-sub">' + n(uniqueCount) + ' unique individuals</div></div>' +
-        '<div class="kpi accent-good"><div class="kpi-label">Women Attendees</div><div class="kpi-value">' + pctText(pctOf(womenCount, totalEncoded)) + '</div><div class="kpi-sub">' + n(womenCount) + ' female participants</div></div>' +
-        '<div class="kpi"><div class="kpi-label">Activities Encoded</div><div class="kpi-value">' + Object.keys(coveredActs).length + ' <span class="tiny">/ ' + acts.length + '</span></div><div class="kpi-sub">with attendance encoded in KCIS</div></div>' +
+        '<div class="kpi ' + (womenRate >= 0.5 ? 'accent-good' : 'accent-warn') + '"><div class="kpi-label">Women Participation</div><div class="kpi-value">' + pctText(womenRate) + '</div><div class="kpi-sub">' + n(womenCount) + ' female participants (' + (womenRate >= 0.5 ? '✓ Meets ≥50% target' : '⚠ Below 50% target') + ')</div></div>' +
+        '<div class="kpi"><div class="kpi-label">Volunteers Attending</div><div class="kpi-value">' + n(volunteerCount) + '</div><div class="kpi-sub">Cross-matched committee members</div></div>' +
+        '<div class="kpi ' + (flaggedCount > 0 ? 'accent-bad' : 'accent-good') + '"><div class="kpi-label">Data Integrity Alerts</div><div class="kpi-value">' + n(flaggedCount) + '</div><div class="kpi-sub">' + (flaggedCount > 0 ? 'Attendee records missing name' : 'All names recorded') + '</div></div>' +
       '</div>' +
+      renderAttendeeTriageTray(triage) +
       '<div class="toolbar-row"><div class="filters" style="margin:0">' +
         scopeBanner +
         '<label class="field"><span>Barangay</span><select data-act="att-brgy">' + bOpts + '</select></label>' +
         '<label class="field"><span>Activity</span><select data-act="att-act">' + actOpts + '</select></label>' +
         '<label class="field" style="flex:1"><span>Search</span><input type="search" id="att-search" value="' + attr(ATT_STATE.search) + '" placeholder="Search attendee name, barangay, activity…"></label>' +
-        (ATT_STATE.brgy || ATT_STATE.act || ATT_STATE.sex !== 'all' || ATT_STATE.flag !== 'all' || ATT_STATE.search ? '<button type="button" class="btn ghost btn-sm" data-act="att-reset">' + icon('rotate-ccw') + ' <span>Reset</span></button>' : '') +
+        (hasFilter ? '<button type="button" class="btn ghost btn-sm" data-act="att-reset">' + icon('rotate-ccw') + ' <span>Reset</span></button>' : '') +
       '</div><span class="tiny">Showing <strong>' + n(shown.length) + '</strong> of <strong>' + n(sorted.length) + '</strong></span></div>' +
-      '<div class="filter-cards">' + sexCards + '<span class="sep" style="margin:0 4px;color:var(--border-strong)">|</span>' + flagCards + '</div>' +
+      quickChipsHtml +
       '<div class="table-wrap"><table class="grid"><thead><tr>' +
-        th('name', 'Attendee Name') +
-        th('sex', 'Sex') +
-        th('brgy', 'Barangay') +
-        (!isMuni ? th('muni', 'Municipality') : '') +
-        th('act', 'Activity') +
-        th('date', 'Date Conducted') +
-        th('flags', 'Cross-check Flags') +
+        th('name', 'Attendee Name', false, 'Click to view individual attendance profile across activities') +
+        th('sex', 'Sex', false, 'Gender / Sex disaggregation (PCRP mandates ≥50% women)') +
+        th('brgy', 'Barangay', false, 'Barangay where activity occurred or attendee resides') +
+        (!isMuni ? th('muni', 'Municipality', false, 'Local Government Unit') : '') +
+        th('act', 'Activity', false, 'PCRP Activity milestone sequence and official name') +
+        th('date', 'Date Conducted', false, 'Conduct date recorded on physical attendance sheet') +
+        th('flags', 'Cross-check Flags', false, 'Data quality & volunteer cross-checks') +
       '</tr></thead><tbody>' + (rowsHtml || '<tr><td colspan="10" class="empty-state">No attendee records match these filters.</td></tr>') + '</tbody></table></div>' +
       (shown.length < sorted.length ? '<div class="row-actions" style="margin-top:12px"><button class="btn ghost btn-sm" data-act="att-more">Show ' + Math.min(100, sorted.length - shown.length) + ' more</button><span class="tiny">Showing ' + n(shown.length) + ' of ' + n(sorted.length) + '</span></div>' : '') +
     '</div>';
 
   bindSearch('att-search', function (v) { ATT_STATE.search = v; ATT_STATE.limit = 100; renderAttendees(); });
+  refreshIcons($('att-body'));
 }
 
 // ===================================================================
 // MODULE 2: HOUSEHOLD PARTICIPATION (K2 Quorum & Roster)
 // ===================================================================
+
+function quorumProgressBar(present, listed) {
+  if (!listed || listed <= 0) {
+    return '<span class="tiny text-muted">—</span>';
+  }
+  var rate = present / listed;
+  var pct = Math.max(0, Math.min(100, Math.round(rate * 100)));
+  var isMet = rate >= 0.7;
+  var statusCls = isMet ? 'is-met' : 'is-below';
+  var colorVar = isMet ? 'var(--good-text)' : 'var(--warn-text)';
+
+  return (
+    '<div class="quorum-progress-cell" title="' + attr(n(present) + ' of ' + n(listed) + ' households (' + pct + '%). Minimum 70% required for statutory assembly quorum.') + '">' +
+      '<div class="quorum-label-row">' +
+        '<strong style="color:' + colorVar + '">' + pctText(rate) + '</strong>' +
+        '<span class="tiny muted" style="font-size:10px">target 70%</span>' +
+      '</div>' +
+      '<div class="quorum-progress-wrap">' +
+        '<div class="quorum-progress-bar ' + statusCls + '" style="width:' + pct + '%;' + (isMet ? 'background:var(--good);' : 'background:var(--warn);') + '"></div>' +
+        '<div class="quorum-threshold-marker" title="Mandatory 70% Statutory Quorum Threshold"></div>' +
+      '</div>' +
+    '</div>'
+  );
+}
+
+function getHouseholdTriageSummary(brgys, P, inScope) {
+  var bList = brgys || [];
+  var totalBrgys = bList.length;
+  var reportingBrgys = 0;
+  var metQuorumBrgys = 0;
+  var belowQuorumBrgys = 0;
+  var noReportBrgys = 0;
+  var totListed = 0;
+  var totPresent = 0;
+
+  bList.forEach(function (b) {
+    if (b.hhListed > 0) {
+      reportingBrgys++;
+      totListed += b.hhListed;
+      totPresent += b.hhPresent;
+      if (b.hhRate >= 0.7) {
+        metQuorumBrgys++;
+      } else {
+        belowQuorumBrgys++;
+      }
+    } else {
+      noReportBrgys++;
+    }
+  });
+
+  var overallRate = totListed > 0 ? (totPresent / totListed) : null;
+
+  var roster = ((P && P.households) ? P.households : []).filter(inScope || function () { return true; });
+  var totalRoster = roster.length;
+  var rosterHeads = roster.filter(function (r) { return r.head; }).length;
+  var rosterPresent = roster.filter(function (r) { return r.present; }).length;
+  var rosterAbsent = roster.filter(function (r) { return !r.present; }).length;
+  var rosterMissingName = roster.filter(function (r) { return r.flags && r.flags.indexOf('noname') !== -1; }).length;
+
+  return {
+    totalBrgys: totalBrgys,
+    reportingBrgys: reportingBrgys,
+    metQuorumBrgys: metQuorumBrgys,
+    belowQuorumBrgys: belowQuorumBrgys,
+    noReportBrgys: noReportBrgys,
+    totListed: totListed,
+    totPresent: totPresent,
+    overallRate: overallRate,
+    totalRoster: totalRoster,
+    rosterHeads: rosterHeads,
+    rosterPresent: rosterPresent,
+    rosterAbsent: rosterAbsent,
+    rosterMissingName: rosterMissingName
+  };
+}
+
+function renderHouseholdTriageTray(summary) {
+  var isScorecard = HH_STATE.tab === 'scorecard';
+  var items = [];
+  var isAllGood = isScorecard
+    ? (summary.belowQuorumBrgys === 0 && summary.noReportBrgys === 0 && summary.reportingBrgys > 0)
+    : (summary.rosterMissingName === 0);
+
+  if (isScorecard) {
+    // 1. All Monitored Barangays
+    items.push(
+      '<button type="button" class="triage-item' + (HH_STATE.quorum === 'all' ? ' active-triage' : '') + '" data-act="hh-triage" data-v="all" title="View all monitored barangays in scope">' +
+        '<div class="triage-item-info">' +
+          '<span class="triage-item-count">' + n(summary.totalBrgys) + '</span>' +
+          '<span class="triage-item-label">Monitored Barangays</span>' +
+        '</div>' +
+        '<span class="triage-item-arrow">' + icon('arrow-right') + '</span>' +
+      '</button>'
+    );
+
+    // 2. Met Quorum (>= 70%)
+    items.push(
+      '<button type="button" class="triage-item triage-good' + (HH_STATE.quorum === 'met' ? ' active-triage' : '') + '" data-act="hh-triage" data-v="met" title="Filter barangays meeting or exceeding the 70% household representation threshold">' +
+        '<div class="triage-item-info">' +
+          '<span class="triage-item-count">' + n(summary.metQuorumBrgys) + '</span>' +
+          '<span class="triage-item-label">Met Quorum (≥70%)</span>' +
+        '</div>' +
+        '<span class="triage-item-arrow">' + icon('arrow-right') + '</span>' +
+      '</button>'
+    );
+
+    // 3. Below Quorum (< 70%)
+    if (summary.belowQuorumBrgys > 0) {
+      items.push(
+        '<button type="button" class="triage-item triage-warn' + (HH_STATE.quorum === 'below' ? ' active-triage' : '') + '" data-act="hh-triage" data-v="below" title="Filter barangays with household attendance below 70%">' +
+          '<div class="triage-item-info">' +
+            '<span class="triage-item-count">' + n(summary.belowQuorumBrgys) + '</span>' +
+            '<span class="triage-item-label">Below 70% Quorum</span>' +
+          '</div>' +
+          '<span class="triage-item-arrow">' + icon('arrow-right') + '</span>' +
+        '</button>'
+      );
+    }
+
+    // 4. Not Reported Yet
+    if (summary.noReportBrgys > 0) {
+      items.push(
+        '<button type="button" class="triage-item triage-bad' + (HH_STATE.quorum === 'noreport' ? ' active-triage' : '') + '" data-act="hh-triage" data-v="noreport" title="Filter barangays with no household attendance data recorded">' +
+          '<div class="triage-item-info">' +
+            '<span class="triage-item-count">' + n(summary.noReportBrgys) + '</span>' +
+            '<span class="triage-item-label">Not Reported</span>' +
+          '</div>' +
+          '<span class="triage-item-arrow">' + icon('arrow-right') + '</span>' +
+        '</button>'
+      );
+    }
+
+    // 5. Total Households Present vs Listed
+    items.push(
+      '<button type="button" class="triage-item ' + (summary.overallRate !== null && summary.overallRate >= 0.7 ? 'triage-good' : 'triage-warn') + '" data-act="hh-tab" data-v="roster" title="Switch to Household Roster Directory to inspect individual attendee records">' +
+        '<div class="triage-item-info">' +
+          '<span class="triage-item-count">' + (summary.overallRate !== null ? pctText(summary.overallRate) : '—') + '</span>' +
+          '<span class="triage-item-label">Participation Rate (' + n(summary.totPresent) + '/' + n(summary.totListed) + ')</span>' +
+        '</div>' +
+        '<span class="triage-item-arrow">' + icon('arrow-right') + '</span>' +
+      '</button>'
+    );
+  } else {
+    // ROSTER VIEW TRIAGE
+    // 1. All Roster
+    items.push(
+      '<button type="button" class="triage-item' + (HH_STATE.flag === 'all' ? ' active-triage' : '') + '" data-act="hh-triage" data-v="all" title="View all registered household members">' +
+        '<div class="triage-item-info">' +
+          '<span class="triage-item-count">' + n(summary.totalRoster) + '</span>' +
+          '<span class="triage-item-label">Total Roster Members</span>' +
+        '</div>' +
+        '<span class="triage-item-arrow">' + icon('arrow-right') + '</span>' +
+      '</button>'
+    );
+
+    // 2. Household Heads
+    items.push(
+      '<button type="button" class="triage-item' + (HH_STATE.flag === 'head' ? ' active-triage' : '') + '" data-act="hh-triage" data-v="head" title="Filter designated heads of household">' +
+        '<div class="triage-item-info">' +
+          '<span class="triage-item-count">' + n(summary.rosterHeads) + '</span>' +
+          '<span class="triage-item-label">Household Heads</span>' +
+        '</div>' +
+        '<span class="triage-item-arrow">' + icon('arrow-right') + '</span>' +
+      '</button>'
+    );
+
+    // 3. Marked Present
+    items.push(
+      '<button type="button" class="triage-item triage-good' + (HH_STATE.flag === 'present' ? ' active-triage' : '') + '" data-act="hh-triage" data-v="present" title="Filter members recorded present at assembly">' +
+        '<div class="triage-item-info">' +
+          '<span class="triage-item-count">' + n(summary.rosterPresent) + '</span>' +
+          '<span class="triage-item-label">Marked Present</span>' +
+        '</div>' +
+        '<span class="triage-item-arrow">' + icon('arrow-right') + '</span>' +
+      '</button>'
+    );
+
+    // 4. Absent
+    items.push(
+      '<button type="button" class="triage-item triage-warn' + (HH_STATE.flag === 'absent' ? ' active-triage' : '') + '" data-act="hh-triage" data-v="absent" title="Filter members recorded absent from assembly">' +
+        '<div class="triage-item-info">' +
+          '<span class="triage-item-count">' + n(summary.rosterAbsent) + '</span>' +
+          '<span class="triage-item-label">Absent / Unrepresented</span>' +
+        '</div>' +
+        '<span class="triage-item-arrow">' + icon('arrow-right') + '</span>' +
+      '</button>'
+    );
+
+    // 5. Missing Name
+    if (summary.rosterMissingName > 0) {
+      items.push(
+        '<button type="button" class="triage-item triage-bad' + (HH_STATE.flag === 'noname' ? ' active-triage' : '') + '" data-act="hh-triage" data-v="noname" title="Filter roster records missing member names">' +
+          '<div class="triage-item-info">' +
+            '<span class="triage-item-count">' + n(summary.rosterMissingName) + '</span>' +
+            '<span class="triage-item-label">Missing Names (Alerts)</span>' +
+          '</div>' +
+          '<span class="triage-item-arrow">' + icon('arrow-right') + '</span>' +
+        '</button>'
+      );
+    }
+  }
+
+  var trayCls = (!isAllGood && (summary.belowQuorumBrgys > 0 || summary.noReportBrgys > 0 || summary.rosterMissingName > 0)) ? 'triage-tray has-critical' : (isAllGood ? 'triage-tray all-good' : 'triage-tray');
+  var badgeHtml = isAllGood
+    ? '<span class="triage-badge">100% Quorum Compliance</span>'
+    : '<span class="triage-badge">' + (isScorecard ? (summary.belowQuorumBrgys + summary.noReportBrgys) + ' Quorum Gaps' : summary.rosterMissingName + ' Data Alerts') + '</span>';
+
+  return (
+    '<div class="' + trayCls + '">' +
+      '<div class="triage-head">' +
+        '<div class="triage-title">' +
+          icon(isAllGood ? 'check-circle-2' : 'alert-circle') +
+          '<span>' + (isScorecard ? '1st Barangay Assembly Household Quorum Triage' : 'Household Masterlist &amp; Attendance Triage') + '</span> ' +
+          badgeHtml +
+        '</div>' +
+        '<span class="tiny muted">' + (isScorecard ? 'Click any card to isolate barangays by K2 quorum compliance' : 'Click any card to isolate members by status') + '</span>' +
+      '</div>' +
+      '<div class="triage-grid">' + items.join('') + '</div>' +
+    '</div>'
+  );
+}
 
 function renderHouseholds() {
   var body = $('hh-body');
@@ -658,17 +1004,22 @@ function renderHouseholds() {
   var inScope = pScopeTest(activeMuni);
   var brgys = (SNAP.barangayRows || []).filter(function (b) { return !activeMuni || b.province + '|' + b.municipality === activeMuni; });
 
-  // Overall K2 Quorum numbers
-  var totListed = 0, totPresent = 0, metCount = 0, reportingCount = 0;
-  brgys.forEach(function (b) {
-    if (b.hhListed > 0) {
-      reportingCount++;
-      totListed += b.hhListed;
-      totPresent += b.hhPresent;
-      if (b.hhRate >= 0.7) metCount++;
-    }
+  // Municipalities dropdown (for RPMO)
+  var munis = baselineMunis();
+  var mOpts = '<option value="">All Municipalities</option>';
+  munis.forEach(function (m) {
+    var v = m.province + '|' + m.municipality;
+    mOpts += '<option value="' + attr(v) + '"' + (activeMuni === v ? ' selected' : '') + '>' + esc(m.municipality) + ' (' + esc(m.province) + ')</option>';
   });
-  var overallRate = totListed > 0 ? totPresent / totListed : null;
+
+  var scopeBanner = isMuni
+    ? '<div class="static-val">' + icon('map-pin') + ' <span>Municipality: <strong>' + esc(home().municipality) + '</strong> (' + esc(home().province) + ')</span> <span class="role-badge field">PEA / MDM Scope</span></div>'
+    : '<label class="field"><span>Municipality</span><select data-act="hh-muni">' + mOpts + '</select></label>';
+
+  // Triage Summary
+  var summary = getHouseholdTriageSummary(brgys, P, inScope);
+  var totListed = summary.totListed, totPresent = summary.totPresent, metCount = summary.metQuorumBrgys, reportingCount = summary.reportingBrgys;
+  var overallRate = summary.overallRate;
 
   // View toggle
   var tabsHtml = '<div class="seg-control" role="tablist">' +
@@ -712,14 +1063,19 @@ function renderHouseholds() {
         (!isMuni ? '<td>' + esc(b.municipality) + '</td>' : '') +
         '<td class="num">' + (hasRpt ? n(b.hhListed) : '—') + '</td>' +
         '<td class="num">' + (hasRpt ? n(b.hhPresent) : '—') + '</td>' +
-        '<td class="num"><strong style="color:' + (isMet ? 'var(--good-text)' : (hasRpt ? 'var(--warn-text)' : 'inherit')) + '">' + (hasRpt ? pctText(b.hhRate) : '—') + '</strong></td>' +
+        '<td class="num">' + quorumProgressBar(b.hhPresent, b.hhListed) + '</td>' +
         '<td>' + pill + '</td>' +
         '<td><button type="button" class="btn ghost btn-sm" data-act="hh-open-roster" data-v="' + attr(bkey) + '">' + icon('users') + ' <span>Inspect Roster</span></button></td>' +
       '</tr>';
     }).join('');
 
-    var th = function (col, label, num) {
-      return sortTh({ col: col, curCol: curCol, dir: curDir, label: label, num: num, act: 'hh-sort' });
+    var th = function (col, label, num, extra) {
+      var opts = { col: col, curCol: curCol, dir: curDir, label: label, num: num, act: 'hh-sort' };
+      if (extra) {
+        if (extra.tooltip) opts.tooltip = extra.tooltip;
+        if (extra.term) opts.term = extra.term;
+      }
+      return sortTh(opts);
     };
 
     var baseBrgys = q ? brgys.filter(function (b) { return normSearch(b.barangay + ' ' + b.municipality).indexOf(q) !== -1; }) : brgys;
@@ -728,30 +1084,35 @@ function renderHouseholds() {
     var cBelow = baseBrgys.filter(function (b) { return b.hhListed > 0 && b.hhRate < 0.7; }).length;
     var cNoReport = baseBrgys.filter(function (b) { return !b.hhListed; }).length;
 
-    var quorumCards = [
-      ['all', 'All Barangays', cAll, ''],
-      ['met', 'Meeting Quorum (≥70%)', cMet, 'fc-good'],
-      ['below', 'Below Quorum (<70%)', cBelow, 'fc-warn'],
-      ['noreport', 'Not Reported', cNoReport, '']
-    ].map(function (x) {
-      return '<button type="button" class="filter-card' + (x[3] ? ' ' + x[3] : '') + (HH_STATE.quorum === x[0] ? ' active' : '') + '" data-act="hh-quorum" data-v="' + x[0] + '">' +
-        '<span class="fc-label">' + esc(x[1]) + '</span>' +
-        '<span class="fc-count">' + n(x[2]) + '</span>' +
-      '</button>';
-    }).join('');
+    var quickQuorumChips = '<div class="quick-filter-bar">' +
+      '<span class="tiny text-muted" style="font-weight:700;margin-right:4px;">Quorum Presets:</span>' +
+      [
+        { id: 'all', label: 'All Barangays', count: cAll, cls: '' },
+        { id: 'met', label: '✓ Met Quorum (≥70%)', count: cMet, cls: 'chip-good' },
+        { id: 'below', label: '⚠ Below Quorum (<70%)', count: cBelow, cls: 'chip-warn' },
+        { id: 'noreport', label: '○ Not Reported', count: cNoReport, cls: '' }
+      ].map(function (f) {
+        var isActive = HH_STATE.quorum === f.id;
+        return '<button type="button" class="quick-filter-chip' + (f.cls ? ' ' + f.cls : '') + (isActive ? ' active' : '') + '" data-act="hh-quorum" data-v="' + f.id + '">' +
+          '<span>' + f.label + '</span>' +
+          '<span class="tiny" style="opacity:0.85">(' + n(f.count) + ')</span>' +
+        '</button>';
+      }).join('') +
+    '</div>';
 
     contentHtml = '<div class="toolbar-row"><div class="filters" style="margin:0;flex:1">' +
+        scopeBanner +
         '<label class="field" style="flex:1"><span>Search Barangay</span><input type="search" id="hh-search" value="' + attr(HH_STATE.search) + '" placeholder="Barangay name…"></label>' +
-        (HH_STATE.quorum !== 'all' || HH_STATE.search ? '<button type="button" class="btn ghost btn-sm" data-act="hh-reset">' + icon('rotate-ccw') + ' <span>Reset</span></button>' : '') +
+        (HH_STATE.muni || HH_STATE.quorum !== 'all' || HH_STATE.search ? '<button type="button" class="btn ghost btn-sm" data-act="hh-reset">' + icon('rotate-ccw') + ' <span>Reset</span></button>' : '') +
       '</div><span class="tiny">Showing <strong>' + n(sortedBrgys.length) + '</strong> of <strong>' + n(brgys.length) + '</strong></span></div>' +
-      '<div class="filter-cards" style="margin:8px 0">' + quorumCards + '</div>' +
+      quickQuorumChips +
       '<div class="table-wrap"><table class="grid"><thead><tr>' +
-        th('brgy', 'Barangay') +
-        (!isMuni ? th('muni', 'Municipality') : '') +
-        th('listed', 'Households Listed', true) +
-        th('present', 'Households Present', true) +
-        th('rate', 'Participation Rate', true) +
-        th('status', 'Quorum Status') +
+        th('brgy', 'Barangay', false, { tooltip: 'Barangay covered by PCRP Stage 1 implementation' }) +
+        (!isMuni ? th('muni', 'Municipality', false, { tooltip: 'Local Government Unit' }) : '') +
+        th('listed', 'Households Listed', true, { tooltip: 'Total registered beneficiary households in the official barangay masterlist' }) +
+        th('present', 'Households Present', true, { tooltip: 'Unique registered households represented by an attendee at the 1st Barangay Assembly' }) +
+        th('rate', 'Participation Rate', false, { tooltip: 'Households Present ÷ Households Listed (must reach at least 70% to meet statutory quorum)' }) +
+        th('status', 'Quorum Status', false, { term: 'k2', tooltip: 'Statutory compliance status: Met (≥70%), Below (<70%), or Not reported' }) +
         '<th>Action</th>' +
       '</tr></thead><tbody>' + (rows || '<tr><td colspan="7" class="empty-state">No barangays match these filters.</td></tr>') + '</tbody></table></div>';
   } else {
@@ -763,7 +1124,7 @@ function renderHouseholds() {
     var filteredRoster = roster.filter(function (r) {
       if (HH_STATE.brgy && (r.province + '|' + r.municipality + '|' + r.barangay !== HH_STATE.brgy)) return false;
       if (flagObj.id !== 'all') {
-        if (flagObj.test ? !flagObj.test(r) : r.flags.indexOf(flagObj.id) === -1) return false;
+        if (flagObj.test ? !flagObj.test(r) : r.flags.indexOf(flagObj.id) !== -1) return false;
       }
       if (q2 && r.q.indexOf(q2) === -1) return false;
       return true;
@@ -798,8 +1159,8 @@ function renderHouseholds() {
       '</tr>';
     }).join('');
 
-    var th2 = function (col, label, num) {
-      return sortTh({ col: col, curCol: curCol2, dir: curDir2, label: label, num: num, act: 'hh-sort' });
+    var th2 = function (col, label, num, title) {
+      return sortTh({ col: col, curCol: curCol2, dir: curDir2, label: label, num: num, title: title, act: 'hh-sort' });
     };
 
     var bOpts2 = '<option value="">All Barangays</option>' + brgys.map(function (b) {
@@ -813,31 +1174,37 @@ function renderHouseholds() {
       return true;
     });
 
-    var flagCards2 = PEOPLE_FLAGS.households.map(function (f) {
-      var cnt = f.id === 'all' ? baseRoster.length : baseRoster.filter(function (r) { return f.test ? f.test(r) : r.flags.indexOf(f.id) !== -1; }).length;
-      var col = f.id === 'all' ? '' : (f.id === 'present' ? 'fc-good' : (f.id === 'absent' || f.id === 'noname' ? 'fc-warn' : ''));
-      return '<button type="button" class="filter-card' + (col ? ' ' + col : '') + (HH_STATE.flag === f.id ? ' active' : '') + '" data-act="hh-flag" data-v="' + f.id + '">' +
-        '<span class="fc-label">' + esc(f.label) + '</span>' +
-        '<span class="fc-count">' + n(cnt) + '</span>' +
-      '</button>';
-    }).join('');
+    var quickRosterChips = '<div class="quick-filter-bar">' +
+      '<span class="tiny text-muted" style="font-weight:700;margin-right:4px;">Roster Presets:</span>' +
+      PEOPLE_FLAGS.households.map(function (f) {
+        var cnt = f.id === 'all' ? baseRoster.length : baseRoster.filter(function (r) { return f.test ? f.test(r) : r.flags.indexOf(f.id) !== -1; }).length;
+        var col = f.id === 'present' ? 'chip-good' : (f.id === 'absent' || f.id === 'noname' ? 'chip-warn' : '');
+        var ico = f.id === 'present' ? '✓ ' : (f.id === 'absent' ? '○ ' : (f.id === 'noname' ? '⚠️ ' : (f.id === 'head' ? '👤 ' : '')));
+        var isActive = HH_STATE.flag === f.id;
+        return '<button type="button" class="quick-filter-chip' + (col ? ' ' + col : '') + (isActive ? ' active' : '') + '" data-act="hh-flag" data-v="' + f.id + '">' +
+          '<span>' + ico + f.label + '</span>' +
+          '<span class="tiny" style="opacity:0.85">(' + n(cnt) + ')</span>' +
+        '</button>';
+      }).join('') +
+    '</div>';
 
     contentHtml = '<div class="toolbar-row"><div class="filters" style="margin:0;flex:1">' +
+        scopeBanner +
         '<label class="field"><span>Barangay</span><select data-act="hh-brgy">' + bOpts2 + '</select></label>' +
         '<label class="field" style="flex:1"><span>Search</span><input type="search" id="hh-search" value="' + attr(HH_STATE.search) + '" placeholder="Household member name, barangay…"></label>' +
-        (HH_STATE.brgy || HH_STATE.flag !== 'all' || HH_STATE.search ? '<button type="button" class="btn ghost btn-sm" data-act="hh-reset">' + icon('rotate-ccw') + ' <span>Reset</span></button>' : '') +
+        (HH_STATE.muni || HH_STATE.brgy || HH_STATE.flag !== 'all' || HH_STATE.search ? '<button type="button" class="btn ghost btn-sm" data-act="hh-reset">' + icon('rotate-ccw') + ' <span>Reset</span></button>' : '') +
       '</div><span class="tiny">Showing <strong>' + n(shownRoster.length) + '</strong> of <strong>' + n(sortedRoster.length) + '</strong></span></div>' +
-      '<div class="filter-cards">' + flagCards2 + '</div>' +
+      quickRosterChips +
       '<div class="table-wrap"><table class="grid"><thead><tr>' +
-        th2('name', 'Name') +
-        th2('birthdate', 'Birthdate') +
-        th2('sex', 'Sex') +
-        th2('head', 'HH Head') +
-        th2('present', 'Present') +
-        th2('brgy', 'Barangay') +
-        (!isMuni ? th2('muni', 'Municipality') : '') +
-        th2('act', 'Assembly') +
-        '<th>Flags</th>' +
+        th2('name', 'Beneficiary Name', false, 'Official household member recorded in KCIS') +
+        th2('birthdate', 'Birthdate', false, 'Birthdate for demographic validation') +
+        th2('sex', 'Sex', false, 'Gender / Sex of member') +
+        th2('head', 'HH Head', false, 'Primary designated head of household') +
+        th2('present', 'Present at BA', false, 'Whether member attended the 1st Barangay Assembly') +
+        th2('brgy', 'Barangay', false, 'Barangay of residence') +
+        (!isMuni ? th2('muni', 'Municipality', false, 'Local Government Unit') : '') +
+        th2('act', 'Assembly Milestone', false, 'Assembly where attendance was verified') +
+        '<th>Cross-check Flags</th>' +
       '</tr></thead><tbody>' + (rows2 || '<tr><td colspan="9" class="empty-state">No household records match these filters.</td></tr>') + '</tbody></table></div>' +
       (shownRoster.length < sortedRoster.length ? '<div class="row-actions" style="margin-top:12px"><button class="btn ghost btn-sm" data-act="hh-more">Show ' + Math.min(100, sortedRoster.length - shownRoster.length) + ' more</button><span class="tiny">Showing ' + n(shownRoster.length) + ' of ' + n(sortedRoster.length) + '</span></div>' : '');
   }
@@ -871,15 +1238,130 @@ function renderHouseholds() {
         '<div class="kpi"><div class="kpi-label">Total Households Present</div><div class="kpi-value">' + n(totPresent) + '</div><div class="kpi-sub">present at the 1st Barangay Assembly</div></div>' +
       '</div>' +
       '<div class="filters" style="margin:14px 0">' + tabsHtml + '</div>' +
+      renderHouseholdTriageTray(summary) +
       contentHtml +
     '</div>';
 
   bindSearch('hh-search', function (v) { HH_STATE.search = v; HH_STATE.limit = 100; renderHouseholds(); });
+  refreshIcons($('hh-body'));
 }
 
 // ===================================================================
 // MODULE 3: COMMUNITY VOLUNTEERS
 // ===================================================================
+
+function getVolunteersTriageSummary(list) {
+  var l = list || [];
+  var total = l.length;
+  var women = l.filter(function (v) { return v.sex === 'female'; }).length;
+  var men = l.filter(function (v) { return v.sex === 'male'; }).length;
+  var chairs = l.filter(function (v) { return v.chair; }).length;
+  var ipCount = l.filter(function (v) { return v.ip; }).length;
+  var pwdCount = l.filter(function (v) { return v.pwd; }).length;
+  var marg = l.filter(function (v) { return v.sex === 'female' || v.ip || v.pwd; }).length;
+  var brestCount = l.filter(function (v) { return v.kind === 'BREST'; }).length;
+  var stage2Count = l.filter(function (v) { return v.isStage2; }).length;
+  var sfmscCount = l.filter(function (v) { return v.kind === 'SFMSC'; }).length;
+  var flagged = l.filter(function (v) { return v.flags && v.flags.length > 0; }).length;
+  var womenRate = total > 0 ? (women / total) : 0;
+  var margRate = total > 0 ? (marg / total) : 0;
+
+  return {
+    total: total,
+    women: women,
+    men: men,
+    womenRate: womenRate,
+    chairs: chairs,
+    ipCount: ipCount,
+    pwdCount: pwdCount,
+    marg: marg,
+    margRate: margRate,
+    brestCount: brestCount,
+    stage2Count: stage2Count,
+    sfmscCount: sfmscCount,
+    flagged: flagged
+  };
+}
+
+function renderVolunteersTriageTray(summary) {
+  var isAllGood = summary.womenRate >= 0.5 && summary.flagged === 0;
+  var items = [];
+
+  // 1. All Volunteers
+  items.push(
+    '<button type="button" class="triage-item' + (VOL_STATE.body === 'all' && VOL_STATE.position === 'all' && VOL_STATE.sex === 'all' && VOL_STATE.marg === 'all' && VOL_STATE.flag === 'all' ? ' active-triage' : '') + '" data-act="vol-triage" data-v="all" title="View all encoded community volunteers">' +
+      '<div class="triage-item-info">' +
+        '<span class="triage-item-count">' + n(summary.total) + '</span>' +
+        '<span class="triage-item-label">Total Encoded Volunteers</span>' +
+      '</div>' +
+      '<span class="triage-item-arrow">' + icon('arrow-right') + '</span>' +
+    '</button>'
+  );
+
+  // 2. Women Representation (>=50%)
+  var womenGood = summary.womenRate >= 0.5;
+  items.push(
+    '<button type="button" class="triage-item ' + (womenGood ? 'triage-good' : 'triage-warn') + (VOL_STATE.sex === 'female' || VOL_STATE.marg === 'women' ? ' active-triage' : '') + '" data-act="vol-triage" data-v="women" title="Filter female volunteers (GSI Target ≥50%)">' +
+      '<div class="triage-item-info">' +
+        '<span class="triage-item-count">' + pctText(summary.womenRate) + ' <span class="tiny">(' + n(summary.women) + ')</span></span>' +
+        '<span class="triage-item-label">Women (≥50% Target)</span>' +
+      '</div>' +
+      '<span class="triage-item-arrow">' + icon('arrow-right') + '</span>' +
+    '</button>'
+  );
+
+  // 3. Committee Chairs & Leads
+  items.push(
+    '<button type="button" class="triage-item triage-good' + (VOL_STATE.position === 'chair' ? ' active-triage' : '') + '" data-act="vol-triage" data-v="chair" title="Filter committee chairpersons and sub-committee team leads">' +
+      '<div class="triage-item-info">' +
+        '<span class="triage-item-count">' + n(summary.chairs) + '</span>' +
+        '<span class="triage-item-label">Chairs &amp; Team Leads</span>' +
+      '</div>' +
+      '<span class="triage-item-arrow">' + icon('arrow-right') + '</span>' +
+    '</button>'
+  );
+
+  // 4. Marginalized Volunteers (Women, IP, PWD)
+  items.push(
+    '<button type="button" class="triage-item triage-good' + (VOL_STATE.marg === 'ippwd' ? ' active-triage' : '') + '" data-act="vol-triage" data-v="marginalized" title="Filter IP or PWD community volunteers">' +
+      '<div class="triage-item-info">' +
+        '<span class="triage-item-count">' + n(summary.ipCount + summary.pwdCount) + '</span>' +
+        '<span class="triage-item-label">IP &amp; PWD Volunteers</span>' +
+      '</div>' +
+      '<span class="triage-item-arrow">' + icon('arrow-right') + '</span>' +
+    '</button>'
+  );
+
+  // 5. Cross-check Flags / Review
+  if (summary.flagged > 0) {
+    items.push(
+      '<button type="button" class="triage-item triage-bad' + (VOL_STATE.flag === 'has_flags' ? ' active-triage' : '') + '" data-act="vol-triage" data-v="flagged" title="Filter volunteers with data anomalies or policy flags">' +
+        '<div class="triage-item-info">' +
+          '<span class="triage-item-count">' + n(summary.flagged) + '</span>' +
+          '<span class="triage-item-label">Cross-check Flags</span>' +
+        '</div>' +
+        '<span class="triage-item-arrow">' + icon('arrow-right') + '</span>' +
+      '</button>'
+    );
+  }
+
+  return (
+    '<div class="triage-tray">' +
+      '<div class="triage-header">' +
+        '<div class="triage-title">' +
+          icon('users') + ' <span>Community Volunteers Action Center</span>' +
+        '</div>' +
+        '<div class="triage-status ' + (isAllGood ? 'status-good' : 'status-warn') + '">' +
+          icon(isAllGood ? 'check-circle-2' : 'alert-circle') +
+          '<span>' + (isAllGood ? 'Inclusive Quorum Met (≥50% Women)' : (summary.womenRate < 0.5 ? 'Women quota under 50% target' : 'Review ' + summary.flagged + ' flagged records')) + '</span>' +
+        '</div>' +
+      '</div>' +
+      '<div class="triage-grid">' +
+        items.join('') +
+      '</div>' +
+    '</div>'
+  );
+}
 
 function renderVolunteers() {
   var body = $('vol-body');
@@ -922,7 +1404,10 @@ function renderVolunteers() {
     if (VOL_STATE.marg === 'women' && v.sex !== 'female') return false;
     if (VOL_STATE.marg === 'ip' && !v.ip) return false;
     if (VOL_STATE.marg === 'pwd' && !v.pwd) return false;
-    if (VOL_STATE.flag && VOL_STATE.flag !== 'all') {
+    if (VOL_STATE.marg === 'ippwd' && !v.ip && !v.pwd) return false;
+    if (VOL_STATE.flag === 'has_flags') {
+      if (!v.flags || v.flags.length === 0) return false;
+    } else if (VOL_STATE.flag && VOL_STATE.flag !== 'all') {
       var fDef = PEOPLE_FLAGS.volunteers.filter(function (f) { return f.id === VOL_STATE.flag; })[0];
       if (fDef) {
         if (typeof fDef.test === 'function') {
@@ -936,11 +1421,12 @@ function renderVolunteers() {
     return true;
   });
 
-  // KPIs
+  // KPIs & Summary
+  var summary = getVolunteersTriageSummary(list);
   var totalVol = list.length;
-  var womenCount = list.filter(function (v) { return v.sex === 'female'; }).length;
-  var margCount = list.filter(function (v) { return v.sex === 'female' || v.ip || v.pwd; }).length;
-  var chairCount = list.filter(function (v) { return v.chair; }).length;
+  var womenCount = summary.women;
+  var margCount = summary.marg;
+  var chairCount = summary.chairs;
   var brgysWithVol = {};
   list.forEach(function (v) { brgysWithVol[v.province + '|' + v.municipality + '|' + v.barangay] = true; });
 
@@ -963,11 +1449,11 @@ function renderVolunteers() {
 
   var rowsHtml = shown.map(function (v) {
     return '<tr>' +
-      '<td>' + nameCell(v) + '</td>' +
+      '<td class="sticky"><strong>' + nameCell(v) + '</strong></td>' +
       '<td>' + esc(v.sex || '—') + '</td>' +
       '<td>' + (v.ip ? '<span class="pill idle">IP</span> ' : '') + (v.pwd ? '<span class="pill idle">PWD</span>' : (!v.ip ? '—' : '')) + '</td>' +
       '<td>' + (v.body ? '<strong>' + esc(v.body) + '</strong>' : esc(v.committee || '—')) + '</td>' +
-      '<td>' + (v.chair ? '<span class="pill good">' + esc(v.position) + '</span>' : esc(v.position || '—')) + '</td>' +
+      '<td>' + (v.chair ? '<span class="pill good">👑 ' + esc(v.position) + '</span>' : esc(v.position || '—')) + '</td>' +
       '<td>' + placeCell(v) + '</td>' +
       (!isMuni ? '<td>' + esc(v.municipality) + '</td>' : '') +
       '<td>' + esc(v.start || '—') + '</td>' +
@@ -975,8 +1461,21 @@ function renderVolunteers() {
     '</tr>';
   }).join('');
 
-  var th = function (col, label, num) {
-    return sortTh({ col: col, curCol: curCol, dir: curDir, label: label, num: num, act: 'vol-sort' });
+  var th = function (col, label, num, sub, title, sticky, extraClass, term, tooltip) {
+    return sortTh({
+      col: col,
+      curCol: curCol,
+      dir: curDir,
+      label: label,
+      num: num,
+      sub: sub,
+      title: title,
+      sticky: sticky,
+      act: 'vol-sort',
+      extraClass: extraClass,
+      term: term,
+      tooltip: tooltip
+    });
   };
 
   var vq = normSearch(VOL_STATE.search.trim());
@@ -1034,6 +1533,35 @@ function renderVolunteers() {
     '</button>';
   }).join('');
 
+  var quickVolunteerChips = '<div class="quick-filter-bar">' +
+    '<span class="tiny text-muted" style="font-weight:700;margin-right:4px;">Quick Presets:</span>' +
+    '<button type="button" class="quick-filter-chip' + (VOL_STATE.body === 'all' && VOL_STATE.position === 'all' && VOL_STATE.sex === 'all' && VOL_STATE.marg === 'all' && VOL_STATE.flag === 'all' ? ' active' : '') + '" data-act="vol-chip" data-type="body" data-v="all">' +
+      '<span>All Volunteers</span> <span class="tiny" style="opacity:0.85">(' + n(baseVols.length) + ')</span>' +
+    '</button>' +
+    '<button type="button" class="quick-filter-chip' + (VOL_STATE.body === 'BREST' ? ' active' : '') + '" data-act="vol-chip" data-type="body" data-v="BREST">' +
+      '<span>BResT (Stage 1)</span> <span class="tiny" style="opacity:0.85">(' + n(baseVols.filter(function (r) { return r.kind === 'BREST'; }).length) + ')</span>' +
+    '</button>' +
+    '<button type="button" class="quick-filter-chip' + (VOL_STATE.body === 'STAGE2' ? ' active' : '') + '" data-act="vol-chip" data-type="body" data-v="STAGE2">' +
+      '<span>CSPMC &amp; Sub-Comms</span> <span class="tiny" style="opacity:0.85">(' + n(baseVols.filter(function (r) { return r.isStage2; }).length) + ')</span>' +
+    '</button>' +
+    '<button type="button" class="quick-filter-chip' + (VOL_STATE.body === 'SFMSC' ? ' active' : '') + '" data-act="vol-chip" data-type="body" data-v="SFMSC">' +
+      '<span>SFMSC</span> <span class="tiny" style="opacity:0.85">(' + n(baseVols.filter(function (r) { return r.kind === 'SFMSC'; }).length) + ')</span>' +
+    '</button>' +
+    '<span style="color:var(--border-strong);margin:0 2px">|</span>' +
+    '<button type="button" class="quick-filter-chip chip-good' + (VOL_STATE.position === 'chair' ? ' active' : '') + '" data-act="vol-chip" data-type="pos" data-v="chair">' +
+      '<span>👑 Chairs / Leads</span> <span class="tiny" style="opacity:0.85">(' + n(baseVols.filter(function (r) { return r.chair; }).length) + ')</span>' +
+    '</button>' +
+    '<button type="button" class="quick-filter-chip chip-good' + (VOL_STATE.sex === 'female' ? ' active' : '') + '" data-act="vol-chip" data-type="sex" data-v="female">' +
+      '<span>👩 Women</span> <span class="tiny" style="opacity:0.85">(' + n(baseVols.filter(function (r) { return r.sex === 'female'; }).length) + ')</span>' +
+    '</button>' +
+    '<button type="button" class="quick-filter-chip' + (VOL_STATE.marg === 'ippwd' ? ' active' : '') + '" data-act="vol-chip" data-type="marg" data-v="ippwd">' +
+      '<span>👥 IP / PWD</span> <span class="tiny" style="opacity:0.85">(' + n(baseVols.filter(function (r) { return r.ip || r.pwd; }).length) + ')</span>' +
+    '</button>' +
+    '<button type="button" class="quick-filter-chip chip-warn' + (VOL_STATE.flag === 'has_flags' ? ' active' : '') + '" data-act="vol-chip" data-type="flag" data-v="has_flags">' +
+      '<span>⚠️ Flags</span> <span class="tiny" style="opacity:0.85">(' + n(baseVols.filter(function (r) { return r.flags && r.flags.length > 0; }).length) + ')</span>' +
+    '</button>' +
+  '</div>';
+
   var scopeBanner = isMuni
     ? '<div class="static-val">' + icon('map-pin') + ' <span>Municipality: <strong>' + esc(home().municipality) + '</strong> (' + esc(home().province) + ')</span> <span class="role-badge field">PEA / MDM Scope</span></div>'
     : '<label class="field"><span>Municipality</span><select data-act="vol-muni">' + mOpts + '</select></label>';
@@ -1049,43 +1577,197 @@ function renderVolunteers() {
       '<div class="card-head">' +
         '<div>' +
           '<h2>Community Volunteers &amp; Committees</h2>' +
-          '<div class="muted">' + (isMuni ? 'Dedicated volunteer directory for <strong>' + esc(home().municipality) + '</strong>.' : 'Region-wide community volunteer rosters.') + ' Tracks BResT, SFMSC, inclusion metrics, and committee chairpersons.</div>' +
+          '<div class="muted">' + (isMuni ? 'Dedicated volunteer directory for <strong>' + esc(home().municipality) + '</strong>.' : 'Region-wide community volunteer rosters.') + ' Tracks BResT, SFMSC, Stage 2 committees, GSI inclusion metrics (≥50% women), and committee chairpersons.</div>' +
         '</div>' +
         '<div class="row-actions" style="margin:0"><button class="btn ghost btn-sm" data-act="vol-export">' + icon('download') + ' <span>Export Volunteers CSV</span></button></div>' +
       '</div>' +
       '<div class="grid-kpi">' +
         '<div class="kpi"><div class="kpi-label">Total Volunteers Encoded</div><div class="kpi-value">' + n(totalVol) + '</div><div class="kpi-sub">in ' + Object.keys(brgysWithVol).length + ' barangays</div></div>' +
-        '<div class="kpi accent-good"><div class="kpi-label">Women Representation</div><div class="kpi-value">' + pctText(pctOf(womenCount, totalVol)) + '</div><div class="kpi-sub">' + n(womenCount) + ' female volunteers</div></div>' +
-        '<div class="kpi accent-good"><div class="kpi-label">Marginalized Inclusion (Women, IP, PWD)</div><div class="kpi-value">' + pctText(pctOf(margCount, totalVol)) + '</div><div class="kpi-sub">' + n(margCount) + ' marginalized individuals</div></div>' +
+        '<div class="kpi ' + (summary.womenRate >= 0.5 ? 'accent-good' : 'accent-warn') + '"><div class="kpi-label">Women Representation</div><div class="kpi-value">' + pctText(summary.womenRate) + '</div><div class="kpi-sub">' + n(womenCount) + ' female volunteers (≥50% target)</div></div>' +
+        '<div class="kpi accent-good"><div class="kpi-label">Marginalized Inclusion (Women, IP, PWD)</div><div class="kpi-value">' + pctText(summary.margRate) + '</div><div class="kpi-sub">' + n(margCount) + ' marginalized individuals</div></div>' +
         '<div class="kpi"><div class="kpi-label">Committee Chairpersons</div><div class="kpi-value">' + n(chairCount) + '</div><div class="kpi-sub">designated committee leaders</div></div>' +
       '</div>' +
-      '<div class="toolbar-row"><div class="filters" style="margin:0">' +
+      renderVolunteersTriageTray(summary) +
+      '<div class="toolbar-row"><div class="filters" style="margin:0;flex:1">' +
         scopeBanner +
         '<label class="field"><span>Barangay</span><select data-act="vol-brgy">' + bOpts + '</select></label>' +
         '<label class="field" style="flex:1"><span>Search</span><input type="search" id="vol-search" value="' + attr(VOL_STATE.search) + '" placeholder="Volunteer name, committee, position…"></label>' +
-        (VOL_STATE.brgy || VOL_STATE.body !== 'all' || VOL_STATE.position !== 'all' || VOL_STATE.search ? '<button type="button" class="btn ghost btn-sm" data-act="vol-reset">' + icon('rotate-ccw') + ' <span>Reset</span></button>' : '') +
+        (VOL_STATE.muni || VOL_STATE.brgy || VOL_STATE.body !== 'all' || VOL_STATE.position !== 'all' || VOL_STATE.sex !== 'all' || VOL_STATE.marg !== 'all' || VOL_STATE.flag !== 'all' || VOL_STATE.search ? '<button type="button" class="btn ghost btn-sm" data-act="vol-reset">' + icon('rotate-ccw') + ' <span>Reset</span></button>' : '') +
       '</div><span class="tiny">Showing <strong>' + n(shown.length) + '</strong> of <strong>' + n(sorted.length) + '</strong></span></div>' +
-      '<div class="filter-cards">' + bodyCards + '<span class="sep" style="margin:0 4px;color:var(--border-strong)">|</span>' + posCards + '</div>' +
+      quickVolunteerChips +
+      '<div class="filter-cards" style="margin-top:10px;margin-bottom:12px">' + bodyCards + '<span class="sep" style="margin:0 4px;color:var(--border-strong)">|</span>' + posCards + '</div>' +
       '<div class="table-wrap"><table class="grid"><thead><tr>' +
-        th('name', 'Volunteer Name') +
-        th('sex', 'Sex') +
-        th('ippwd', 'IP / PWD') +
-        th('committee', 'Committee') +
-        th('position', 'Position') +
-        th('brgy', 'Barangay') +
-        (!isMuni ? th('muni', 'Municipality') : '') +
-        th('start', 'Term Start') +
-        th('flags', 'Cross-check Flags') +
+        th('name', 'Volunteer Name', false, null, 'Official volunteer name in KCIS Community Volunteers list', true) +
+        th('sex', 'Sex', false, null, null, false, '', 'femaleratio', 'Gender / Sex. GSI policy targets at least 50% female participation') +
+        th('ippwd', 'IP / PWD', false, null, null, false, '', 'marginalized', 'Sectoral tags: Indigenous Peoples or Persons with Disability') +
+        th('committee', 'Committee', false, null, 'Designated community body or sub-committee') +
+        th('position', 'Position', false, null, 'Elected or designated role within committee') +
+        th('brgy', 'Barangay', false, null, 'Barangay of volunteer service') +
+        (!isMuni ? th('muni', 'Municipality', false, null, 'Local Government Unit') : '') +
+        th('start', 'Term Start', false, null, 'Start date or election date recorded') +
+        th('flags', 'Cross-check Flags', false, null, 'Automated validation against assembly attendance, residency, and committee quotas') +
       '</tr></thead><tbody>' + (rowsHtml || '<tr><td colspan="10" class="empty-state">No volunteers match these filters.</td></tr>') + '</tbody></table></div>' +
       (shown.length < sorted.length ? '<div class="row-actions" style="margin-top:12px"><button class="btn ghost btn-sm" data-act="vol-more">Show ' + Math.min(100, sorted.length - shown.length) + ' more</button><span class="tiny">Showing ' + n(shown.length) + ' of ' + n(sorted.length) + '</span></div>' : '') +
     '</div>';
 
   bindSearch('vol-search', function (v) { VOL_STATE.search = v; VOL_STATE.limit = 100; renderVolunteers(); });
+  refreshIcons($('vol-body'));
 }
 
 // ===================================================================
 // MODULE 4: BResT (Barangay Resilience Team Dedicated Module)
 // ===================================================================
+
+function quotaMiniProgressBar(count, total, targetRate, targetLabel) {
+  if (!total || total <= 0) {
+    return '<span class="tiny text-muted">—</span>';
+  }
+  var rate = count / total;
+  var pct = Math.max(0, Math.min(100, Math.round(rate * 100)));
+  var isMet = rate >= targetRate;
+  var statusCls = isMet ? 'is-met' : 'is-below';
+  var colorVar = isMet ? 'var(--good-text)' : 'var(--warn-text)';
+  var targetPct = Math.round(targetRate * 100);
+
+  return (
+    '<div class="quota-mini-cell" title="' + attr(n(count) + ' of ' + n(total) + ' (' + pct + '%). ' + targetLabel) + '">' +
+      '<div class="quota-label-row">' +
+        '<strong style="color:' + colorVar + '">' + n(count) + ' <span class="tiny" style="font-size:10.5px">(' + pct + '%)</span></strong>' +
+        '<span class="tiny muted" style="font-size:9.5px">' + targetPct + '% req</span>' +
+      '</div>' +
+      '<div class="quota-progress-wrap">' +
+        '<div class="quota-progress-bar ' + statusCls + '" style="width:' + pct + '%;' + (isMet ? 'background:var(--good);' : 'background:var(--warn);') + '"></div>' +
+        '<div class="quota-threshold-marker" style="left:' + targetPct + '%;" title="Target: ' + targetPct + '%"></div>' +
+      '</div>' +
+    '</div>'
+  );
+}
+
+function getBrestTriageSummary(brgys, brestVols) {
+  var bList = brgys || [];
+  var vList = brestVols || [];
+  var totalBrgys = bList.length;
+  var encodedBrgys = 0;
+  var needsFixBrgys = 0;
+  var notEncodedBrgys = 0;
+  var totalVols = vList.length;
+  var womenVols = vList.filter(function (v) { return v.sex === 'female'; }).length;
+  var margVols = vList.filter(function (v) { return v.sex === 'female' || v.ip || v.pwd; }).length;
+  var totalIssues = 0;
+
+  bList.forEach(function (b) {
+    var st = b.volunteers && b.volunteers.BREST ? b.volunteers.BREST.status : 'Not encoded';
+    if (st === 'Encoded') {
+      encodedBrgys++;
+    } else if (st === 'Needs fixing') {
+      needsFixBrgys++;
+      var reasons = (b.volunteers && b.volunteers.BREST && b.volunteers.BREST.reasons) || [];
+      totalIssues += reasons.length;
+    } else {
+      notEncodedBrgys++;
+    }
+  });
+
+  var womenRate = totalVols > 0 ? (womenVols / totalVols) : 0;
+  var margRate = totalVols > 0 ? (margVols / totalVols) : 0;
+  var formationRate = totalBrgys > 0 ? ((encodedBrgys + needsFixBrgys) / totalBrgys) : 0;
+
+  return {
+    totalBrgys: totalBrgys,
+    encodedBrgys: encodedBrgys,
+    needsFixBrgys: needsFixBrgys,
+    notEncodedBrgys: notEncodedBrgys,
+    totalVols: totalVols,
+    womenVols: womenVols,
+    margVols: margVols,
+    womenRate: womenRate,
+    margRate: margRate,
+    formationRate: formationRate,
+    totalIssues: totalIssues
+  };
+}
+
+function renderBrestTriageTray(summary) {
+  var isAllGood = summary.encodedBrgys === summary.totalBrgys && summary.totalBrgys > 0;
+  var items = [];
+
+  // 1. All Barangays
+  items.push(
+    '<button type="button" class="triage-item' + (BRT_STATE.status === 'all' ? ' active-triage' : '') + '" data-act="brt-triage" data-v="all" title="View all monitored barangay teams">' +
+      '<div class="triage-item-info">' +
+        '<span class="triage-item-count">' + n(summary.totalBrgys) + '</span>' +
+        '<span class="triage-item-label">Monitored Barangays</span>' +
+      '</div>' +
+      '<span class="triage-item-arrow">' + icon('arrow-right') + '</span>' +
+    '</button>'
+  );
+
+  // 2. Fully Compliant Teams
+  items.push(
+    '<button type="button" class="triage-item triage-good' + (BRT_STATE.status === 'encoded' ? ' active-triage' : '') + '" data-act="brt-triage" data-v="encoded" title="Filter fully compliant BResT teams">' +
+      '<div class="triage-item-info">' +
+        '<span class="triage-item-count">' + n(summary.encodedBrgys) + '</span>' +
+        '<span class="triage-item-label">Compliant Teams</span>' +
+      '</div>' +
+      '<span class="triage-item-arrow">' + icon('arrow-right') + '</span>' +
+    '</button>'
+  );
+
+  // 3. Needs Attention / Validation Gaps
+  if (summary.needsFixBrgys > 0) {
+    items.push(
+      '<button type="button" class="triage-item triage-warn' + (BRT_STATE.status === 'needs_fixing' ? ' active-triage' : '') + '" data-act="brt-triage" data-v="needs_fixing" title="Filter teams requiring corrections or missing members">' +
+        '<div class="triage-item-info">' +
+          '<span class="triage-item-count">' + n(summary.needsFixBrgys) + '</span>' +
+          '<span class="triage-item-label">Needs Attention</span>' +
+        '</div>' +
+        '<span class="triage-item-arrow">' + icon('arrow-right') + '</span>' +
+      '</button>'
+    );
+  }
+
+  // 4. Not Yet Encoded
+  if (summary.notEncodedBrgys > 0) {
+    items.push(
+      '<button type="button" class="triage-item triage-bad' + (BRT_STATE.status === 'not_encoded' ? ' active-triage' : '') + '" data-act="brt-triage" data-v="not_encoded" title="Filter barangays with pending BResT formation">' +
+        '<div class="triage-item-info">' +
+          '<span class="triage-item-count">' + n(summary.notEncodedBrgys) + '</span>' +
+          '<span class="triage-item-label">Not Yet Encoded</span>' +
+        '</div>' +
+        '<span class="triage-item-arrow">' + icon('arrow-right') + '</span>' +
+      '</button>'
+    );
+  }
+
+  // 5. Marginalized Inclusion Rate (Women, IP, PWD)
+  var margGood = summary.margRate >= 0.3;
+  items.push(
+    '<button type="button" class="triage-item ' + (margGood ? 'triage-good' : 'triage-warn') + '" data-act="brt-triage" data-v="all" title="Marginalized volunteer inclusion rate across BResT (Target ≥30%)">' +
+      '<div class="triage-item-info">' +
+        '<span class="triage-item-count">' + pctText(summary.margRate) + ' <span class="tiny">(' + n(summary.margVols) + ')</span></span>' +
+        '<span class="triage-item-label">Marginalized (≥30% Target)</span>' +
+      '</div>' +
+      '<span class="triage-item-arrow">' + icon('arrow-right') + '</span>' +
+    '</button>'
+  );
+
+  return (
+    '<div class="triage-tray">' +
+      '<div class="triage-header">' +
+        '<div class="triage-title">' +
+          icon('shield') + ' <span>BResT Formation Action Center</span>' +
+        '</div>' +
+        '<div class="triage-status ' + (isAllGood ? 'status-good' : 'status-warn') + '">' +
+          icon(isAllGood ? 'check-circle-2' : 'alert-circle') +
+          '<span>' + (isAllGood ? 'All Teams Fully Organized &amp; Compliant' : (summary.needsFixBrgys + ' teams need attention · ' + summary.notEncodedBrgys + ' pending')) + '</span>' +
+        '</div>' +
+      '</div>' +
+      '<div class="triage-grid">' +
+        items.join('') +
+      '</div>' +
+    '</div>'
+  );
+}
 
 function renderBrest() {
   var body = $('brt-body');
@@ -1099,11 +1781,12 @@ function renderBrest() {
     return !activeMuni || (v.province + '|' + v.municipality === activeMuni);
   });
 
-  // KPIs
-  var totalBrgys = brgys.length;
-  var encodedBrgys = brgys.filter(function (b) { return b.volunteers && b.volunteers.BREST && b.volunteers.BREST.status === 'Encoded'; }).length;
-  var needsFixBrgys = brgys.filter(function (b) { return b.volunteers && b.volunteers.BREST && b.volunteers.BREST.status === 'Needs fixing'; }).length;
-  var notEncodedBrgys = totalBrgys - encodedBrgys - needsFixBrgys;
+  // KPIs & Triage Summary
+  var summary = getBrestTriageSummary(brgys, brestVols);
+  var totalBrgys = summary.totalBrgys;
+  var encodedBrgys = summary.encodedBrgys;
+  var needsFixBrgys = summary.needsFixBrgys;
+  var notEncodedBrgys = summary.notEncodedBrgys;
 
   // Filter cards by status
   var filteredBrgys = brgys.filter(function (b) {
@@ -1163,7 +1846,7 @@ function renderBrest() {
 
   var sortedTeams = tblSort(teamItems, curTeamCol, curTeamDir, teamExt);
 
-  var teamTh = function (col, label, num, sub, title, sticky) {
+  var teamTh = function (col, label, num, sub, title, sticky, extraClass, term, tooltip) {
     return sortTh({
       col: col,
       curCol: curTeamCol,
@@ -1173,7 +1856,10 @@ function renderBrest() {
       sub: sub,
       title: title,
       sticky: sticky,
-      act: 'brt-team-sort'
+      act: 'brt-team-sort',
+      extraClass: extraClass,
+      term: term,
+      tooltip: tooltip
     });
   };
 
@@ -1187,7 +1873,7 @@ function renderBrest() {
 
     var statusPill = st === 'Encoded'
       ? '<span class="pill good">✓ Compliant</span>'
-      : (st === 'Needs fixing' ? '<span class="pill warn">⚠ Needs Fixing</span>' : '<span class="pill bad">○ Not Encoded</span>');
+      : (st === 'Needs fixing' ? '<span class="pill warn">⚠ Needs Attention</span>' : '<span class="pill bad">○ Not Encoded</span>');
 
     var issuesCell = reasons.length > 0
       ? '<button type="button" class="btn bad btn-xs lacking-btn" data-act="open-brest-issues" data-brgy="' + attr(bkey) + '" title="Click to view all ' + reasons.length + ' validation issues">' +
@@ -1199,13 +1885,8 @@ function renderBrest() {
       ? '<span title="' + attr(item.sectors.join(', ')) + '">' + esc(item.sectors.slice(0, 2).join(', ')) + (item.sectors.length > 2 ? ' <span class="tiny muted">+' + (item.sectors.length - 2) + ' more</span>' : '') + '</span>'
       : '<span class="tiny muted">No roles tagged</span>';
 
-    var womenText = bVols.length
-      ? n(item.women) + ' <span class="tiny muted">(' + item.womenPct + '%)</span>'
-      : '<span class="tiny muted">—</span>';
-
-    var margText = bVols.length
-      ? n(item.marg) + ' <span class="tiny muted">(' + item.margPct + '%)</span>'
-      : '<span class="tiny muted">—</span>';
+    var womenMini = quotaMiniProgressBar(item.women, item.bVols.length, 0.5, 'Target ≥50% Women representation');
+    var margMini = quotaMiniProgressBar(item.marg, item.bVols.length, 0.3, 'Target ≥30% Marginalized representation (Women, IP, PWD)');
 
     return '<tr class="' + (isSelected ? 'active-row ' : '') + (st === 'Needs fixing' ? 'row-warn' : '') + '">' +
       '<td class="sticky"><strong>' + esc(b.barangay) + '</strong>' +
@@ -1213,8 +1894,8 @@ function renderBrest() {
       '</td>' +
       (!isMuni ? '<td>' + esc(b.municipality) + '</td>' : '') +
       '<td class="num"><strong>' + n(bVols.length) + '</strong></td>' +
-      '<td class="num">' + womenText + '</td>' +
-      '<td class="num">' + margText + '</td>' +
+      '<td class="num">' + womenMini + '</td>' +
+      '<td class="num">' + margMini + '</td>' +
       '<td>' + sectorsHtml + '</td>' +
       '<td>' + statusPill + '</td>' +
       '<td>' + issuesCell + '</td>' +
@@ -1252,7 +1933,7 @@ function renderBrest() {
       '<td><strong>' + esc(v.barangay) + '</strong></td>' +
       (!isMuni ? '<td>' + esc(v.municipality) + '</td>' : '') +
       '<td>' + nameCell(v) + '</td>' +
-      '<td>' + (v.chair ? '<span class="pill good">' + esc(v.position) + '</span>' : esc(v.position || 'Member')) + '</td>' +
+      '<td>' + (v.chair ? '<span class="pill good">👑 ' + esc(v.position) + '</span>' : esc(v.position || 'Member')) + '</td>' +
       '<td>' + esc(v.sex || '—') + '</td>' +
       '<td>' + (v.ip ? '<span class="pill idle">IP</span> ' : '') + (v.pwd ? '<span class="pill idle">PWD</span>' : (!v.ip ? '—' : '')) + '</td>' +
       '<td>' + esc(v.start || '—') + '</td>' +
@@ -1260,8 +1941,21 @@ function renderBrest() {
     '</tr>';
   }).join('');
 
-  var th = function (col, label, num) {
-    return sortTh({ col: col, curCol: curCol, dir: curDir, label: label, num: num, act: 'brt-sort' });
+  var th = function (col, label, num, sub, title, sticky, extraClass, term, tooltip) {
+    return sortTh({
+      col: col,
+      curCol: curCol,
+      dir: curDir,
+      label: label,
+      num: num,
+      sub: sub,
+      title: title,
+      sticky: sticky,
+      act: 'brt-sort',
+      extraClass: extraClass,
+      term: term,
+      tooltip: tooltip
+    });
   };
 
   var bq = normSearch(BRT_STATE.search.trim());
@@ -1273,17 +1967,24 @@ function renderBrest() {
   var cFix = baseBrgys.filter(function (b) { return b.volunteers && b.volunteers.BREST && b.volunteers.BREST.status === 'Needs fixing'; }).length;
   var cNot = cTotal - cEnc - cFix;
 
-  var statusCards = [
-    ['all', 'All Teams', cTotal, ''],
-    ['encoded', 'Compliant', cEnc, 'fc-good'],
-    ['needs_fixing', 'Needs Fixing', cFix, 'fc-warn'],
-    ['not_encoded', 'Not Encoded', cNot, 'fc-bad']
-  ].map(function (s) {
-    return '<button type="button" class="filter-card' + (s[3] ? ' ' + s[3] : '') + (BRT_STATE.status === s[0] ? ' active' : '') + '" data-act="brt-status" data-v="' + s[0] + '">' +
-      '<span class="fc-label">' + esc(s[1]) + '</span>' +
-      '<span class="fc-count">' + n(s[2]) + '</span>' +
-    '</button>';
-  }).join('');
+  var quickBrestChips = '<div class="quick-filter-bar">' +
+    '<span class="tiny text-muted" style="font-weight:700;margin-right:4px;">BResT Presets:</span>' +
+    '<button type="button" class="quick-filter-chip' + (BRT_STATE.status === 'all' ? ' active' : '') + '" data-act="brt-status" data-v="all">' +
+      '<span>All Teams</span> <span class="tiny" style="opacity:0.85">(' + n(cTotal) + ')</span>' +
+    '</button>' +
+    '<button type="button" class="quick-filter-chip chip-good' + (BRT_STATE.status === 'encoded' ? ' active' : '') + '" data-act="brt-status" data-v="encoded">' +
+      '<span>✓ Compliant</span> <span class="tiny" style="opacity:0.85">(' + n(cEnc) + ')</span>' +
+    '</button>' +
+    '<button type="button" class="quick-filter-chip chip-warn' + (BRT_STATE.status === 'needs_fixing' ? ' active' : '') + '" data-act="brt-status" data-v="needs_fixing">' +
+      '<span>⚠️ Needs Attention</span> <span class="tiny" style="opacity:0.85">(' + n(cFix) + ')</span>' +
+    '</button>' +
+    '<button type="button" class="quick-filter-chip chip-bad' + (BRT_STATE.status === 'not_encoded' ? ' active' : '') + '" data-act="brt-status" data-v="not_encoded">' +
+      '<span>○ Not Encoded</span> <span class="tiny" style="opacity:0.85">(' + n(cNot) + ')</span>' +
+    '</button>' +
+    (selectedBkey ? '<button type="button" class="quick-filter-chip active chip-good" data-act="brt-pick-brgy" data-v="" title="Clear barangay selection and show all teams">' +
+      '<span>Selected: ' + esc(selectedBkey.split('|')[2] || selectedBkey) + '</span> <span class="tiny">✕ Clear</span>' +
+    '</button>' : '') +
+  '</div>';
 
   var bOpts = '<option value="">All Barangays</option>' + brgys.map(function (b) {
     var v = b.province + '|' + b.municipality + '|' + b.barangay;
@@ -1318,40 +2019,42 @@ function renderBrest() {
         '<div class="kpi ' + (needsFixBrgys > 0 ? 'accent-warn' : 'accent-good') + '"><div class="kpi-label">Teams Needing Attention</div><div class="kpi-value">' + n(needsFixBrgys) + '</div><div class="kpi-sub">insufficient volunteers or validation issues</div></div>' +
         '<div class="kpi ' + (notEncodedBrgys > 0 ? 'accent-bad' : 'accent-good') + '"><div class="kpi-label">Not Yet Encoded</div><div class="kpi-value">' + n(notEncodedBrgys) + '</div><div class="kpi-sub">pending volunteer encoding in KCIS</div></div>' +
       '</div>' +
+      renderBrestTriageTray(summary) +
       '<div class="toolbar-row" style="margin-top:14px;margin-bottom:8px">' +
-        '<div class="filter-cards" style="margin:0;flex:1">' + statusCards + '</div>' +
+        quickBrestChips +
         '<label class="field" style="min-width:240px"><span>Search Barangay / Volunteer</span><input type="search" id="brt-search" value="' + attr(BRT_STATE.search) + '" placeholder="Search…"></label>' +
-        (BRT_STATE.status !== 'all' || BRT_STATE.search ? '<button type="button" class="btn ghost btn-sm" data-act="brt-reset">' + icon('rotate-ccw') + ' <span>Reset</span></button>' : '') +
+        (BRT_STATE.status !== 'all' || BRT_STATE.brgy || BRT_STATE.search ? '<button type="button" class="btn ghost btn-sm" data-act="brt-reset">' + icon('rotate-ccw') + ' <span>Reset</span></button>' : '') +
       '</div>' +
       '<div class="table-wrap" style="margin-top:12px"><table class="grid"><thead><tr>' +
-        teamTh('brgy', 'Barangay (' + sortedTeams.length + ')', false, null, null, true) +
-        (!isMuni ? teamTh('muni', 'Municipality') : '') +
-        teamTh('members', 'Members', true) +
-        teamTh('women', 'Women Rep.', true, 'Count (%)') +
-        teamTh('marg', 'Marginalized', true, 'IP/PWD (%)') +
-        teamTh('sectors', 'Sectors / Purok Roles', false, 'Sitios & Groups') +
-        teamTh('status', 'Compliance') +
-        teamTh('issues', 'Lacking / Issues') +
+        teamTh('brgy', 'Barangay (' + sortedTeams.length + ')', false, null, 'Barangay of team jurisdiction', true) +
+        (!isMuni ? teamTh('muni', 'Municipality', false, null, 'Local Government Unit') : '') +
+        teamTh('members', 'Members', true, null, null, false, '', null, 'Total community volunteers encoded in BResT') +
+        teamTh('women', 'Women Rep.', true, 'Quota ≥50%', null, false, '', 'femaleratio', 'Women representation quota (GSI target ≥50%)') +
+        teamTh('marg', 'Marginalized', true, 'Quota ≥30%', null, false, '', 'marginalized', 'Marginalized representation quota (Women, IP, PWD; Stage 1 target ≥30%)') +
+        teamTh('sectors', 'Sectors / Purok Roles', false, 'Sitios & Groups', null, false, '', null, 'Coverage across sectoral representatives and sitios/puroks') +
+        teamTh('status', 'Compliance', false, null, null, false, '', 'brest', 'BResT formation compliance per SM1/SM7 criteria') +
+        teamTh('issues', 'Lacking / Issues', false, null, null, false, '', null, 'Validation warnings against BResT formation policy (minimum size, 30% marginalized quota, chairperson rule)') +
         '<th>Actions</th>' +
       '</tr></thead><tbody>' + (teamRowsHtml || '<tr><td colspan="9" class="empty-state">No barangays match this status filter.</td></tr>') + '</tbody></table></div>' +
       '<hr style="border:0;border-top:1px solid var(--border-subtle);margin:24px 0 16px">' +
       '<div class="card-head" style="margin-bottom:8px">' +
-        '<div><h3>BResT Member Directory</h3><div class="tiny">' + (selectedBkey ? 'Showing members for selected barangay' : 'All encoded BResT members across monitored barangays') + '</div></div>' +
+        '<div><h3>BResT Member Directory</h3><div class="tiny">' + (selectedBkey ? 'Showing members for selected barangay: <strong>' + esc(selectedBkey.split('|')[2] || selectedBkey) + '</strong>' : 'All encoded BResT members across monitored barangays') + '</div></div>' +
         '<div class="filters" style="margin:0"><label class="field"><span>Barangay</span><select data-act="brt-brgy">' + bOpts + '</select></label></div>' +
       '</div>' +
       '<div class="table-wrap"><table class="grid"><thead><tr>' +
-        th('brgy', 'Barangay') +
-        (!isMuni ? th('muni', 'Municipality') : '') +
-        th('name', 'Member Name') +
-        th('position', 'Position') +
-        th('sex', 'Sex') +
-        th('ippwd', 'IP / PWD') +
-        th('start', 'Term Start') +
+        th('brgy', 'Barangay', false, null, 'Barangay of residence') +
+        (!isMuni ? th('muni', 'Municipality', false, null, 'Local Government Unit') : '') +
+        th('name', 'Member Name', false, null, 'Volunteer name recorded in KCIS') +
+        th('position', 'Position', false, null, 'Role or committee designation') +
+        th('sex', 'Sex', false, null, null, false, '', 'femaleratio', 'Gender / Sex') +
+        th('ippwd', 'IP / PWD', false, null, null, false, '', 'marginalized', 'Sectoral tagging') +
+        th('start', 'Term Start', false, null, 'Election or start date') +
         '<th>Cross-check</th>' +
       '</tr></thead><tbody>' + (memberRows || '<tr><td colspan="8" class="empty-state">No BResT members encoded for this selection.</td></tr>') + '</tbody></table></div>' +
     '</div>';
 
   bindSearch('brt-search', function (v) { BRT_STATE.search = v; renderBrest(); });
+  refreshIcons($('brt-body'));
 }
 
 // ===================================================================
@@ -1603,6 +2306,146 @@ function buildAggregateOrgChartHtml(brgys, evalMap, s2Vols, scopeTitle) {
   '</div>';
 }
 
+// ===================================================================
+// STAGE 2 CSPMC & 8 SUB-COMMITTEES HELPERS
+// ===================================================================
+
+function getCspmcTriageSummary(brgys, evalMap, s2Vols) {
+  var bList = brgys || [];
+  var vList = s2Vols || [];
+  var totalBrgys = bList.length;
+  var compliantBrgys = 0;
+  var needsFixBrgys = 0;
+  var notEncodedBrgys = 0;
+  var cmscQuorumBrgys = 0;
+  var leadMissingBrgys = 0;
+  var totalIssues = 0;
+
+  bList.forEach(function (b) {
+    var bkey = b.province + '|' + b.municipality + '|' + b.barangay;
+    var ev = evalMap ? evalMap[bkey] : null;
+    var st = ev ? ev.status : 'Not encoded';
+    if (st === 'Encoded') {
+      compliantBrgys++;
+    } else if (st === 'Needs fixing') {
+      needsFixBrgys++;
+      if (ev && ev.reasons) totalIssues += ev.reasons.length;
+    } else {
+      notEncodedBrgys++;
+    }
+
+    if (ev && ev.cmscCount >= 3 && ev.hasCmscLead) {
+      cmscQuorumBrgys++;
+    }
+    if (ev && ev.vols.length > 0 && (!ev.hasCspmcLead || !ev.hasCmscLead)) {
+      leadMissingBrgys++;
+    }
+  });
+
+  var totalVols = vList.length;
+  var womenVols = vList.filter(function (v) { return v.sex === 'female'; }).length;
+  var womenRate = totalVols > 0 ? (womenVols / totalVols) : 0;
+  var formationRate = totalBrgys > 0 ? ((compliantBrgys + needsFixBrgys) / totalBrgys) : 0;
+
+  return {
+    totalBrgys: totalBrgys,
+    compliantBrgys: compliantBrgys,
+    needsFixBrgys: needsFixBrgys,
+    notEncodedBrgys: notEncodedBrgys,
+    cmscQuorumBrgys: cmscQuorumBrgys,
+    leadMissingBrgys: leadMissingBrgys,
+    totalVols: totalVols,
+    womenVols: womenVols,
+    womenRate: womenRate,
+    formationRate: formationRate,
+    totalIssues: totalIssues
+  };
+}
+
+function renderCspmcTriageTray(summary) {
+  var isAllGood = summary.compliantBrgys === summary.totalBrgys && summary.totalBrgys > 0;
+  var items = [];
+
+  // 1. All Barangays
+  items.push(
+    '<button type="button" class="triage-item' + (CSPMC_STATE.status === 'all' && CSPMC_STATE.subFilter === 'all' ? ' active-triage' : '') + '" data-act="cspmc-triage" data-v="all" title="View all monitored Stage 2 barangays">' +
+      '<div class="triage-item-info">' +
+        '<span class="triage-item-count">' + n(summary.totalBrgys) + '</span>' +
+        '<span class="triage-item-label">Stage 2 Barangays</span>' +
+      '</div>' +
+      '<span class="triage-item-arrow">' + icon('arrow-right') + '</span>' +
+    '</button>'
+  );
+
+  // 2. Compliant Teams
+  items.push(
+    '<button type="button" class="triage-item triage-good' + (CSPMC_STATE.status === 'encoded' ? ' active-triage' : '') + '" data-act="cspmc-triage" data-v="encoded" title="Filter fully compliant Stage 2 teams (CMSC quorum & elected leads)">' +
+      '<div class="triage-item-info">' +
+        '<span class="triage-item-count">' + n(summary.compliantBrgys) + '</span>' +
+        '<span class="triage-item-label">Compliant Teams</span>' +
+      '</div>' +
+      '<span class="triage-item-arrow">' + icon('arrow-right') + '</span>' +
+    '</button>'
+  );
+
+  // 3. Needs Attention
+  if (summary.needsFixBrgys > 0) {
+    items.push(
+      '<button type="button" class="triage-item triage-warn' + (CSPMC_STATE.status === 'needs_fixing' ? ' active-triage' : '') + '" data-act="cspmc-triage" data-v="needs_fixing" title="Filter teams with missing leads, lacking CMSC quorum, or quota warnings">' +
+        '<div class="triage-item-info">' +
+          '<span class="triage-item-count">' + n(summary.needsFixBrgys) + '</span>' +
+          '<span class="triage-item-label">Needs Attention</span>' +
+        '</div>' +
+        '<span class="triage-item-arrow">' + icon('arrow-right') + '</span>' +
+      '</button>'
+    );
+  }
+
+  // 4. CMSC Quorum Gaps (<3 members or no lead)
+  var cmscGaps = summary.totalBrgys - summary.cmscQuorumBrgys;
+  if (cmscGaps > 0) {
+    items.push(
+      '<button type="button" class="triage-item triage-warn' + (CSPMC_STATE.subFilter === 'CMSC' ? ' active-triage' : '') + '" data-act="cspmc-triage" data-v="cmsc_filter" title="Filter CMSC Independent Monitoring Teams (SM7 requires ≥3 CVs + Lead)">' +
+        '<div class="triage-item-info">' +
+          '<span class="triage-item-count">' + n(summary.cmscQuorumBrgys) + ' <span class="tiny">(' + cmscGaps + ' gap)</span></span>' +
+          '<span class="triage-item-label">CMSC Quorum (≥3 CVs)</span>' +
+        '</div>' +
+        '<span class="triage-item-arrow">' + icon('arrow-right') + '</span>' +
+      '</button>'
+    );
+  }
+
+  // 5. Pending BA2 / Not Encoded
+  if (summary.notEncodedBrgys > 0) {
+    items.push(
+      '<button type="button" class="triage-item triage-bad' + (CSPMC_STATE.status === 'not_encoded' ? ' active-triage' : '') + '" data-act="cspmc-triage" data-v="not_encoded" title="Filter barangays pending 2nd Barangay Assembly (BA2) committee organization">' +
+        '<div class="triage-item-info">' +
+          '<span class="triage-item-count">' + n(summary.notEncodedBrgys) + '</span>' +
+          '<span class="triage-item-label">Pending BA2 Formation</span>' +
+        '</div>' +
+        '<span class="triage-item-arrow">' + icon('arrow-right') + '</span>' +
+      '</button>'
+    );
+  }
+
+  return (
+    '<div class="triage-tray">' +
+      '<div class="triage-header">' +
+        '<div class="triage-title">' +
+          icon('layers') + ' <span>Stage 2 CSPMC &amp; Sub-Committees Action Center</span>' +
+        '</div>' +
+        '<div class="triage-status ' + (isAllGood ? 'status-good' : 'status-warn') + '">' +
+          icon(isAllGood ? 'check-circle-2' : 'alert-circle') +
+          '<span>' + (isAllGood ? 'All Stage 2 Sub-Committees Fully Organized &amp; Compliant' : (summary.needsFixBrgys + ' barangays require attention · ' + summary.notEncodedBrgys + ' pending BA2')) + '</span>' +
+        '</div>' +
+      '</div>' +
+      '<div class="triage-grid">' +
+        items.join('') +
+      '</div>' +
+    '</div>'
+  );
+}
+
 function renderCspmc() {
   var body = $('cspmc-body');
   if (!body) return;
@@ -1623,17 +2466,17 @@ function renderCspmc() {
     evalMap[bkey] = evaluateCspmcBarangay(b, bv);
   });
 
-  // High-level KPIs
-  var totalBrgys = brgys.length;
-  var compliantBrgys = brgys.filter(function (b) { var ev = evalMap[b.province + '|' + b.municipality + '|' + b.barangay]; return ev && ev.status === 'Encoded'; }).length;
-  var needsFixBrgys = brgys.filter(function (b) { var ev = evalMap[b.province + '|' + b.municipality + '|' + b.barangay]; return ev && ev.status === 'Needs fixing'; }).length;
-  var notEncodedBrgys = totalBrgys - compliantBrgys - needsFixBrgys;
+  // Triage Summary
+  var summary = getCspmcTriageSummary(brgys, evalMap, s2Vols);
+  var totalBrgys = summary.totalBrgys;
+  var compliantBrgys = summary.compliantBrgys;
+  var needsFixBrgys = summary.needsFixBrgys;
+  var notEncodedBrgys = summary.notEncodedBrgys;
   var formedBrgys = compliantBrgys + needsFixBrgys;
-
-  var cmscCompliant = brgys.filter(function (b) { var ev = evalMap[b.province + '|' + b.municipality + '|' + b.barangay]; return ev && ev.cmscCount >= 3 && ev.hasCmscLead; }).length;
+  var cmscCompliant = summary.cmscQuorumBrgys;
   var totalBrestAlums = s2Vols.filter(function (v) { return v.stage2Body === 'CMSC' && v.wasBrest; }).length;
-  var totalWomen = s2Vols.filter(function (v) { return v.sex === 'female'; }).length;
-  var womenPct = s2Vols.length ? Math.round(totalWomen / s2Vols.length * 100) : 0;
+  var totalWomen = summary.womenVols;
+  var womenPct = Math.round(summary.womenRate * 100);
 
   // Filter barangays
   var selectedBkey = CSPMC_STATE.brgy;
@@ -1695,7 +2538,7 @@ function renderCspmc() {
 
   var sortedTeams = tblSort(teamItems, curTeamCol, curTeamDir, teamExt);
 
-  var teamTh = function (col, label, num, sub, title, sticky) {
+  var teamTh = function (col, label, num, sub, title, sticky, extraClass, term, tooltip) {
     return sortTh({
       col: col,
       curCol: curTeamCol,
@@ -1705,7 +2548,10 @@ function renderCspmc() {
       sub: sub,
       title: title,
       sticky: sticky,
-      act: 'cspmc-team-sort'
+      act: 'cspmc-team-sort',
+      extraClass: extraClass,
+      term: term,
+      tooltip: tooltip
     });
   };
 
@@ -1717,7 +2563,7 @@ function renderCspmc() {
 
     var statusPill = ev.status === 'Encoded'
       ? '<span class="pill good">✓ Compliant</span>'
-      : (ev.status === 'Needs fixing' ? '<span class="pill warn">⚠ Needs Fixing</span>' : '<span class="pill bad">○ Not Encoded</span>');
+      : (ev.status === 'Needs fixing' ? '<span class="pill warn">⚠ Needs Attention</span>' : '<span class="pill bad">○ Not Encoded</span>');
 
     var issuesCell = ev.reasons.length > 0
       ? '<button type="button" class="btn bad btn-xs lacking-btn" data-act="open-cspmc-issues" data-brgy="' + attr(bkey) + '" title="Click to view all ' + ev.reasons.length + ' validation issues">' +
@@ -1729,15 +2575,10 @@ function renderCspmc() {
       ? '<strong>' + esc(item.cspmcLead) + '</strong> <span class="pill good tiny">Lead</span>'
       : (ev.vols.length ? '<span class="tiny warn-text">⚠ No Lead designated</span>' : '<span class="tiny muted">—</span>');
 
-    var cmscCell = '';
-    if (ev.cmscCount === 0) {
-      cmscCell = ev.vols.length ? '<span class="tiny warn-text">⚠ 0 members (min. 3)</span>' : '<span class="tiny muted">—</span>';
-    } else {
-      var cmscBadge = ev.cmscCount >= 3 ? '<span class="pill good tiny">✓ ' + n(ev.cmscCount) + ' CVs</span>' : '<span class="pill warn tiny">⚠ ' + n(ev.cmscCount) + '/3 CVs</span>';
-      var alumBadge = item.cmscBrestAlum ? ' <span class="pill good tiny" title="' + item.cmscBrestAlum + ' member(s) previously served in BResT (encouraged by SM7 p. 15)">✓ ' + item.cmscBrestAlum + ' from BResT</span>' : '';
-      var leadInfo = item.cmscLead ? '<div class="tiny muted">Lead: ' + esc(item.cmscLead) + '</div>' : '<div class="tiny warn-text">⚠ No Chair/Lead</div>';
-      cmscCell = '<div>' + cmscBadge + alumBadge + leadInfo + '</div>';
-    }
+    var cmscQuota = quotaMiniProgressBar(ev.cmscCount, 3, 1.0, 'Mandatory ≥3 Independent Monitors (SM7 p. 15)');
+    var alumBadge = item.cmscBrestAlum ? ' <span class="pill good tiny" title="' + item.cmscBrestAlum + ' member(s) previously served in BResT (encouraged by SM7 p. 15)">✓ ' + item.cmscBrestAlum + ' from BResT</span>' : '';
+    var leadInfo = item.cmscLead ? '<div class="tiny muted">Lead: ' + esc(item.cmscLead) + '</div>' : '<div class="tiny warn-text">⚠ No Chair/Lead</div>';
+    var cmscCell = '<div>' + cmscQuota + (alumBadge ? '<div style="margin-top:2px">' + alumBadge + '</div>' : '') + leadInfo + '</div>';
 
     var activeBadges = ev.activeBodies.length
       ? ev.activeBodies.map(function (body) {
@@ -1747,9 +2588,7 @@ function renderCspmc() {
         }).join('')
       : '<span class="tiny muted">No sub-committees encoded</span>';
 
-    var membersCell = ev.vols.length
-      ? '<strong>' + n(ev.vols.length) + '</strong> <span class="tiny muted">(' + ev.womenPct + '% F)</span>'
-      : '<span class="tiny muted">0</span>';
+    var womenMini = quotaMiniProgressBar(ev.women, ev.vols.length, 0.5, 'Target ≥50% Women representation');
 
     return '<tr class="' + (isSelected ? 'active-row ' : '') + (ev.status === 'Needs fixing' ? 'row-warn' : '') + '">' +
       '<td class="sticky"><strong>' + esc(b.barangay) + '</strong>' +
@@ -1759,12 +2598,17 @@ function renderCspmc() {
       '<td>' + leadCell + '</td>' +
       '<td>' + cmscCell + '</td>' +
       '<td>' + activeBadges + '</td>' +
-      '<td class="num">' + membersCell + '</td>' +
+      '<td class="num">' + womenMini + '</td>' +
       '<td>' + statusPill + '</td>' +
       '<td>' + issuesCell + '</td>' +
-      '<td><button type="button" class="btn ghost btn-xs" data-act="open-cspmc-detail" data-brgy="' + attr(bkey) + '" title="Open Stage 2 Organizational Chart &amp; 8 Sub-Committees">' +
-        icon('layers') + ' <span>Org Chart ›</span>' +
-      '</button></td>' +
+      '<td><div class="row-actions" style="margin:0;gap:4px">' +
+        '<button type="button" class="btn ghost btn-xs" data-act="cspmc-pick-brgy" data-v="' + attr(bkey) + '" title="Filter volunteer directory below to ' + esc(b.barangay) + '">' +
+          icon('users') + ' <span>' + (isSelected ? 'Selected' : 'CVs (' + n(ev.vols.length) + ')') + '</span>' +
+        '</button>' +
+        '<button type="button" class="btn ghost btn-xs" data-act="open-cspmc-detail" data-brgy="' + attr(bkey) + '" title="Open Stage 2 Organizational Chart &amp; 8 Sub-Committees">' +
+          icon('layers') + ' <span>Org Chart ›</span>' +
+        '</button>' +
+      '</div></td>' +
     '</tr>';
   }).join('');
 
@@ -1803,11 +2647,11 @@ function renderCspmc() {
       : '<span class="tiny muted">—</span>';
 
     return '<tr>' +
-      '<td><strong>' + esc(v.barangay) + '</strong></td>' +
+      '<td class="sticky"><strong>' + esc(v.barangay) + '</strong></td>' +
       (!isMuni ? '<td>' + esc(v.municipality) + '</td>' : '') +
       '<td>' + nameCell(v) + '</td>' +
       '<td><span class="pill idle tiny"><strong>' + esc(v.stage2Body || 'CSPMC') + '</strong></span> <span class="tiny">' + esc(bodyLabel) + '</span></td>' +
-      '<td>' + (v.chair ? '<span class="pill good">' + esc(v.position) + '</span>' : esc(v.position || 'Member')) + '</td>' +
+      '<td>' + (v.chair ? '<span class="pill good">👑 ' + esc(v.position) + '</span>' : esc(v.position || 'Member')) + '</td>' +
       '<td>' + esc(v.sex || '—') + '</td>' +
       '<td>' + (v.ip ? '<span class="pill idle">IP</span> ' : '') + (v.pwd ? '<span class="pill idle">PWD</span>' : (!v.ip ? '—' : '')) + '</td>' +
       '<td>' + alumBadge + '</td>' +
@@ -1816,8 +2660,21 @@ function renderCspmc() {
     '</tr>';
   }).join('');
 
-  var volTh = function (col, label, num) {
-    return sortTh({ col: col, curCol: curVolCol, dir: curVolDir, label: label, num: num, act: 'cspmc-vol-sort' });
+  var volTh = function (col, label, num, sub, title, sticky, extraClass, term, tooltip) {
+    return sortTh({
+      col: col,
+      curCol: curVolCol,
+      dir: curVolDir,
+      label: label,
+      num: num,
+      sub: sub,
+      title: title,
+      sticky: sticky,
+      act: 'cspmc-vol-sort',
+      extraClass: extraClass,
+      term: term,
+      tooltip: tooltip
+    });
   };
 
   // Status Filter Cards counts
@@ -1826,17 +2683,34 @@ function renderCspmc() {
   var cFix = needsFixBrgys;
   var cNot = notEncodedBrgys;
 
-  var statusCards = [
-    ['all', 'All Teams', cTotal, ''],
-    ['encoded', 'Compliant', cEnc, 'fc-good'],
-    ['needs_fixing', 'Needs Fixing', cFix, 'fc-warn'],
-    ['not_encoded', 'Not Encoded', cNot, 'fc-bad']
-  ].map(function (s) {
-    return '<button type="button" class="filter-card' + (s[3] ? ' ' + s[3] : '') + (CSPMC_STATE.status === s[0] ? ' active' : '') + '" data-act="cspmc-status" data-v="' + s[0] + '">' +
-      '<span class="fc-label">' + esc(s[1]) + '</span>' +
-      '<span class="fc-count">' + n(s[2]) + '</span>' +
-    '</button>';
-  }).join('');
+  var quickCspmcChips = '<div class="quick-filter-bar">' +
+    '<span class="tiny text-muted" style="font-weight:700;margin-right:4px;">Governance Presets:</span>' +
+    '<button type="button" class="quick-filter-chip' + (CSPMC_STATE.status === 'all' && CSPMC_STATE.subFilter === 'all' ? ' active' : '') + '" data-act="cspmc-chip" data-type="status" data-v="all">' +
+      '<span>All Teams</span> <span class="tiny" style="opacity:0.85">(' + n(cTotal) + ')</span>' +
+    '</button>' +
+    '<button type="button" class="quick-filter-chip chip-good' + (CSPMC_STATE.status === 'encoded' ? ' active' : '') + '" data-act="cspmc-chip" data-type="status" data-v="encoded">' +
+      '<span>✓ Compliant</span> <span class="tiny" style="opacity:0.85">(' + n(cEnc) + ')</span>' +
+    '</button>' +
+    '<button type="button" class="quick-filter-chip chip-warn' + (CSPMC_STATE.status === 'needs_fixing' ? ' active' : '') + '" data-act="cspmc-chip" data-type="status" data-v="needs_fixing">' +
+      '<span>⚠️ Needs Attention</span> <span class="tiny" style="opacity:0.85">(' + n(cFix) + ')</span>' +
+    '</button>' +
+    '<button type="button" class="quick-filter-chip chip-bad' + (CSPMC_STATE.status === 'not_encoded' ? ' active' : '') + '" data-act="cspmc-chip" data-type="status" data-v="not_encoded">' +
+      '<span>○ Pending BA2</span> <span class="tiny" style="opacity:0.85">(' + n(cNot) + ')</span>' +
+    '</button>' +
+    '<span style="color:var(--border-strong);margin:0 2px">|</span>' +
+    '<button type="button" class="quick-filter-chip' + (CSPMC_STATE.subFilter === 'CMSC' ? ' active chip-good' : '') + '" data-act="cspmc-chip" data-type="sub" data-v="CMSC">' +
+      '<span>CMSC (Monitor)</span> <span class="tiny" style="opacity:0.85">(' + n(s2Vols.filter(function (v) { return v.stage2Body === 'CMSC'; }).length) + ')</span>' +
+    '</button>' +
+    '<button type="button" class="quick-filter-chip' + (CSPMC_STATE.subFilter === 'CSPMC' ? ' active chip-good' : '') + '" data-act="cspmc-chip" data-type="sub" data-v="CSPMC">' +
+      '<span>CSPMC Officers</span> <span class="tiny" style="opacity:0.85">(' + n(s2Vols.filter(function (v) { return v.stage2Body === 'CSPMC'; }).length) + ')</span>' +
+    '</button>' +
+    '<button type="button" class="quick-filter-chip' + (CSPMC_STATE.subFilter === 'PIT' ? ' active chip-good' : '') + '" data-act="cspmc-chip" data-type="sub" data-v="PIT">' +
+      '<span>SPISC / PIT</span> <span class="tiny" style="opacity:0.85">(' + n(s2Vols.filter(function (v) { return v.stage2Body === 'PIT'; }).length) + ')</span>' +
+    '</button>' +
+    (selectedBkey ? '<button type="button" class="quick-filter-chip active chip-good" data-act="cspmc-pick-brgy" data-v="" title="Clear barangay selection and show all teams">' +
+      '<span>Selected: ' + esc(selectedBkey.split('|')[2] || selectedBkey) + '</span> <span class="tiny">✕ Clear</span>' +
+    '</button>' : '') +
+  '</div>';
 
   // Sub-committee quick filters
   var subCards = [['all', 'All Bodies', s2Vols.length]].concat(
@@ -1874,7 +2748,7 @@ function renderCspmc() {
     ? '<div class="static-val">' + icon('map-pin') + ' <span>Municipality: <strong>' + esc(home().municipality) + '</strong> (' + esc(home().province) + ')</span> <span class="role-badge field">PEA / MDM Scope</span></div>'
     : '<label class="field"><span>Municipality</span><select data-act="cspmc-muni">' + mOpts + '</select></label>';
 
-  // Build Organizational Chart visualization (single barangay if selected, otherwise aggregate scope)
+  // Build Organizational Chart visualization
   var orgChartSectionHtml = '';
   if (CSPMC_STATE.showOrgChart) {
     if (selectedBkey && evalMap[selectedBkey]) {
@@ -1915,10 +2789,10 @@ function renderCspmc() {
           '<div class="kpi-value">' + n(totalBrestAlums) + ' <span class="tiny">alums</span></div>' +
           '<div class="kpi-sub">Encouraged selection from BResT</div>' +
         '</div>' +
-        '<div class="kpi ' + (womenPct >= 30 ? 'accent-good' : 'accent-warn') + '">' +
+        '<div class="kpi ' + (womenPct >= 50 ? 'accent-good' : 'accent-warn') + '">' +
           '<div class="kpi-label">Women Representation</div>' +
           '<div class="kpi-value">' + womenPct + '%</div>' +
-          '<div class="kpi-sub">' + n(totalWomen) + ' women (&ge;30% quota)</div>' +
+          '<div class="kpi-sub">' + n(totalWomen) + ' women (≥50% target)</div>' +
         '</div>' +
         '<div class="kpi">' +
           '<div class="kpi-label">Active Sub-Committee Seats</div>' +
@@ -1926,51 +2800,54 @@ function renderCspmc() {
           '<div class="kpi-sub">Across 8 sub-committees + Bookkeeper</div>' +
         '</div>' +
       '</div>' +
+      renderCspmcTriageTray(summary) +
       orgChartSectionHtml +
-      '<div class="filter-cards" style="margin-top:14px">' + statusCards + '</div>' +
       '<div class="card-head" style="margin-top:14px;margin-bottom:6px">' +
         '<div><h3 style="margin:0;font-size:13px;text-transform:uppercase;letter-spacing:0.04em;color:var(--text-muted)">Filter by Sub-Committee</h3></div>' +
       '</div>' +
       '<div class="filter-cards" style="margin-bottom:14px">' + subCards + '</div>' +
-      '<div class="toolbar-row"><div class="filters" style="margin:0">' +
+      '<div class="toolbar-row"><div class="filters" style="margin:0;flex:1">' +
         scopeBanner +
         '<label class="field"><span>Barangay</span><select data-act="cspmc-brgy">' + bOpts + '</select></label>' +
         '<label class="field" style="min-width:240px;flex:1"><span>Search Barangay / Volunteer / Sub-Committee</span><input type="search" id="cspmc-search" value="' + attr(CSPMC_STATE.search) + '" placeholder="Search…"></label>' +
         (CSPMC_STATE.status !== 'all' || CSPMC_STATE.subFilter !== 'all' || CSPMC_STATE.brgy || CSPMC_STATE.search ? '<button type="button" class="btn ghost btn-sm" data-act="cspmc-reset">' + icon('rotate-ccw') + ' <span>Reset</span></button>' : '') +
       '</div></div>' +
+      quickCspmcChips +
       '<div class="table-wrap" style="margin-top:12px"><table class="grid"><thead><tr>' +
-        teamTh('brgy', 'Barangay (' + sortedTeams.length + ')', false, null, null, true) +
-        (!isMuni ? teamTh('muni', 'Municipality') : '') +
-        teamTh('cspmcLead', 'CSPMC Lead') +
-        teamTh('cmsc', 'CMSC (Monitoring)', true, 'Min. 3 CVs + Lead') +
-        teamTh('activeBodies', 'Active Sub-Committees', true, 'Formed Bodies') +
-        teamTh('members', 'Total Members', true, 'Count (% Women)') +
-        teamTh('status', 'Compliance') +
-        teamTh('issues', 'Lacking / Issues') +
+        teamTh('brgy', 'Barangay (' + sortedTeams.length + ')', false, null, 'Barangay of sub-project implementation', true) +
+        (!isMuni ? teamTh('muni', 'Municipality', false, null, 'Local Government Unit') : '') +
+        teamTh('cspmcLead', 'CSPMC Lead', false, null, 'Elected head of Community Sub-Project Management Committee') +
+        teamTh('cmsc', 'CMSC (Monitoring)', true, 'Min. 3 CVs + Lead', 'Community Monitoring Sub-Committee: independent oversight body reporting to BA') +
+        teamTh('activeBodies', 'Active Sub-Committees', true, 'Formed Bodies', 'Number of 8 specialized sub-committees with encoded CVs') +
+        teamTh('members', 'Total Members', true, 'Quota ≥50%', 'Total Stage 2 community volunteers and GSI gender balance') +
+        teamTh('status', 'Compliance', false, null, 'Stage 2 governance compliance under SM1 §4.2 & SM7 §1.5.1') +
+        teamTh('issues', 'Lacking / Issues', false, null, 'Validation warnings for missing leads, quorum deficit, or quotas') +
         '<th>Actions</th>' +
       '</tr></thead><tbody>' + (teamRowsHtml || '<tr><td colspan="9" class="empty-state">No barangays match this filter.</td></tr>') + '</tbody></table></div>' +
       '<hr style="border:0;border-top:1px solid var(--border-subtle);margin:24px 0 16px">' +
       '<div class="card-head" style="margin-bottom:8px">' +
-        '<div><h3>Stage 2 Volunteer Directory</h3><div class="tiny">' + (selectedBkey ? 'Showing volunteers for selected barangay' : 'All encoded Stage 2 volunteers across monitored barangays') + '</div></div>' +
+        '<div><h3>Stage 2 Volunteer Directory</h3><div class="tiny">' + (selectedBkey ? 'Showing volunteers for selected barangay: <strong>' + esc(selectedBkey.split('|')[2] || selectedBkey) + '</strong>' : 'All encoded Stage 2 volunteers across monitored barangays') + '</div></div>' +
         '<div class="filters" style="margin:0"><span class="tiny">Showing <strong>' + n(shownVols.length) + '</strong> of <strong>' + n(sortedVols.length) + '</strong></span></div>' +
       '</div>' +
       '<div class="table-wrap"><table class="grid"><thead><tr>' +
-        volTh('brgy', 'Barangay') +
-        (!isMuni ? volTh('muni', 'Municipality') : '') +
-        volTh('name', 'Volunteer Name') +
-        volTh('sub', 'Sub-Committee') +
-        volTh('position', 'Position') +
-        volTh('sex', 'Sex') +
-        volTh('ippwd', 'IP / PWD') +
-        volTh('frombrest', 'BResT Alum') +
-        volTh('start', 'Term Start') +
+        volTh('brgy', 'Barangay', false, null, 'Barangay of residence', true) +
+        (!isMuni ? volTh('muni', 'Municipality', false, null, 'Local Government Unit') : '') +
+        volTh('name', 'Volunteer Name', false, null, 'Volunteer name recorded in KCIS') +
+        volTh('sub', 'Sub-Committee', false, null, 'Assigned Stage 2 Sub-Committee') +
+        volTh('position', 'Position', false, null, 'Elected role (Chairperson, Vice-Chair, Member)') +
+        volTh('sex', 'Sex', false, null, null, false, '', 'femaleratio', 'Gender / Sex') +
+        volTh('ippwd', 'IP / PWD', false, null, null, false, '', 'marginalized', 'Sectoral tags') +
+        volTh('frombrest', 'BResT Alum', false, null, 'Whether volunteer transitioned from Stage 1 BResT') +
+        volTh('start', 'Term Start', false, null, 'Election or start date') +
         '<th>Cross-check</th>' +
       '</tr></thead><tbody>' + (volRowsHtml || '<tr><td colspan="10" class="empty-state">No Stage 2 volunteers encoded for this selection.</td></tr>') + '</tbody></table></div>' +
       (shownVols.length < sortedVols.length ? '<div class="row-actions" style="margin-top:12px"><button class="btn ghost btn-sm" data-act="cspmc-more">Show ' + Math.min(100, sortedVols.length - shownVols.length) + ' more</button></div>' : '') +
     '</div>';
 
   bindSearch('cspmc-search', function (v) { CSPMC_STATE.search = v; renderCspmc(); });
+  refreshIcons($('cspmc-body'));
 }
+
 
 function openCspmcDetail(bkey) {
   CSPMC_STATE.modalBkey = bkey;
@@ -2343,6 +3220,171 @@ function buildMrestOrgChartHtml(muniName, provName, muniVols, totalBarangays, eo
   '</div>';
 }
 
+// ===================================================================
+// MREST CO-GOVERNANCE TRIAGE & SUMMARY HELPERS
+// ===================================================================
+
+function getMrestTriageSummary(muniVols, totalBarangays, allMrest, munis, isMuni, eoTag) {
+  var list = muniVols || [];
+  var totalMembers = list.length;
+  var totalBrgys = totalBarangays || 0;
+
+  var captainsCount = 0;
+  var ipmrCount = 0;
+  var csoCount = 0;
+  var infraCount = 0;
+  var socialCount = 0;
+  var climateCount = 0;
+  var financeCount = 0;
+  var leadsCount = 0;
+  var sbCount = 0;
+  var actCount = 0;
+  var otherCount = 0;
+  var lceVols = [];
+
+  list.forEach(function (v) {
+    var role = classifyMrestRole(v.position, v.committee);
+    if (role === 'LCE') lceVols.push(v);
+    else if (role === 'LEAD') leadsCount++;
+    else if (role === 'CAPTAINS') captainsCount++;
+    else if (role === 'IPMR') ipmrCount++;
+    else if (role === 'CSO') csoCount++;
+    else if (role === 'INFRA') infraCount++;
+    else if (role === 'SOCIAL') socialCount++;
+    else if (role === 'CLIMATE') climateCount++;
+    else if (role === 'FINANCE') financeCount++;
+    else if (role === 'SB_DILG') sbCount++;
+    else if (role === 'ACT_MCT') actCount++;
+    else otherCount++;
+  });
+
+  var hasLce = lceVols.length > 0;
+  var lceName = hasLce ? lceVols[0].name : '';
+
+  // Community Wing: Captains, IPMR, CSO (SM1 Section 3.1 Para 13)
+  var communityCount = captainsCount + ipmrCount + csoCount;
+  // Internal total excludes external technical linkages like ACT/MCT
+  var internalTotal = totalMembers - actCount;
+  var communityPct = internalTotal > 0 ? Math.round(communityCount / internalTotal * 100) : 0;
+  var isQuorumMet = communityPct >= 50;
+
+  var captainsQuotaMet = totalBrgys > 0 ? (captainsCount >= totalBrgys) : false;
+
+  // 4 Core Technical Departments (MEO, MSWDO/MHO, MENRO/MAO, MBO/MTO)
+  var keyOfficesCount = (infraCount > 0 ? 1 : 0) + (socialCount > 0 ? 1 : 0) + (climateCount > 0 ? 1 : 0) + (financeCount > 0 ? 1 : 0);
+
+  // EO Verification
+  var isVerified = eoTag && eoTag.rows && Object.keys(eoTag.rows).length > 0;
+  var eoCount = eoTag && typeof eoTag.formCount === 'number' ? eoTag.formCount : null;
+
+  return {
+    totalMembers: totalMembers,
+    totalBrgys: totalBrgys,
+    captainsCount: captainsCount,
+    captainsQuotaMet: captainsQuotaMet,
+    communityCount: communityCount,
+    internalTotal: internalTotal,
+    communityPct: communityPct,
+    isQuorumMet: isQuorumMet,
+    hasLce: hasLce,
+    lceName: lceName,
+    leadsCount: leadsCount,
+    infraCount: infraCount,
+    socialCount: socialCount,
+    climateCount: climateCount,
+    financeCount: financeCount,
+    keyOfficesCount: keyOfficesCount,
+    csoCount: csoCount,
+    ipmrCount: ipmrCount,
+    sbCount: sbCount,
+    actCount: actCount,
+    otherCount: otherCount,
+    isVerified: isVerified,
+    eoCount: eoCount
+  };
+}
+
+function renderMrestTriageTray(summary) {
+  var isAllGood = summary.totalMembers > 0 && summary.isQuorumMet && summary.hasLce && summary.leadsCount > 0 && summary.keyOfficesCount === 4;
+  var items = [];
+
+  // 1. Total Roster
+  items.push(
+    '<button type="button" class="triage-item' + (MRT_STATE.clusterFilter === 'all' ? ' active-triage' : '') + '" data-act="mrt-triage" data-v="all" title="View all encoded MResT roster members">' +
+      '<div class="triage-item-info">' +
+        '<span class="triage-item-count">' + n(summary.totalMembers) + '</span>' +
+        '<span class="triage-item-label">Total MResT Roster</span>' +
+      '</div>' +
+      '<span class="triage-item-arrow">' + icon('arrow-right') + '</span>' +
+    '</button>'
+  );
+
+  // 2. Community Wing Quota (≥50%)
+  var commClass = summary.isQuorumMet ? 'triage-good' : 'triage-warn';
+  items.push(
+    '<button type="button" class="triage-item ' + commClass + (MRT_STATE.clusterFilter === 'COMMUNITY_WING' ? ' active-triage' : '') + '" data-act="mrt-triage" data-v="COMMUNITY_WING" title="SM1 Section 3.1: Community representation quota (≥50% mandate)">' +
+      '<div class="triage-item-info">' +
+        '<span class="triage-item-count">' + summary.communityPct + '% <span class="tiny">(' + n(summary.communityCount) + ' CVs)</span></span>' +
+        '<span class="triage-item-label">Community Wing (&ge;50%)</span>' +
+      '</div>' +
+      '<span class="triage-item-arrow">' + icon('arrow-right') + '</span>' +
+    '</button>'
+  );
+
+  // 3. Barangay Captains
+  var pbStatusClass = summary.captainsQuotaMet ? 'triage-good' : (summary.captainsCount > 0 ? 'triage-warn' : 'triage-bad');
+  items.push(
+    '<button type="button" class="triage-item ' + pbStatusClass + (MRT_STATE.clusterFilter === 'CAPTAINS' ? ' active-triage' : '') + '" data-act="mrt-triage" data-v="CAPTAINS" title="All Punong Barangays must participate in MResT per SM1 Section 3.1">' +
+      '<div class="triage-item-info">' +
+        '<span class="triage-item-count">' + n(summary.captainsCount) + ' <span class="tiny">/ ' + n(summary.totalBrgys) + ' PBs</span></span>' +
+        '<span class="triage-item-label">Barangay Captains</span>' +
+      '</div>' +
+      '<span class="triage-item-arrow">' + icon('arrow-right') + '</span>' +
+    '</button>'
+  );
+
+  // 4. Executive Steering (Mayor & Leads)
+  var steerOk = summary.hasLce && summary.leadsCount > 0;
+  items.push(
+    '<button type="button" class="triage-item ' + (steerOk ? 'triage-good' : 'triage-warn') + (MRT_STATE.clusterFilter === 'STEERING' ? ' active-triage' : '') + '" data-act="mrt-triage" data-v="STEERING" title="Executive Steering: Municipal Mayor (LCE) + MPDC & MDRRMO operational co-leads">' +
+      '<div class="triage-item-info">' +
+        '<span class="triage-item-count">' + (summary.hasLce ? '✓ Mayor' : '⚠ No Mayor') + '</span>' +
+        '<span class="triage-item-label">' + (summary.leadsCount ? n(summary.leadsCount) + ' Co-Lead(s)' : 'Pending Leads') + '</span>' +
+      '</div>' +
+      '<span class="triage-item-arrow">' + icon('arrow-right') + '</span>' +
+    '</button>'
+  );
+
+  // 5. Core LGU Offices (4 Depts: Engineering, Social/Health, Environment/Agri, Finance/Budget)
+  var lguOk = summary.keyOfficesCount === 4;
+  items.push(
+    '<button type="button" class="triage-item ' + (lguOk ? 'triage-good' : 'triage-warn') + (MRT_STATE.clusterFilter === 'TECHNICAL_WING' ? ' active-triage' : '') + '" data-act="mrt-triage" data-v="TECHNICAL_WING" title="Core Technical LGU Offices: MEO, MSWDO/MHO, MENRO/MAO, MBO/MTO">' +
+      '<div class="triage-item-info">' +
+        '<span class="triage-item-count">' + summary.keyOfficesCount + ' / 4 <span class="tiny">Depts</span></span>' +
+        '<span class="triage-item-label">Core LGU Offices</span>' +
+      '</div>' +
+      '<span class="triage-item-arrow">' + icon('arrow-right') + '</span>' +
+    '</button>'
+  );
+
+  return (
+    '<div class="triage-tray">' +
+      '<div class="triage-header">' +
+        '<div class="triage-title">' +
+          icon('award') + ' <span>Municipal Resilience Team (MResT) Co-Governance Action Center</span>' +
+        '</div>' +
+        '<div class="triage-status ' + (isAllGood ? 'status-good' : 'status-warn') + '">' +
+          icon(isAllGood ? 'check-circle-2' : 'alert-circle') +
+          '<span>' + (isAllGood ? 'MResT Roster Fully Formed &amp; Quota Compliant' : (summary.communityPct < 50 ? 'Community Wing below 50% quota' : (summary.captainsCount < summary.totalBrgys ? 'Missing Punong Barangays in roster' : 'Steering or LGU departments pending'))) + '</span>' +
+        '</div>' +
+      '</div>' +
+      '<div class="triage-grid">' +
+        items.join('') +
+      '</div>' +
+    '</div>'
+  );
+}
+
 function renderMrest() {
   var body = $('mrt-body');
   if (!body) return;
@@ -2368,7 +3410,15 @@ function renderMrest() {
   var isVerified = eoTag && eoTag.rows && Object.keys(eoTag.rows).length > 0;
   var eoCount = eoTag && typeof eoTag.formCount === 'number' ? eoTag.formCount : null;
 
-  // Classify volunteers by cluster
+  // Triage & summary metrics
+  var summary = getMrestTriageSummary(muniVols, totalBarangays, allMrest, munis, isMuni, eoTag);
+  var communityCount = summary.communityCount;
+  var internalTotal = summary.internalTotal;
+  var communityPct = summary.communityPct;
+  var isQuorumMet = summary.isQuorumMet;
+  var captainsCount = summary.captainsCount;
+
+  // Filter volunteers by cluster
   var communityVols = muniVols.filter(function (v) {
     var r = classifyMrestRole(v.position, v.committee);
     return r === 'CAPTAINS' || r === 'IPMR' || r === 'CSO';
@@ -2376,21 +3426,11 @@ function renderMrest() {
   var captainsVols = muniVols.filter(function (v) {
     return classifyMrestRole(v.position, v.committee) === 'CAPTAINS';
   });
-  var internalTotal = muniVols.filter(function (v) {
-    return classifyMrestRole(v.position, v.committee) !== 'ACT_MCT';
-  }).length;
-  var communityPct = internalTotal > 0 ? Math.round(communityVols.length / internalTotal * 100) : 0;
-  var isQuorumMet = communityPct >= 50;
 
   // KPIs
   var isEncoded = muniVols.length > 0;
-  var femaleCount = muniVols.filter(function (r) { return r.sex === 'female'; }).length;
   var chair = muniVols.filter(function (r) { return classifyMrestRole(r.position, r.committee) === 'LCE'; })[0];
   var leads = muniVols.filter(function (r) { return classifyMrestRole(r.position, r.committee) === 'LEAD'; });
-
-  // Offices / Sectors represented
-  var offices = {};
-  muniVols.forEach(function (r) { if (r.position) offices[r.position] = true; });
 
   // RPMO Regional Comparison Matrix
   var matrixHtml = '';
@@ -2444,13 +3484,14 @@ function renderMrest() {
       var mRecKey = 'mrest|' + m.province + '|' + m.municipality + '||MREST';
       var mTag = (typeof vfTag === 'function') ? vfTag(mRecKey) : null;
       var mVer = mTag && mTag.rows && Object.keys(mTag.rows).length > 0;
+      var mPbBar = quotaMiniProgressBar(mCaptains.length, m.barangays, 1.0, 'Mandatory: All Punong Barangays');
 
       return '<tr class="' + (activeMuni === mKey ? 'active' : '') + '">' +
         '<td><strong>' + esc(m.municipality) + '</strong></td>' +
         '<td>' + esc(m.province) + '</td>' +
         '<td>' + (mVols.length ? '<span class="pill good">✓ ' + mVols.length + ' encoded</span>' : '<span class="pill bad">○ Not in KCIS</span>') + '</td>' +
         '<td>' + (mChair ? esc(mChair.name) : '<span class="tiny text-dim">No lead tagged</span>') + '</td>' +
-        '<td>' + (mCaptains.length ? '<span class="pill ' + (mCaptains.length >= m.barangays ? 'good' : 'warn') + ' tiny">' + mCaptains.length + '/' + m.barangays + ' PBs</span>' : '<span class="tiny text-dim">0 PBs</span>') + '</td>' +
+        '<td>' + mPbBar + '</td>' +
         '<td>' + (mVer ? '<span class="pill good">✓ EO Verified</span>' : '<span class="pill idle">Pending EO</span>') + '</td>' +
         '<td><button type="button" class="btn ghost btn-sm" data-act="mrt-pick-muni" data-v="' + attr(mKey) + '">' + icon('award') + ' <span>View Org Chart ›</span></button></td>' +
       '</tr>';
@@ -2469,7 +3510,15 @@ function renderMrest() {
   var filteredRoster = muniVols.filter(function (r) {
     if (MRT_STATE.clusterFilter !== 'all') {
       var role = classifyMrestRole(r.position, r.committee);
-      if (role !== MRT_STATE.clusterFilter) return false;
+      if (MRT_STATE.clusterFilter === 'COMMUNITY_WING') {
+        if (role !== 'CAPTAINS' && role !== 'IPMR' && role !== 'CSO') return false;
+      } else if (MRT_STATE.clusterFilter === 'TECHNICAL_WING') {
+        if (role !== 'INFRA' && role !== 'SOCIAL' && role !== 'CLIMATE' && role !== 'FINANCE') return false;
+      } else if (MRT_STATE.clusterFilter === 'STEERING') {
+        if (role !== 'LCE' && role !== 'LEAD') return false;
+      } else if (role !== MRT_STATE.clusterFilter) {
+        return false;
+      }
     }
     if (q && normSearch(r.name + ' ' + r.position + ' ' + (r.committee || '')).indexOf(q) === -1) return false;
     return true;
@@ -2482,7 +3531,11 @@ function renderMrest() {
     sex: function (r) { return r.sex; },
     position: function (r) { return r.position || ''; },
     cluster: function (r) { return classifyMrestRole(r.position, r.committee); },
-    committee: function (r) { return r.committee || ''; }
+    committee: function (r) { return r.committee || ''; },
+    eo: function (r) {
+      var rowTag = (eoTag && eoTag.rows && eoTag.rows[r.key]) || null;
+      return !rowTag ? 0 : (rowTag.s === 'match' ? 2 : 1);
+    }
   };
   var sortedRoster = tblSort(filteredRoster, curCol, curDir, mExt);
 
@@ -2504,8 +3557,21 @@ function renderMrest() {
     '</tr>';
   }).join('');
 
-  var th = function (col, label, num) {
-    return sortTh({ col: col, curCol: curCol, dir: curDir, label: label, num: num, act: 'mrt-sort' });
+  var th = function (col, label, num, sub, title, sticky, extraClass, term, tooltip) {
+    return sortTh({
+      col: col,
+      curCol: curCol,
+      dir: curDir,
+      label: label,
+      num: num,
+      sub: sub,
+      title: title,
+      sticky: sticky,
+      act: 'mrt-sort',
+      extraClass: extraClass,
+      term: term,
+      tooltip: tooltip
+    });
   };
 
   // Municipalities dropdown (for RPMO)
@@ -2530,12 +3596,12 @@ function renderMrest() {
     ['all', 'All Members', muniVols.length],
     ['CAPTAINS', 'Punong Barangays', captainsVols.length],
     ['LEAD', 'MPDC & MDRRMO Leads', leads.length],
-    ['INFRA', 'Engineering (MEO)', muniVols.filter(function (v) { return classifyMrestRole(v.position, v.committee) === 'INFRA'; }).length],
-    ['SOCIAL', 'Social & Health', muniVols.filter(function (v) { return classifyMrestRole(v.position, v.committee) === 'SOCIAL'; }).length],
-    ['CLIMATE', 'Climate & Agri', muniVols.filter(function (v) { return classifyMrestRole(v.position, v.committee) === 'CLIMATE'; }).length],
-    ['FINANCE', 'Finance & Budget', muniVols.filter(function (v) { return classifyMrestRole(v.position, v.committee) === 'FINANCE'; }).length],
-    ['CSO', 'CSOs & NGOs', muniVols.filter(function (v) { return classifyMrestRole(v.position, v.committee) === 'CSO'; }).length],
-    ['SB_DILG', 'SB & DILG', muniVols.filter(function (v) { return classifyMrestRole(v.position, v.committee) === 'SB_DILG'; }).length]
+    ['INFRA', 'Engineering (MEO)', summary.infraCount],
+    ['SOCIAL', 'Social & Health', summary.socialCount],
+    ['CLIMATE', 'Climate & Agri', summary.climateCount],
+    ['FINANCE', 'Finance & Budget', summary.financeCount],
+    ['CSO', 'CSOs & NGOs', summary.csoCount],
+    ['SB_DILG', 'SB & DILG', summary.sbCount]
   ].map(function (c) {
     var isActive = MRT_STATE.clusterFilter === c[0];
     return '<button type="button" class="filter-card' + (isActive ? ' active' : '') + '" data-act="mrt-cluster" data-v="' + c[0] + '">' +
@@ -2543,6 +3609,40 @@ function renderMrest() {
       '<span class="fc-count">' + n(c[2]) + '</span>' +
     '</button>';
   }).join('');
+
+  var quickMrestChips = '<div class="quick-filter-bar">' +
+    '<span class="tiny text-muted" style="font-weight:700;margin-right:4px;">Co-Governance Presets:</span>' +
+    '<button type="button" class="quick-filter-chip' + (MRT_STATE.clusterFilter === 'all' ? ' active' : '') + '" data-act="mrt-chip" data-v="all">' +
+      '<span>All Members</span> <span class="tiny" style="opacity:0.85">(' + n(muniVols.length) + ')</span>' +
+    '</button>' +
+    '<button type="button" class="quick-filter-chip chip-good' + (MRT_STATE.clusterFilter === 'CAPTAINS' ? ' active' : '') + '" data-act="mrt-chip" data-v="CAPTAINS">' +
+      '<span>👑 Punong Barangays</span> <span class="tiny" style="opacity:0.85">(' + n(captainsVols.length) + ')</span>' +
+    '</button>' +
+    '<button type="button" class="quick-filter-chip chip-good' + (MRT_STATE.clusterFilter === 'STEERING' ? ' active' : '') + '" data-act="mrt-chip" data-v="STEERING">' +
+      '<span>⭐ Steering (Mayor &amp; Leads)</span> <span class="tiny" style="opacity:0.85">(' + n((chair ? 1 : 0) + leads.length) + ')</span>' +
+    '</button>' +
+    '<button type="button" class="quick-filter-chip' + (MRT_STATE.clusterFilter === 'INFRA' ? ' active chip-good' : '') + '" data-act="mrt-chip" data-v="INFRA">' +
+      '<span>🔧 Engineering (MEO)</span> <span class="tiny" style="opacity:0.85">(' + n(summary.infraCount) + ')</span>' +
+    '</button>' +
+    '<button type="button" class="quick-filter-chip' + (MRT_STATE.clusterFilter === 'SOCIAL' ? ' active chip-good' : '') + '" data-act="mrt-chip" data-v="SOCIAL">' +
+      '<span>🩺 Social &amp; Health</span> <span class="tiny" style="opacity:0.85">(' + n(summary.socialCount) + ')</span>' +
+    '</button>' +
+    '<button type="button" class="quick-filter-chip' + (MRT_STATE.clusterFilter === 'CLIMATE' ? ' active chip-good' : '') + '" data-act="mrt-chip" data-v="CLIMATE">' +
+      '<span>🌱 Climate &amp; Agri</span> <span class="tiny" style="opacity:0.85">(' + n(summary.climateCount) + ')</span>' +
+    '</button>' +
+    '<button type="button" class="quick-filter-chip' + (MRT_STATE.clusterFilter === 'FINANCE' ? ' active chip-good' : '') + '" data-act="mrt-chip" data-v="FINANCE">' +
+      '<span>💼 Finance &amp; Budget</span> <span class="tiny" style="opacity:0.85">(' + n(summary.financeCount) + ')</span>' +
+    '</button>' +
+    '<button type="button" class="quick-filter-chip' + (MRT_STATE.clusterFilter === 'CSO' ? ' active chip-good' : '') + '" data-act="mrt-chip" data-v="CSO">' +
+      '<span>🤝 CSOs &amp; NGOs</span> <span class="tiny" style="opacity:0.85">(' + n(summary.csoCount) + ')</span>' +
+    '</button>' +
+    (MRT_STATE.clusterFilter !== 'all' ? '<button type="button" class="quick-filter-chip active chip-warn" data-act="mrt-chip" data-v="all" title="Clear filter">' +
+      '<span>Filter: ' + esc(MRT_STATE.clusterFilter) + '</span> <span class="tiny">✕ Clear</span>' +
+    '</button>' : '') +
+  '</div>';
+
+  var commQuotaBar = quotaMiniProgressBar(communityVols.length, internalTotal, 0.5, 'SM1 Para 13: ≥50% Community Voice');
+  var pbQuotaBar = quotaMiniProgressBar(captainsVols.length, totalBarangays, 1.0, 'SM1 Section 3.1: All Punong Barangays');
 
   body.innerHTML =
     '<div class="card">' +
@@ -2556,7 +3656,8 @@ function renderMrest() {
           '<button class="btn ghost btn-sm" data-act="mrt-export">' + icon('download') + ' <span>Export MResT Roster CSV</span></button>' +
         '</div>' +
       '</div>' +
-      '<div class="mrest-hero">' +
+      renderMrestTriageTray(summary) +
+      '<div class="mrest-hero" style="margin-top:16px">' +
         '<div class="mrest-hero-info">' +
           '<h3>' + esc(muniName) + ' Municipal Resilience Team</h3>' +
           '<div class="muted">Province of ' + esc(provName) + ' · ' + n(totalBarangays) + ' Participating Barangays · Kalahi-CIDSS PCRP LGU Operations</div>' +
@@ -2576,11 +3677,13 @@ function renderMrest() {
         '<div class="kpi ' + (isQuorumMet ? 'accent-good' : 'accent-warn') + '">' +
           '<div class="kpi-label">Community Representation Quota</div>' +
           '<div class="kpi-value">' + communityPct + '%</div>' +
+          '<div style="margin:4px 0 2px">' + commQuotaBar + '</div>' +
           '<div class="kpi-sub">&ge;50% quota per SM1 Para 13 (' + n(communityVols.length) + ' CVs)</div>' +
         '</div>' +
         '<div class="kpi ' + (captainsVols.length >= totalBarangays && totalBarangays > 0 ? 'accent-good' : (captainsVols.length > 0 ? 'accent-warn' : 'accent-bad')) + '">' +
           '<div class="kpi-label">Barangay Captains Coverage</div>' +
           '<div class="kpi-value">' + n(captainsVols.length) + ' <span class="tiny">of ' + n(totalBarangays) + '</span></div>' +
+          '<div style="margin:4px 0 2px">' + pbQuotaBar + '</div>' +
           '<div class="kpi-sub">Punong Barangays encoded in KCIS</div>' +
         '</div>' +
         '<div class="kpi ' + (chair && leads.length ? 'accent-good' : 'accent-warn') + '">' +
@@ -2598,25 +3701,28 @@ function renderMrest() {
       '<div class="card-head" style="margin-top:20px;margin-bottom:6px">' +
         '<div><h3 style="margin:0;font-size:13px;text-transform:uppercase;letter-spacing:0.04em;color:var(--text-muted)">Filter by Functional Cluster</h3></div>' +
       '</div>' +
-      '<div class="filter-cards" style="margin-bottom:14px">' + clusterPills + '</div>' +
+      quickMrestChips +
+      '<div class="filter-cards" style="margin-bottom:14px;margin-top:10px">' + clusterPills + '</div>' +
       '<div class="toolbar-row"><div class="filters" style="margin:0">' +
         scopeBanner +
         '<label class="field" style="min-width:260px;flex:1"><span>Search Member / Office / Committee</span><input type="search" id="mrt-search" value="' + attr(MRT_STATE.search) + '" placeholder="Search…"></label>' +
         (MRT_STATE.clusterFilter !== 'all' || MRT_STATE.search ? '<button type="button" class="btn ghost btn-sm" data-act="mrt-reset">' + icon('rotate-ccw') + ' <span>Reset Filter</span></button>' : '') +
       '</div></div>' +
       '<div class="table-wrap" style="margin-top:12px"><table class="grid"><thead><tr>' +
-        th('name', 'Name (' + sortedRoster.length + ')') +
-        th('sex', 'Sex') +
-        th('position', 'Position / Office in LGU') +
-        th('cluster', 'Functional Cluster') +
-        th('committee', 'Committee Tag') +
-        '<th>EO Verification</th>' +
+        th('name', 'Name (' + sortedRoster.length + ')', false, null, null, false, '', null, 'Full name and profile link of MResT member') +
+        th('sex', 'Sex', false, null, null, false, '', null, 'Sex / Gender representation') +
+        th('position', 'Position / Office in LGU', false, null, null, false, '', null, 'Designated office or role in MLGU or community') +
+        th('cluster', 'Functional Cluster', false, null, null, false, '', 'mrest', 'Assigned co-governance cluster per SM1 Section 3.1') +
+        th('committee', 'Committee Tag', false, null, null, false, '', null, 'KCIS committee tag') +
+        th('eo', 'EO Verification', false, null, null, false, '', null, 'Validation status against physical Executive Order signed by Mayor') +
       '</tr></thead><tbody>' + (rosterRows || '<tr><td colspan="6" class="empty-state">No MResT members match this filter for ' + esc(muniName) + '.</td></tr>') + '</tbody></table></div>' +
       matrixHtml +
     '</div>';
 
   bindSearch('mrt-search', function (v) { MRT_STATE.search = v; renderMrest(); });
+  refreshIcons($('mrt-body'));
 }
+
 
 // ===================================================================
 // BACKWARD COMPATIBILITY & SHARED PEOPLE VIEW
@@ -2924,6 +4030,13 @@ document.addEventListener('click', function (ev) {
   if (act === 'person') { ev.preventDefault(); openPerson(v); }
 
   // Attendees
+  else if (act === 'att-triage') {
+    if (v === 'all') { ATT_STATE.sex = 'all'; ATT_STATE.flag = 'all'; }
+    else if (v === 'female' || v === 'male') { ATT_STATE.sex = v; ATT_STATE.flag = 'all'; }
+    else if (v === 'volunteer' || v === 'noname') { ATT_STATE.flag = v; ATT_STATE.sex = 'all'; }
+    ATT_STATE.limit = 100;
+    renderAttendees();
+  }
   else if (act === 'att-sex') { ATT_STATE.sex = v; ATT_STATE.limit = 100; renderAttendees(); }
   else if (act === 'att-flag') { ATT_STATE.flag = v; ATT_STATE.limit = 100; renderAttendees(); }
   else if (act === 'att-sort') {
@@ -2937,6 +4050,15 @@ document.addEventListener('click', function (ev) {
   else if (act === 'att-export') exportAttendeesCsv();
 
   // Households
+  else if (act === 'hh-triage') {
+    if (HH_STATE.tab === 'scorecard') {
+      HH_STATE.quorum = v;
+    } else {
+      HH_STATE.flag = v;
+      HH_STATE.limit = 100;
+    }
+    renderHouseholds();
+  }
   else if (act === 'hh-tab') { HH_STATE.tab = v; renderHouseholds(); }
   else if (act === 'hh-quorum') { HH_STATE.quorum = v; renderHouseholds(); }
   else if (act === 'hh-flag') { HH_STATE.flag = v; HH_STATE.limit = 100; renderHouseholds(); }
@@ -2947,13 +4069,38 @@ document.addEventListener('click', function (ev) {
     else { HH_STATE.sortCol = hCol; HH_STATE.sortDir = 'asc'; }
     renderHouseholds();
   }
-  else if (act === 'hh-reset') { HH_STATE.brgy = ''; HH_STATE.quorum = 'all'; HH_STATE.flag = 'all'; HH_STATE.search = ''; renderHouseholds(); }
+  else if (act === 'hh-reset') { HH_STATE.muni = ''; HH_STATE.brgy = ''; HH_STATE.quorum = 'all'; HH_STATE.flag = 'all'; HH_STATE.search = ''; renderHouseholds(); }
   else if (act === 'hh-more') { HH_STATE.limit += 100; renderHouseholds(); }
   else if (act === 'hh-export') exportHouseholdsCsv();
 
   // Volunteers
-  else if (act === 'vol-body') { VOL_STATE.body = v; renderVolunteers(); }
-  else if (act === 'vol-pos') { VOL_STATE.position = v; renderVolunteers(); }
+  else if (act === 'vol-triage') {
+    if (v === 'all') {
+      VOL_STATE.body = 'all'; VOL_STATE.position = 'all'; VOL_STATE.sex = 'all'; VOL_STATE.marg = 'all'; VOL_STATE.flag = 'all'; VOL_STATE.search = '';
+    } else if (v === 'women') {
+      VOL_STATE.sex = 'female'; VOL_STATE.position = 'all'; VOL_STATE.marg = 'all'; VOL_STATE.flag = 'all';
+    } else if (v === 'chair') {
+      VOL_STATE.position = 'chair'; VOL_STATE.sex = 'all'; VOL_STATE.marg = 'all'; VOL_STATE.flag = 'all';
+    } else if (v === 'marginalized') {
+      VOL_STATE.marg = 'ippwd'; VOL_STATE.sex = 'all'; VOL_STATE.position = 'all'; VOL_STATE.flag = 'all';
+    } else if (v === 'flagged') {
+      VOL_STATE.flag = 'has_flags'; VOL_STATE.sex = 'all'; VOL_STATE.position = 'all'; VOL_STATE.marg = 'all';
+    }
+    VOL_STATE.limit = 100;
+    renderVolunteers();
+  }
+  else if (act === 'vol-chip') {
+    var cType = t.getAttribute('data-type');
+    if (cType === 'body') { VOL_STATE.body = v; }
+    else if (cType === 'pos') { VOL_STATE.position = (VOL_STATE.position === v ? 'all' : v); }
+    else if (cType === 'sex') { VOL_STATE.sex = (VOL_STATE.sex === v ? 'all' : v); }
+    else if (cType === 'marg') { VOL_STATE.marg = (VOL_STATE.marg === v ? 'all' : v); }
+    else if (cType === 'flag') { VOL_STATE.flag = (VOL_STATE.flag === v ? 'all' : v); }
+    VOL_STATE.limit = 100;
+    renderVolunteers();
+  }
+  else if (act === 'vol-body') { VOL_STATE.body = v; VOL_STATE.limit = 100; renderVolunteers(); }
+  else if (act === 'vol-pos') { VOL_STATE.position = v; VOL_STATE.limit = 100; renderVolunteers(); }
   else if (act === 'vol-sort') {
     var vCol = t.getAttribute('data-col');
     if (VOL_STATE.sortCol === vCol) VOL_STATE.sortDir = VOL_STATE.sortDir === 'asc' ? 'desc' : 'asc';
@@ -2965,9 +4112,16 @@ document.addEventListener('click', function (ev) {
   else if (act === 'vol-export') exportVolunteersCsv();
 
   // BResT
+  else if (act === 'brt-triage') {
+    BRT_STATE.status = v;
+    renderBrest();
+  }
   else if (act === 'brt-status') { BRT_STATE.status = v; renderBrest(); }
-  else if (act === 'brt-reset') { BRT_STATE.status = 'all'; BRT_STATE.search = ''; renderBrest(); }
-  else if (act === 'brt-pick-brgy') { BRT_STATE.brgy = v; renderBrest(); }
+  else if (act === 'brt-reset') { BRT_STATE.status = 'all'; BRT_STATE.brgy = ''; BRT_STATE.search = ''; renderBrest(); }
+  else if (act === 'brt-pick-brgy') {
+    BRT_STATE.brgy = (BRT_STATE.brgy === v ? '' : v);
+    renderBrest();
+  }
   else if (act === 'brt-team-sort') {
     var bCol = t.getAttribute('data-col');
     if (BRT_STATE.teamSortCol === bCol) BRT_STATE.teamSortDir = BRT_STATE.teamSortDir === 'asc' ? 'desc' : 'asc';
@@ -2992,6 +4146,22 @@ document.addEventListener('click', function (ev) {
   else if (act === 'brt-export') exportBrestCsv();
 
   // CSPMC (Stage 2)
+  else if (act === 'cspmc-triage') {
+    if (v === 'all') { CSPMC_STATE.status = 'all'; CSPMC_STATE.subFilter = 'all'; CSPMC_STATE.brgy = ''; }
+    else if (v === 'encoded' || v === 'needs_fixing' || v === 'not_encoded') { CSPMC_STATE.status = v; CSPMC_STATE.subFilter = 'all'; }
+    else if (v === 'cmsc_filter') { CSPMC_STATE.subFilter = 'CMSC'; CSPMC_STATE.status = 'all'; }
+    renderCspmc();
+  }
+  else if (act === 'cspmc-chip') {
+    var cType = t.getAttribute('data-type');
+    if (cType === 'status') { CSPMC_STATE.status = (CSPMC_STATE.status === v && v !== 'all' ? 'all' : v); }
+    else if (cType === 'sub') { CSPMC_STATE.subFilter = (CSPMC_STATE.subFilter === v && v !== 'all' ? 'all' : v); }
+    renderCspmc();
+  }
+  else if (act === 'cspmc-pick-brgy') {
+    CSPMC_STATE.brgy = (CSPMC_STATE.brgy === v ? '' : v);
+    renderCspmc();
+  }
   else if (act === 'cspmc-status') { CSPMC_STATE.status = v; renderCspmc(); }
   else if (act === 'cspmc-sub') { CSPMC_STATE.subFilter = v; renderCspmc(); }
   else if (act === 'cspmc-toggle-org') { CSPMC_STATE.showOrgChart = !CSPMC_STATE.showOrgChart; renderCspmc(); }
@@ -3032,6 +4202,14 @@ document.addEventListener('click', function (ev) {
   else if (act === 'cspmc-vols-export') exportCspmcVolunteersCsv();
 
   // MResT
+  else if (act === 'mrt-triage') {
+    MRT_STATE.clusterFilter = v;
+    renderMrest();
+  }
+  else if (act === 'mrt-chip') {
+    MRT_STATE.clusterFilter = (MRT_STATE.clusterFilter === v ? 'all' : v);
+    renderMrest();
+  }
   else if (act === 'mrt-matrix-filter') { MRT_STATE.matrixFilter = v; renderMrest(); }
   else if (act === 'mrt-pick-muni') { MRT_STATE.muni = v; renderMrest(); }
   else if (act === 'mrt-toggle-org') { MRT_STATE.showOrgChart = !MRT_STATE.showOrgChart; renderMrest(); }
@@ -3051,6 +4229,7 @@ document.addEventListener('change', function (ev) {
   if (act === 'att-muni') { ATT_STATE.muni = t.value; ATT_STATE.brgy = ''; renderAttendees(); }
   else if (act === 'att-brgy') { ATT_STATE.brgy = t.value; renderAttendees(); }
   else if (act === 'att-act') { ATT_STATE.act = t.value; renderAttendees(); }
+  else if (act === 'hh-muni') { HH_STATE.muni = t.value; HH_STATE.brgy = ''; renderHouseholds(); }
   else if (act === 'hh-brgy') { HH_STATE.brgy = t.value; renderHouseholds(); }
   else if (act === 'vol-muni') { VOL_STATE.muni = t.value; VOL_STATE.brgy = ''; renderVolunteers(); }
   else if (act === 'vol-brgy') { VOL_STATE.brgy = t.value; renderVolunteers(); }

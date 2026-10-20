@@ -1,0 +1,214 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1440 960" width="1440" height="960">
+  <defs>
+    <filter id="shadow-card" x="-5%" y="-5%" width="110%" height="110%">
+      <feDropShadow dx="0" dy="2" stdDeviation="4" flood-color="#0F172A" flood-opacity="0.06"/>
+    </filter>
+  </defs>
+
+  <!-- Background -->
+  <rect x="0" y="0" width="1440" height="960" fill="#F8FAFC" />
+
+  
+    <!-- Top Header -->
+    <rect x="0" y="0" width="1440" height="70" fill="#0F172A" />
+    <!-- Brand Mark & Logo -->
+    <rect x="32" y="15" width="40" height="40" rx="8" fill="#0038A8" />
+    <path d="M44 35 L49 40 L60 27" fill="none" stroke="#FFFFFF" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" />
+    <text x="84" y="34" font-family="Inter, sans-serif" font-size="16" font-weight="700" fill="#FFFFFF">PCRP Encoding &amp; Data Quality Assessment Tool</text>
+    <text x="84" y="50" font-family="Inter, sans-serif" font-size="12" fill="#94A3B8">KALAHI-CIDSS PCRP · Offline Field Console · Monitor v2.4</text>
+
+    <!-- Scope Pill -->
+    <rect x="520" y="18" width="300" height="34" rx="17" fill="#1E293B" stroke="#334155" stroke-width="1" />
+    <circle cx="538" cy="35" r="5" fill="#F59E0B" />
+    <text x="552" y="40" font-family="Inter, sans-serif" font-size="12" font-weight="600" fill="#F8FAFC">Scope: San Jose (PEA / MDM)</text>
+    <text x="790" y="39" font-family="Inter, sans-serif" font-size="11" fill="#64748B">Change ▾</text>
+
+    <!-- Right Header Actions -->
+    <rect x="1140" y="18" width="110" height="34" rx="6" fill="#1E293B" stroke="#334155" stroke-width="1" />
+    <text x="1195" y="40" font-family="Inter, sans-serif" font-size="12" font-weight="600" fill="#F8FAFC" text-anchor="middle">⚙ Settings</text>
+
+    <rect x="1265" y="18" width="145" height="34" rx="6" fill="#334155" />
+    <text x="1337" y="40" font-family="Inter, sans-serif" font-size="12" font-weight="600" fill="#94A3B8" text-anchor="middle">↓ Export to Excel</text>
+  
+  
+    <rect x="0" y="70" width="1440" height="48" fill="#FFFFFF" stroke="#E2E8F0" stroke-width="1" />
+    
+      <g transform="translate(32, 0)">
+        
+        <text x="48" y="32" font-family="Inter, sans-serif" font-size="13" font-weight="500" fill="#475569" text-anchor="middle">Overview</text>
+        
+      </g>
+    
+      <g transform="translate(136, 0)">
+        
+        <text x="60" y="32" font-family="Inter, sans-serif" font-size="13" font-weight="500" fill="#475569" text-anchor="middle">KPI Summary</text>
+        
+      </g>
+    
+      <g transform="translate(264, 0)">
+        
+        <text x="72" y="32" font-family="Inter, sans-serif" font-size="13" font-weight="500" fill="#475569" text-anchor="middle">Municipalities</text>
+        
+      </g>
+    
+      <g transform="translate(416, 0)">
+        
+        <text x="52" y="32" font-family="Inter, sans-serif" font-size="13" font-weight="500" fill="#475569" text-anchor="middle">Barangays</text>
+        
+      </g>
+    
+      <g transform="translate(528, 0)">
+        
+        <text x="116" y="32" font-family="Inter, sans-serif" font-size="13" font-weight="500" fill="#475569" text-anchor="middle">Attendance &amp; Households ▾</text>
+        
+      </g>
+    
+      <g transform="translate(768, 0)">
+        
+        <text x="116" y="32" font-family="Inter, sans-serif" font-size="13" font-weight="500" fill="#475569" text-anchor="middle">Volunteers &amp; Committees ▾</text>
+        
+      </g>
+    
+      <g transform="translate(1008, 0)">
+        
+        <text x="36" y="32" font-family="Inter, sans-serif" font-size="13" font-weight="500" fill="#475569" text-anchor="middle">MResT</text>
+        
+      </g>
+    
+      <g transform="translate(1088, 0)">
+        
+        <text x="96" y="32" font-family="Inter, sans-serif" font-size="13" font-weight="500" fill="#475569" text-anchor="middle">DQA &amp; Verification ▾</text>
+        
+      </g>
+    
+  
+
+  <!-- Main Container: Sidebar + Content -->
+  <!-- Left Sidebar (Settings Navigation) -->
+  <g transform="translate(32, 138)">
+    <rect x="0" y="0" width="280" height="780" rx="12" fill="#FFFFFF" stroke="#E2E8F0" stroke-width="1" filter="url(#shadow-card)" />
+    
+    <!-- Sidebar Header -->
+    <text x="24" y="36" font-family="Inter, sans-serif" font-size="16" font-weight="700" fill="#0F172A">Settings &amp; Setup</text>
+    <text x="24" y="54" font-family="Inter, sans-serif" font-size="12" fill="#64748B">Workspace Configuration</text>
+    <rect x="180" y="24" width="76" height="22" rx="11" fill="#DCFCE7" />
+    <text x="218" y="39" font-family="Inter, sans-serif" font-size="10" font-weight="700" fill="#15803D" text-anchor="middle">100% Offline</text>
+    <line x1="20" y1="70" x2="260" y2="70" stroke="#F1F5F9" stroke-width="1" />
+
+    <!-- Menu Items -->
+    <!-- Item 1 (Active) -->
+    <rect x="16" y="86" width="248" height="48" rx="8" fill="#EFF6FF" stroke="#BFDBFE" stroke-width="1" />
+    <circle cx="40" cy="110" r="12" fill="#DBEAFE" />
+    <text x="40" y="114" font-family="Inter, sans-serif" font-size="12" fill="#1D4ED8" text-anchor="middle">↑</text>
+    <text x="64" y="106" font-family="Inter, sans-serif" font-size="13" font-weight="700" fill="#1D4ED8">Data Import</text>
+    <text x="64" y="122" font-family="Inter, sans-serif" font-size="11" fill="#60A5FA">KCIS exports &amp; status</text>
+
+    <!-- Item 2 -->
+    <text x="64" y="160" font-family="Inter, sans-serif" font-size="13" font-weight="600" fill="#334155">Municipal Scope</text>
+    <text x="64" y="176" font-family="Inter, sans-serif" font-size="11" fill="#94A3B8">PEA / MDM or RPMO</text>
+
+    <!-- Item 3 -->
+    <text x="64" y="214" font-family="Inter, sans-serif" font-size="13" font-weight="600" fill="#334155">Baseline Reference</text>
+    <text x="64" y="230" font-family="Inter, sans-serif" font-size="11" fill="#94A3B8">Barangay masterlist</text>
+
+    <!-- Item 4 -->
+    <text x="64" y="268" font-family="Inter, sans-serif" font-size="13" font-weight="600" fill="#334155">Field Conduct</text>
+    <text x="64" y="284" font-family="Inter, sans-serif" font-size="11" fill="#94A3B8">Per-activity status</text>
+
+    <!-- Item 5 -->
+    <text x="64" y="322" font-family="Inter, sans-serif" font-size="13" font-weight="600" fill="#334155">KCIS Pull Date</text>
+    <text x="64" y="338" font-family="Inter, sans-serif" font-size="11" fill="#94A3B8">Attendance window</text>
+
+    <!-- Item 6 -->
+    <text x="64" y="376" font-family="Inter, sans-serif" font-size="13" font-weight="600" fill="#334155">App Updates &amp; Rules</text>
+    <text x="64" y="392" font-family="Inter, sans-serif" font-size="11" fill="#94A3B8">Release &amp; audit rules</text>
+
+    <!-- Bottom Button -->
+    <rect x="20" y="710" width="240" height="44" rx="8" fill="#CBD5E1" />
+    <text x="140" y="737" font-family="Inter, sans-serif" font-size="13" font-weight="600" fill="#64748B" text-anchor="middle">Show Findings (Load files)</text>
+  </g>
+
+  <!-- Right Content Area -->
+  <g transform="translate(332, 138)">
+    <!-- Session Status Bar -->
+    <rect x="0" y="0" width="1076" height="52" rx="10" fill="#F1F5F9" stroke="#E2E8F0" stroke-width="1" />
+    <circle cx="28" cy="26" r="6" fill="#3B82F6" />
+    <text x="44" y="30" font-family="Inter, sans-serif" font-size="13" font-weight="600" fill="#1E293B">Session Status: Waiting for raw KCIS data files · Encrypted client-side storage active</text>
+    <rect x="910" y="12" width="146" height="28" rx="6" fill="#FFFFFF" stroke="#CBD5E1" stroke-width="1" />
+    <text x="983" y="30" font-family="Inter, sans-serif" font-size="11" font-weight="600" fill="#475569" text-anchor="middle">📁 Open Saved Session</text>
+
+    <!-- Step 1: Import Card -->
+    <g transform="translate(0, 68)">
+      <rect x="0" y="0" width="1076" height="420" rx="12" fill="#FFFFFF" stroke="#E2E8F0" stroke-width="1" filter="url(#shadow-card)" />
+      
+      <circle cx="36" cy="38" r="16" fill="#0038A8" />
+      <text x="36" y="43" font-family="Inter, sans-serif" font-size="14" font-weight="700" fill="#FFFFFF" text-anchor="middle">1</text>
+      <text x="64" y="36" font-family="Inter, sans-serif" font-size="18" font-weight="700" fill="#0F172A">Import KCIS Data Exports</text>
+      <text x="64" y="56" font-family="Inter, sans-serif" font-size="13" fill="#64748B">Drop files here all at once or one by one. Files are processed locally in your browser memory.</text>
+      
+      <!-- Big Drag and Drop Target -->
+      <g transform="translate(32, 80)">
+        <rect x="0" y="0" width="1012" height="230" rx="12" fill="#F8FAFC" stroke="#94A3B8" stroke-width="2" stroke-dasharray="8 8" />
+        <circle cx="506" cy="70" r="32" fill="#EFF6FF" />
+        <path d="M494 70 L506 58 L518 70 M506 60 L506 82" fill="none" stroke="#0038A8" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" />
+        <text x="506" y="130" font-family="Inter, sans-serif" font-size="16" font-weight="700" fill="#1E293B" text-anchor="middle">Drop .xlsx, .csv, or .pcrp session files here, or browse computer</text>
+        <text x="506" y="154" font-family="Inter, sans-serif" font-size="13" fill="#64748B" text-anchor="middle">Supports Participants Export · Household Roster · Community Volunteer List</text>
+        
+        <!-- File type badges -->
+        <rect x="360" y="176" width="90" height="26" rx="13" fill="#EFF6FF" stroke="#BFDBFE" stroke-width="1" />
+        <text x="405" y="193" font-family="Inter, sans-serif" font-size="11" font-weight="600" fill="#1D4ED8" text-anchor="middle">.xlsx Excel</text>
+        
+        <rect x="462" y="176" width="90" height="26" rx="13" fill="#FEF3C7" stroke="#FDE68A" stroke-width="1" />
+        <text x="507" y="193" font-family="Inter, sans-serif" font-size="11" font-weight="600" fill="#B45309" text-anchor="middle">.csv Exports</text>
+
+        <rect x="564" y="176" width="116" height="26" rx="13" fill="#DCFCE7" stroke="#BBF7D0" stroke-width="1" />
+        <text x="622" y="193" font-family="Inter, sans-serif" font-size="11" font-weight="600" fill="#15803D" text-anchor="middle">.pcrp Encrypted</text>
+      </g>
+
+      <!-- Action buttons -->
+      <g transform="translate(32, 336)">
+        <rect x="0" y="0" width="180" height="48" rx="8" fill="#0038A8" />
+        <text x="90" y="29" font-family="Inter, sans-serif" font-size="14" font-weight="700" fill="#FFFFFF" text-anchor="middle">▶ Show Findings</text>
+
+        <rect x="196" y="0" width="140" height="48" rx="8" fill="#FFFFFF" stroke="#CBD5E1" stroke-width="1" />
+        <text x="266" y="29" font-family="Inter, sans-serif" font-size="14" font-weight="600" fill="#64748B" text-anchor="middle">Clear files</text>
+
+        <text x="980" y="28" font-family="Inter, sans-serif" font-size="12" fill="#94A3B8" text-anchor="end">Protected under RA 10173 (Data Privacy Act)</text>
+      </g>
+    </g>
+
+    <!-- Step 2: Role & Municipal Scope Card -->
+    <g transform="translate(0, 508)">
+      <rect x="0" y="0" width="1076" height="250" rx="12" fill="#FFFFFF" stroke="#E2E8F0" stroke-width="1" filter="url(#shadow-card)" />
+      
+      <circle cx="36" cy="38" r="16" fill="#0038A8" />
+      <text x="36" y="43" font-family="Inter, sans-serif" font-size="14" font-weight="700" fill="#FFFFFF" text-anchor="middle">2</text>
+      <text x="64" y="36" font-family="Inter, sans-serif" font-size="18" font-weight="700" fill="#0F172A">Select Workspace Role &amp; Geographic Scope</text>
+      <text x="64" y="56" font-family="Inter, sans-serif" font-size="13" fill="#64748B">Strict data isolation ensures municipal field evaluators only access their designated LGU.</text>
+
+      <!-- Role Option A (PEA / MDM) -->
+      <g transform="translate(32, 80)">
+        <rect x="0" y="0" width="490" height="130" rx="10" fill="#EFF6FF" stroke="#0038A8" stroke-width="2" />
+        <circle cx="28" cy="28" r="10" fill="#0038A8" />
+        <circle cx="28" cy="28" r="4" fill="#FFFFFF" />
+        <text x="48" y="32" font-family="Inter, sans-serif" font-size="15" font-weight="700" fill="#0F172A">PEA / MDM (Municipal Field Workspace)</text>
+        <text x="48" y="54" font-family="Inter, sans-serif" font-size="12" fill="#475569">Strictly isolates navigation, verification, and Excel reports to 1 LGU.</text>
+        
+        <!-- Municipality Selector Dropdown Mock -->
+        <rect x="48" y="70" width="410" height="38" rx="6" fill="#FFFFFF" stroke="#93C5FD" stroke-width="1" />
+        <text x="64" y="94" font-family="Inter, sans-serif" font-size="13" font-weight="600" fill="#0038A8">Municipality: San Jose, Dinagat Islands (12 Barangays)</text>
+        <text x="440" y="93" font-family="Inter, sans-serif" font-size="12" fill="#64748B">▾</text>
+      </g>
+
+      <!-- Role Option B (RPMO Regional) -->
+      <g transform="translate(554, 80)">
+        <rect x="0" y="0" width="490" height="130" rx="10" fill="#F8FAFC" stroke="#E2E8F0" stroke-width="1.5" />
+        <circle cx="28" cy="28" r="10" fill="#FFFFFF" stroke="#94A3B8" stroke-width="2" />
+        <text x="48" y="32" font-family="Inter, sans-serif" font-size="15" font-weight="700" fill="#0F172A">Regional RPMO (Executive Oversight)</text>
+        <text x="48" y="54" font-family="Inter, sans-serif" font-size="12" fill="#475569">Access to all 26 monitored LGUs, regional matrices, and cross-LGU audits.</text>
+        <rect x="48" y="76" width="130" height="26" rx="6" fill="#F1F5F9" />
+        <text x="113" y="93" font-family="Inter, sans-serif" font-size="11" font-weight="600" fill="#64748B" text-anchor="middle">26 LGUs · 516 Brgys</text>
+      </g>
+    </g>
+  </g>
+</svg>

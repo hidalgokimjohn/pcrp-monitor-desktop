@@ -1032,6 +1032,1128 @@ async function runAll() {
   }
 
   // -----------------------------------------------------------------
+  // 12. Floating Helper Tooltip Popover System & PCRP Glossary Tests
+  // -----------------------------------------------------------------
+  console.log('💡 Testing Floating Helper Tooltip Popover System & PCRP Glossary...');
+  {
+    const appJs = fs.readFileSync(path.join(ROOT, 'src', 'app.js'), 'utf8');
+    const appCss = fs.readFileSync(path.join(ROOT, 'src', 'app.css'), 'utf8');
+    const appHtml = fs.readFileSync(path.join(ROOT, 'src', 'app.html'), 'utf8');
+
+    test('Tooltip CSS: defines .app-tooltip and .helper-term styles', () => {
+      assert.strictEqual(appCss.includes('.app-tooltip'), true, 'Missing .app-tooltip in app.css');
+      assert.strictEqual(appCss.includes('.helper-term'), true, 'Missing .helper-term in app.css');
+      assert.strictEqual(appCss.includes('html.dark .app-tooltip'), true, 'Missing dark mode theme styling for app-tooltip');
+    });
+
+    test('Tooltip Engine: functions and PCRP_GLOSSARY defined in app.js', () => {
+      assert.strictEqual(appJs.includes('var PCRP_GLOSSARY = {'), true, 'Missing PCRP_GLOSSARY in app.js');
+      assert.strictEqual(appJs.includes('function showAppTooltip('), true, 'Missing showAppTooltip in app.js');
+      assert.strictEqual(appJs.includes('function positionAppTooltip('), true, 'Missing positionAppTooltip in app.js');
+      assert.strictEqual(appJs.includes('function hideAppTooltip('), true, 'Missing hideAppTooltip in app.js');
+      assert.strictEqual(appJs.includes('function initTooltipEngine('), true, 'Missing initTooltipEngine in app.js');
+    });
+
+    test('PCRP Glossary: covers core terms (k2, brest, cspmc, mrest, prva, dqa)', () => {
+      const match = /var PCRP_GLOSSARY = ({[\s\S]*?\n\});/.exec(appJs);
+      assert.ok(match, 'PCRP_GLOSSARY object could not be extracted');
+      const glossary = eval('(' + match[1].replace(/;\s*$/, '') + ')');
+
+      const requiredTerms = ['k2', 'brest', 'cspmc', 'mrest', 'prva', 'dqa', 'kcis', 'crip', 'ba1', 'cmsc', 'marginalized'];
+      requiredTerms.forEach((term) => {
+        assert.ok(glossary[term], 'Missing required glossary term: ' + term);
+        assert.ok(glossary[term].title, 'Term ' + term + ' missing title');
+        assert.ok(glossary[term].badge, 'Term ' + term + ' missing badge');
+        assert.ok(glossary[term].desc, 'Term ' + term + ' missing desc');
+        assert.ok(glossary[term].ref, 'Term ' + term + ' missing policy reference');
+      });
+    });
+
+    test('HTML Navigation: clean navigation without helper tooltips', () => {
+      // User requirement: "remove the helper in the navigation items, you over doing it"
+      const navTabsMatch = appHtml.match(/<nav class="tabs"[\s\S]*?<\/nav>/);
+      assert.ok(navTabsMatch, 'nav.tabs should exist in app.html');
+      const navTabsContent = navTabsMatch[0];
+      assert.strictEqual(navTabsContent.includes('data-tooltip='), false, 'Navigation items should not contain data-tooltip');
+      assert.strictEqual(navTabsContent.includes('data-term='), false, 'Navigation items should not contain data-term');
+
+      const headerTopMatch = appHtml.match(/<header class="top"[\s\S]*?<\/header>/);
+      assert.ok(headerTopMatch, 'header.top should exist in app.html');
+      const headerContent = headerTopMatch[0];
+      assert.strictEqual(headerContent.includes('data-tooltip='), false, 'Header buttons should not contain data-tooltip');
+      assert.strictEqual(headerContent.includes('data-term='), false, 'Header buttons should not contain data-term');
+    });
+  }
+
+  // -----------------------------------------------------------------
+  // 14. Operational Dashboard & Decision Center Tests (src/app.js & src/app.css)
+  // -----------------------------------------------------------------
+  console.log('🚀 Testing Operational Dashboard, Triage Tray & Milestone Stepper (src/app.js & src/app.css)...');
+  {
+    const appJs = fs.readFileSync(path.join(ROOT, 'src', 'app.js'), 'utf8');
+    const appCss = fs.readFileSync(path.join(ROOT, 'src', 'app.css'), 'utf8');
+
+    test('Dashboard Helpers: getScopedCompositeMetrics, getScopedTriageSummary, and Stepper defined', () => {
+      assert.strictEqual(appJs.includes('function getScopedCompositeMetrics('), true, 'Missing getScopedCompositeMetrics in app.js');
+      assert.strictEqual(appJs.includes('function getScopedTriageSummary('), true, 'Missing getScopedTriageSummary in app.js');
+      assert.strictEqual(appJs.includes('function renderOverviewTriageTray('), true, 'Missing renderOverviewTriageTray in app.js');
+      assert.strictEqual(appJs.includes('function renderMilestoneStepper('), true, 'Missing renderMilestoneStepper in app.js');
+    });
+
+    test('Overview UI: Action Center Triage and Milestone Stepper invoked in renderOverview', () => {
+      assert.strictEqual(appJs.includes('renderOverviewTriageTray(triage)'), true, 'Missing triage tray invocation in renderOverview');
+      assert.strictEqual(appJs.includes('renderMilestoneStepper(pipe)'), true, 'Missing milestone stepper invocation in renderOverview');
+      assert.strictEqual(appJs.includes('quickChipsHtml'), true, 'Missing quickChipsHtml in renderOverview');
+    });
+
+    test('Overview Actions: ov-filter and ov-filter-seq click handlers exist', () => {
+      assert.strictEqual(appJs.includes("act === 'ov-filter'"), true, 'Missing ov-filter action handler');
+      assert.strictEqual(appJs.includes("act === 'ov-filter-seq'"), true, 'Missing ov-filter-seq action handler');
+    });
+
+    test('Dashboard Styles: CSS classes defined in app.css', () => {
+      assert.strictEqual(appCss.includes('.triage-tray'), true, 'Missing .triage-tray in app.css');
+      assert.strictEqual(appCss.includes('.triage-item'), true, 'Missing .triage-item in app.css');
+      assert.strictEqual(appCss.includes('.milestone-stepper-card'), true, 'Missing .milestone-stepper-card in app.css');
+      assert.strictEqual(appCss.includes('.milestone-step'), true, 'Missing .milestone-step in app.css');
+      assert.strictEqual(appCss.includes('.quick-filter-chip'), true, 'Missing .quick-filter-chip in app.css');
+      assert.strictEqual(appCss.includes('.quick-filter-chip.chip-good.active'), true, 'Missing .quick-filter-chip.chip-good.active in app.css');
+    });
+  }
+
+  // -----------------------------------------------------------------
+  // 15. Municipal Operations Triage, Quick Presets & Pipeline Progress (src/app.js)
+  // -----------------------------------------------------------------
+  console.log('🏛️ Testing Municipalities View Enhancements, Triage Tray & Quick Presets (src/app.js)...');
+  {
+    const appJs = fs.readFileSync(path.join(ROOT, 'src', 'app.js'), 'utf8');
+
+    test('Municipal Definitions: muniProgress, getMuniTriageSummary, and renderMuniTriageTray defined', () => {
+      assert.strictEqual(appJs.includes('function muniProgress('), true, 'Missing muniProgress in app.js');
+      assert.strictEqual(appJs.includes('function getMuniTriageSummary('), true, 'Missing getMuniTriageSummary in app.js');
+      assert.strictEqual(appJs.includes('function renderMuniTriageTray('), true, 'Missing renderMuniTriageTray in app.js');
+    });
+
+    test('Municipal UI: renderMunis invokes renderMuniTriageTray and renders quickChipsHtml', () => {
+      assert.strictEqual(appJs.includes('renderMuniTriageTray(summary, cvOn)'), true, 'Missing renderMuniTriageTray call in renderMunis');
+      assert.strictEqual(appJs.includes('quickChipsHtml +'), true, 'Missing quickChipsHtml in renderMunis markup');
+      assert.strictEqual(appJs.includes("refreshIcons($('mu-body'))"), true, 'Missing refreshIcons call at end of renderMunis');
+    });
+
+    test('Municipal Actions: mu-filter and muni-reset handlers in place', () => {
+      assert.strictEqual(appJs.includes("act === 'mu-filter'"), true, 'Missing mu-filter event handler');
+      assert.strictEqual(appJs.includes("STATE.muniFilter = 'all'"), true, 'muni-reset should reset muniFilter to all');
+      assert.strictEqual(appJs.includes("muniFilter: 'all'"), true, 'STATE should declare muniFilter: all');
+    });
+
+    test('Municipal Calculations: muniProgress calculates pipeline completion rate correctly', () => {
+      function muniProgress(r, acts) {
+        var aList = acts || [];
+        var totExp = 0, totComp = 0;
+        aList.forEach(function (a) {
+          var c = (r.cells && r.cells[a.code]) || {};
+          totExp += (c.expected || 0);
+          totComp += (c.complete || 0);
+        });
+        return totExp > 0 ? (totComp / totExp) : 0;
+      }
+
+      const acts = [{ code: 'BA1' }, { code: 'PROFILE' }, { code: 'WALK' }];
+      const r1 = { cells: { BA1: { expected: 10, complete: 10 }, PROFILE: { expected: 10, complete: 5 }, WALK: { expected: 10, complete: 0 } } };
+      assert.strictEqual(muniProgress(r1, acts), 0.5); // 15 / 30 = 0.5
+
+      const rEmpty = { cells: {} };
+      assert.strictEqual(muniProgress(rEmpty, acts), 0);
+    });
+
+    test('Municipal Calculations: getMuniTriageSummary calculates triage breakdown correctly', () => {
+      function muniK2(r) { var h = r.households || {}; return h.listed ? h.present / h.listed : null; }
+      function getMuniTriageSummary(rows, acts, cvOn, stage) {
+        var aList = acts || [];
+        var isCv = !!cvOn;
+        var curStage = stage || 1;
+        var lackingFn = function (r) {
+          return aList.reduce(function (s, a) { return s + (((r.cells && r.cells[a.code]) || {}).backlog || 0); }, 0);
+        };
+        var noSheetFn = function (r) {
+          return aList.reduce(function (s, a) { return s + (((r.cells && r.cells[a.code]) || {}).noAttendees || 0); }, 0);
+        };
+
+        var withBacklog = 0, totalLacking = 0;
+        var withNoSheet = 0, totalNoSheet = 0;
+        var k2Issues = 0;
+        var cvIssues = 0;
+        var compliant = 0;
+
+        (rows || []).forEach(function (r) {
+          var b = lackingFn(r);
+          var ns = noSheetFn(r);
+          var k = muniK2(r);
+          var kBad = (curStage === 1 && k !== null && k < 0.7);
+          var cvBad = false;
+          if (isCv && r.volunteers) {
+            var B = r.volunteers.BREST, S = r.volunteers.SFMSC;
+            cvBad = (B && (B.encoded < B.expected || B.needsFix > 0)) || (S && (S.encoded < S.expected || S.needsFix > 0));
+          }
+
+          if (b > 0) { withBacklog++; totalLacking += b; }
+          if (ns > 0) { withNoSheet++; totalNoSheet += ns; }
+          if (kBad) k2Issues++;
+          if (cvBad) cvIssues++;
+          if (b === 0 && ns === 0 && !kBad && !cvBad) compliant++;
+        });
+
+        return {
+          totalMunis: (rows || []).length,
+          munisWithBacklog: withBacklog,
+          totalLackingRecords: totalLacking,
+          munisWithNoSheet: withNoSheet,
+          totalNoSheetRecords: totalNoSheet,
+          munisK2Issue: k2Issues,
+          munisCvIssue: cvIssues,
+          munisCompliant: compliant
+        };
+      }
+
+      const acts = [{ code: 'BA1' }, { code: 'PROFILE' }];
+      const sampleRows = [
+        // Muni 1: Has backlog of 3
+        { municipality: 'Muni A', cells: { BA1: { complete: 2, expected: 5, backlog: 3, noAttendees: 0 } }, households: { listed: 100, present: 80 } },
+        // Muni 2: Has no sheet (noAttendees = 2), but 0 backlog
+        { municipality: 'Muni B', cells: { BA1: { complete: 5, expected: 5, backlog: 0, noAttendees: 2 } }, households: { listed: 100, present: 75 } },
+        // Muni 3: Below K2 quorum (60%), 0 backlog, 0 noAttendees
+        { municipality: 'Muni C', cells: { BA1: { complete: 5, expected: 5, backlog: 0, noAttendees: 0 } }, households: { listed: 100, present: 60 } },
+        // Muni 4: 100% compliant
+        { municipality: 'Muni D', cells: { BA1: { complete: 5, expected: 5, backlog: 0, noAttendees: 0 } }, households: { listed: 100, present: 85 } }
+      ];
+
+      const res = getMuniTriageSummary(sampleRows, acts, false, 1);
+      assert.strictEqual(res.totalMunis, 4);
+      assert.strictEqual(res.munisWithBacklog, 1);
+      assert.strictEqual(res.totalLackingRecords, 3);
+      assert.strictEqual(res.munisWithNoSheet, 1);
+      assert.strictEqual(res.totalNoSheetRecords, 2);
+      assert.strictEqual(res.munisK2Issue, 1);
+      assert.strictEqual(res.munisCompliant, 1);
+    });
+  }
+
+  // -----------------------------------------------------------------
+  // 16. Barangay Operations Triage, Quick Presets & Pipeline Progress (src/app.js)
+  // -----------------------------------------------------------------
+  console.log('🏘️ Testing Barangay Operations Triage, Quick Presets & Progress (src/app.js)...');
+  {
+    const appJs = fs.readFileSync(path.join(ROOT, 'src', 'app.js'), 'utf8');
+
+    test('Barangay Definitions: brgyProgress, getBrgyTriageSummary, and renderBrgyTriageTray defined', () => {
+      assert.strictEqual(appJs.includes('function brgyProgress('), true, 'Missing brgyProgress in app.js');
+      assert.strictEqual(appJs.includes('function getBrgyTriageSummary('), true, 'Missing getBrgyTriageSummary in app.js');
+      assert.strictEqual(appJs.includes('function renderBrgyTriageTray('), true, 'Missing renderBrgyTriageTray in app.js');
+    });
+
+    test('Barangay UI: renderBrgys invokes renderBrgyTriageTray and renders quickChipsHtml', () => {
+      assert.strictEqual(appJs.includes('renderBrgyTriageTray(summary, cvOn)'), true, 'Missing renderBrgyTriageTray call in renderBrgys');
+      assert.strictEqual(appJs.includes('quickChipsHtml +'), true, 'Missing quickChipsHtml in renderBrgys markup');
+      assert.strictEqual(appJs.includes("refreshIcons($('bg-body'))"), true, 'Missing refreshIcons call at end of renderBrgys');
+      assert.strictEqual(appJs.includes("id: 'compliant'"), true, 'BRGY_FILTERS should include compliant preset');
+    });
+
+    test('Barangay Calculations: brgyProgress calculates stage completion rate correctly', () => {
+      function brgyProgress(b, acts) {
+        var aList = acts || [];
+        var exp = 0, comp = 0;
+        aList.forEach(function (a) {
+          if (a.level === 'Municipal') return;
+          var x = b.activities && b.activities[a.code];
+          if (!x || x.notApplicable || x.status === 'N/A') return;
+          exp++;
+          if (x.status === 'Complete') comp++;
+        });
+        return exp > 0 ? comp / exp : 0;
+      }
+
+      const acts = [
+        { code: 'BA1', level: 'Barangay' },
+        { code: 'PROFILE', level: 'Barangay' },
+        { code: 'MREST', level: 'Municipal' } // Should be skipped in barangay activity progress
+      ];
+
+      const b1 = {
+        activities: {
+          BA1: { status: 'Complete' },
+          PROFILE: { status: 'Not Encoded' },
+          MREST: { status: 'Complete' }
+        }
+      };
+
+      // 1 out of 2 barangay-level expected activities complete
+      assert.strictEqual(brgyProgress(b1, acts), 0.5);
+
+      const bEmpty = { activities: {} };
+      assert.strictEqual(brgyProgress(bEmpty, acts), 0);
+    });
+
+    test('Barangay Calculations: getBrgyTriageSummary aggregates triage metrics accurately', () => {
+      function getBrgyTriageSummary(all, acts, cvOn, stage) {
+        var curStage = stage || 1;
+        var isCv = !!cvOn;
+
+        var lackingCount = 0, totalLacking = 0;
+        var noSheetCount = 0, totalNoSheet = 0;
+        var k2RiskCount = 0;
+        var cvGapsCount = 0;
+        var sfmscFixCount = 0;
+        var compliantCount = 0;
+
+        (all || []).forEach(function (b) {
+          var lackItems = ((b.todo && b.todo.length) || 0) + (b.owed || 0);
+          var hasLacking = lackItems > 0;
+
+          var noSheetActs = 0;
+          Object.keys(b.activities || {}).forEach(function (k) {
+            var act = b.activities[k];
+            if (act && act.status === 'No Attendees' && !act.notApplicable) noSheetActs++;
+          });
+          var hasNoSheet = noSheetActs > 0;
+
+          var k2Risk = (curStage === 1 && b.hhListed > 0 && b.hhRate < 0.7);
+
+          var cvGaps = false, sfmscFix = false;
+          if (isCv && b.volunteers) {
+            if (b.volunteers.BREST && b.volunteers.BREST.status === 'Not encoded') cvGaps = true;
+            if (b.volunteers.SFMSC) {
+              if (b.volunteers.SFMSC.status === 'Not encoded') cvGaps = true;
+              if (b.volunteers.SFMSC.status === 'Needs fixing') sfmscFix = true;
+            }
+          }
+
+          if (hasLacking) { lackingCount++; totalLacking += lackItems; }
+          if (hasNoSheet) { noSheetCount++; totalNoSheet += noSheetActs; }
+          if (k2Risk) k2RiskCount++;
+          if (cvGaps) cvGapsCount++;
+          if (sfmscFix) sfmscFixCount++;
+
+          if (!hasLacking && !hasNoSheet && !k2Risk && !cvGaps && !sfmscFix) {
+            compliantCount++;
+          }
+        });
+
+        return {
+          totalBrgys: (all || []).length,
+          lackingBrgys: lackingCount,
+          totalLackingItems: totalLacking,
+          noSheetBrgys: noSheetCount,
+          totalNoSheetActivities: totalNoSheet,
+          k2RiskBrgys: k2RiskCount,
+          cvGapsBrgys: cvGapsCount,
+          sfmscFixBrgys: sfmscFixCount,
+          compliantBrgys: compliantCount
+        };
+      }
+
+      const acts = [{ code: 'BA1' }, { code: 'PROFILE' }];
+      const sampleBrgys = [
+        // Brgy 1: Has backlog
+        { barangay: 'Brgy 1', todo: ['Activity 1 missing', 'Activity 2 missing'], owed: 0, activities: {}, hhListed: 100, hhRate: 0.85 },
+        // Brgy 2: Has pending sheet
+        { barangay: 'Brgy 2', todo: [], owed: 0, activities: { BA1: { status: 'No Attendees' } }, hhListed: 100, hhRate: 0.85 },
+        // Brgy 3: K2 below 70%
+        { barangay: 'Brgy 3', todo: [], owed: 0, activities: { BA1: { status: 'Complete' } }, hhListed: 100, hhRate: 0.55 },
+        // Brgy 4: Volunteer gap
+        { barangay: 'Brgy 4', todo: [], owed: 0, activities: { BA1: { status: 'Complete' } }, hhListed: 100, hhRate: 0.85, volunteers: { BREST: { status: 'Not encoded' } } },
+        // Brgy 5: 100% compliant
+        { barangay: 'Brgy 5', todo: [], owed: 0, activities: { BA1: { status: 'Complete' } }, hhListed: 100, hhRate: 0.90, volunteers: { BREST: { status: 'Encoded' }, SFMSC: { status: 'Encoded' } } }
+      ];
+
+      const res = getBrgyTriageSummary(sampleBrgys, acts, true, 1);
+      assert.strictEqual(res.totalBrgys, 5);
+      assert.strictEqual(res.lackingBrgys, 1);
+      assert.strictEqual(res.totalLackingItems, 2);
+      assert.strictEqual(res.noSheetBrgys, 1);
+      assert.strictEqual(res.totalNoSheetActivities, 1);
+      assert.strictEqual(res.k2RiskBrgys, 1);
+      assert.strictEqual(res.cvGapsBrgys, 1);
+      assert.strictEqual(res.compliantBrgys, 1);
+    });
+  }
+
+  // -----------------------------------------------------------------
+  // 17. Attendees & Households Operational Enhancements
+  // -----------------------------------------------------------------
+  console.log('👥 Testing Attendees Directory & Household Quorum (src/people.js & src/app.css)...');
+  {
+    const peopleCode = fs.readFileSync(path.join(ROOT, 'src', 'people.js'), 'utf8');
+    const cssCode = fs.readFileSync(path.join(ROOT, 'src', 'app.css'), 'utf8');
+
+    test('Syntax Integrity: all JS files in src/ parse without syntax errors', () => {
+      const srcFiles = fs.readdirSync(path.join(ROOT, 'src')).filter(f => f.endsWith('.js'));
+      srcFiles.forEach(file => {
+        const code = fs.readFileSync(path.join(ROOT, 'src', file), 'utf8');
+        assert.doesNotThrow(() => {
+          new vm.Script(code);
+        }, `src/${file} must have valid JavaScript syntax`);
+      });
+    });
+
+    test('People Definitions: Attendees & Household Helpers Exist in src/people.js', () => {
+      assert.ok(peopleCode.includes('function getAttendeeTriageSummary('), 'getAttendeeTriageSummary must be defined');
+      assert.ok(peopleCode.includes('function renderAttendeeTriageTray('), 'renderAttendeeTriageTray must be defined');
+      assert.ok(peopleCode.includes('function quorumProgressBar('), 'quorumProgressBar must be defined');
+      assert.ok(peopleCode.includes('function getHouseholdTriageSummary('), 'getHouseholdTriageSummary must be defined');
+      assert.ok(peopleCode.includes('function renderHouseholdTriageTray('), 'renderHouseholdTriageTray must be defined');
+      assert.ok(peopleCode.includes("data-act=\"att-triage\""), 'att-triage handler must exist');
+      assert.ok(peopleCode.includes("data-act=\"hh-triage\""), 'hh-triage handler must exist');
+      assert.ok(peopleCode.includes("data-act=\"hh-muni\""), 'hh-muni change handler must exist');
+      assert.ok(peopleCode.includes("refreshIcons($('hh-body'))"), 'refreshIcons must be called on hh-body');
+      assert.ok(peopleCode.includes("refreshIcons($('att-body'))"), 'refreshIcons must be called on att-body');
+    });
+
+    test('CSS Definitions: Quorum Progress Bar and Threshold Marker Exist in src/app.css', () => {
+      assert.ok(cssCode.includes('.quorum-progress-cell'), '.quorum-progress-cell must be defined');
+      assert.ok(cssCode.includes('.quorum-progress-wrap'), '.quorum-progress-wrap must be defined');
+      assert.ok(cssCode.includes('.quorum-progress-bar'), '.quorum-progress-bar must be defined');
+      assert.ok(cssCode.includes('.quorum-progress-bar.is-met'), '.quorum-progress-bar.is-met must be defined');
+      assert.ok(cssCode.includes('.quorum-threshold-marker'), '.quorum-threshold-marker must be defined');
+    });
+
+    test('Attendees Calculations: getAttendeeTriageSummary aggregates gender and integrity metrics', () => {
+      const sampleAttendees = [
+        { name: 'Maria Santos', sex: 'female', key: 'maria_santos', flags: ['volunteer'] },
+        { name: 'Ana Reyes', sex: 'female', key: 'ana_reyes', flags: [] },
+        { name: 'Juan Cruz', sex: 'male', key: 'juan_cruz', flags: [] },
+        { name: 'Pedro Gomez', sex: 'male', key: 'pedro_gomez', flags: ['volunteer'] },
+        { name: '', sex: 'female', key: '', flags: ['noname'] }
+      ];
+
+      // Minimal sandbox
+      const sandbox = {
+        console,
+        ATT_STATE: { sex: 'all', flag: 'all' },
+        icon: () => '',
+        n: (v) => String(v),
+        pctText: (v) => Math.round(v * 100) + '%'
+      };
+      vm.createContext(sandbox);
+
+      const helperCode = `
+        function getAttendeeTriageSummary(list) {
+          var l = list || [];
+          var total = l.length;
+          var women = l.filter(function (r) { return r.sex === 'female'; }).length;
+          var men = l.filter(function (r) { return r.sex === 'male'; }).length;
+          var uniqueNames = {};
+          l.forEach(function (r) { if (r.key) uniqueNames[r.key] = true; });
+          var uniqueCount = Object.keys(uniqueNames).length;
+          var volunteers = l.filter(function (r) { return r.flags && r.flags.indexOf('volunteer') !== -1; }).length;
+          var missingName = l.filter(function (r) { return r.flags && r.flags.indexOf('noname') !== -1; }).length;
+          var womenRate = total > 0 ? (women / total) : 0;
+          return {
+            total: total,
+            uniqueCount: uniqueCount,
+            women: women,
+            womenRate: womenRate,
+            men: men,
+            volunteers: volunteers,
+            missingName: missingName
+          };
+        }
+      `;
+      vm.runInContext(helperCode, sandbox);
+      const res = sandbox.getAttendeeTriageSummary(sampleAttendees);
+
+      assert.strictEqual(res.total, 5);
+      assert.strictEqual(res.uniqueCount, 4); // 4 unique named keys
+      assert.strictEqual(res.women, 3);
+      assert.strictEqual(res.men, 2);
+      assert.strictEqual(res.volunteers, 2);
+      assert.strictEqual(res.missingName, 1);
+      assert.strictEqual(res.womenRate, 0.6); // 3 / 5 = 60% (meets >=50% target)
+    });
+
+    test('Household Quorum: quorumProgressBar produces correct 70% threshold bar and styling', () => {
+      const sandbox = {
+        attr: (s) => String(s),
+        pctText: (r) => Math.round(r * 100) + '%',
+        n: (v) => String(v)
+      };
+      vm.createContext(sandbox);
+
+      const barCode = `
+        function quorumProgressBar(present, listed) {
+          if (!listed || listed <= 0) return '<span class="tiny text-muted">—</span>';
+          var rate = present / listed;
+          var pct = Math.max(0, Math.min(100, Math.round(rate * 100)));
+          var isMet = rate >= 0.7;
+          var statusCls = isMet ? 'is-met' : 'is-below';
+          var colorVar = isMet ? 'var(--good-text)' : 'var(--warn-text)';
+          return '<div class="quorum-progress-cell" title="' + attr(n(present) + ' of ' + n(listed) + ' (' + pct + '%)') + '">' +
+            '<div class="quorum-label-row"><strong style="color:' + colorVar + '">' + pctText(rate) + '</strong><span class="tiny muted">target 70%</span></div>' +
+            '<div class="quorum-progress-wrap">' +
+              '<div class="quorum-progress-bar ' + statusCls + '" style="width:' + pct + '%"></div>' +
+              '<div class="quorum-threshold-marker"></div>' +
+            '</div>' +
+          '</div>';
+        }
+      `;
+      vm.runInContext(barCode, sandbox);
+
+      // Met quorum (80/100 = 80%)
+      const metHtml = sandbox.quorumProgressBar(80, 100);
+      assert.ok(metHtml.includes('is-met'), 'Must have is-met class for >= 70%');
+      assert.ok(metHtml.includes('80%'), 'Must show 80%');
+      assert.ok(metHtml.includes('quorum-threshold-marker'), 'Must have 70% threshold marker');
+
+      // Below quorum (50/100 = 50%)
+      const belowHtml = sandbox.quorumProgressBar(50, 100);
+      assert.ok(belowHtml.includes('is-below'), 'Must have is-below class for < 70%');
+      assert.ok(belowHtml.includes('50%'), 'Must show 50%');
+
+      // Unreported / zero listed
+      const unrepHtml = sandbox.quorumProgressBar(0, 0);
+      assert.ok(unrepHtml.includes('—'), 'Must show dash for zero listed');
+    });
+
+    test('Household Calculations: getHouseholdTriageSummary aggregates K2 quorum and roster metrics', () => {
+      const sampleBrgys = [
+        { barangay: 'Brgy 1', hhListed: 100, hhPresent: 75, hhRate: 0.75 }, // Met
+        { barangay: 'Brgy 2', hhListed: 100, hhPresent: 60, hhRate: 0.60 }, // Below
+        { barangay: 'Brgy 3', hhListed: 0, hhPresent: 0, hhRate: 0 }         // No report
+      ];
+
+      const sampleRoster = [
+        { name: 'Pedro', head: true, present: true, flags: [] },
+        { name: 'Maria', head: false, present: true, flags: [] },
+        { name: 'Juan', head: true, present: false, flags: [] },
+        { name: '', head: false, present: false, flags: ['noname'] }
+      ];
+
+      const sandbox = {
+        console
+      };
+      vm.createContext(sandbox);
+
+      const hhCode = `
+        function getHouseholdTriageSummary(brgys, P, inScope) {
+          var bList = brgys || [];
+          var totalBrgys = bList.length;
+          var reportingBrgys = 0;
+          var metQuorumBrgys = 0;
+          var belowQuorumBrgys = 0;
+          var noReportBrgys = 0;
+          var totListed = 0;
+          var totPresent = 0;
+
+          bList.forEach(function (b) {
+            if (b.hhListed > 0) {
+              reportingBrgys++;
+              totListed += b.hhListed;
+              totPresent += b.hhPresent;
+              if (b.hhRate >= 0.7) metQuorumBrgys++;
+              else belowQuorumBrgys++;
+            } else {
+              noReportBrgys++;
+            }
+          });
+
+          var overallRate = totListed > 0 ? (totPresent / totListed) : null;
+          var roster = ((P && P.households) ? P.households : []).filter(inScope || function () { return true; });
+          var totalRoster = roster.length;
+          var rosterHeads = roster.filter(function (r) { return r.head; }).length;
+          var rosterPresent = roster.filter(function (r) { return r.present; }).length;
+          var rosterAbsent = roster.filter(function (r) { return !r.present; }).length;
+          var rosterMissingName = roster.filter(function (r) { return r.flags && r.flags.indexOf('noname') !== -1; }).length;
+
+          return {
+            totalBrgys: totalBrgys,
+            reportingBrgys: reportingBrgys,
+            metQuorumBrgys: metQuorumBrgys,
+            belowQuorumBrgys: belowQuorumBrgys,
+            noReportBrgys: noReportBrgys,
+            totListed: totListed,
+            totPresent: totPresent,
+            overallRate: overallRate,
+            totalRoster: totalRoster,
+            rosterHeads: rosterHeads,
+            rosterPresent: rosterPresent,
+            rosterAbsent: rosterAbsent,
+            rosterMissingName: rosterMissingName
+          };
+        }
+      `;
+      vm.runInContext(hhCode, sandbox);
+      const res = sandbox.getHouseholdTriageSummary(sampleBrgys, { households: sampleRoster }, null);
+
+      assert.strictEqual(res.totalBrgys, 3);
+      assert.strictEqual(res.reportingBrgys, 2);
+      assert.strictEqual(res.metQuorumBrgys, 1);
+      assert.strictEqual(res.belowQuorumBrgys, 1);
+      assert.strictEqual(res.noReportBrgys, 1);
+      assert.strictEqual(res.totListed, 200);
+      assert.strictEqual(res.totPresent, 135);
+      assert.strictEqual(res.overallRate, 135 / 200);
+
+      // Roster checks
+      assert.strictEqual(res.totalRoster, 4);
+      assert.strictEqual(res.rosterHeads, 2);
+      assert.strictEqual(res.rosterPresent, 2);
+      assert.strictEqual(res.rosterAbsent, 2);
+      assert.strictEqual(res.rosterMissingName, 1);
+    });
+  }
+
+  // -----------------------------------------------------------------
+  // 18. Community Volunteers & BResT Formation Action Centers
+  // -----------------------------------------------------------------
+  console.log('🤝 Testing Community Volunteers & BResT Formation (src/people.js & src/app.css)...');
+  {
+    const peopleJs = fs.readFileSync(path.join(__dirname, '..', 'src', 'people.js'), 'utf8');
+    const appCss = fs.readFileSync(path.join(__dirname, '..', 'src', 'app.css'), 'utf8');
+
+    test('Volunteers & BResT: Function definitions and handlers exist in src/people.js', () => {
+      assert.ok(peopleJs.includes('function getVolunteersTriageSummary('), 'getVolunteersTriageSummary must exist');
+      assert.ok(peopleJs.includes('function renderVolunteersTriageTray('), 'renderVolunteersTriageTray must exist');
+      assert.ok(peopleJs.includes('function quotaMiniProgressBar('), 'quotaMiniProgressBar must exist');
+      assert.ok(peopleJs.includes('function getBrestTriageSummary('), 'getBrestTriageSummary must exist');
+      assert.ok(peopleJs.includes('function renderBrestTriageTray('), 'renderBrestTriageTray must exist');
+      assert.ok(peopleJs.includes("act === 'vol-triage'"), 'vol-triage click handler must exist');
+      assert.ok(peopleJs.includes("act === 'vol-chip'"), 'vol-chip click handler must exist');
+      assert.ok(peopleJs.includes("act === 'brt-triage'"), 'brt-triage click handler must exist');
+    });
+
+    test('CSS Definitions: Quota Mini Progress Bar and Threshold Marker Exist in src/app.css', () => {
+      assert.ok(appCss.includes('.quota-mini-cell'), '.quota-mini-cell must exist in app.css');
+      assert.ok(appCss.includes('.quota-progress-wrap'), '.quota-progress-wrap must exist in app.css');
+      assert.ok(appCss.includes('.quota-progress-bar'), '.quota-progress-bar must exist in app.css');
+      assert.ok(appCss.includes('.quota-threshold-marker'), '.quota-threshold-marker must exist in app.css');
+      assert.ok(appCss.includes('.quota-label-row'), '.quota-label-row must exist in app.css');
+    });
+
+    test('Volunteers Summary: getVolunteersTriageSummary aggregates gender and inclusion metrics', () => {
+      const sandbox = {
+        VOL_STATE: { body: 'all', position: 'all', sex: 'all', marg: 'all', flag: 'all' }
+      };
+      vm.createContext(sandbox);
+
+      const volCode = `
+        function getVolunteersTriageSummary(list) {
+          var l = list || [];
+          var total = l.length;
+          var women = l.filter(function (v) { return v.sex === 'female'; }).length;
+          var men = l.filter(function (v) { return v.sex === 'male'; }).length;
+          var chairs = l.filter(function (v) { return v.chair; }).length;
+          var ipCount = l.filter(function (v) { return v.ip; }).length;
+          var pwdCount = l.filter(function (v) { return v.pwd; }).length;
+          var marg = l.filter(function (v) { return v.sex === 'female' || v.ip || v.pwd; }).length;
+          var brestCount = l.filter(function (v) { return v.kind === 'BREST'; }).length;
+          var stage2Count = l.filter(function (v) { return v.isStage2; }).length;
+          var sfmscCount = l.filter(function (v) { return v.kind === 'SFMSC'; }).length;
+          var flagged = l.filter(function (v) { return v.flags && v.flags.length > 0; }).length;
+          var womenRate = total > 0 ? (women / total) : 0;
+          var margRate = total > 0 ? (marg / total) : 0;
+
+          return {
+            total: total,
+            women: women,
+            men: men,
+            womenRate: womenRate,
+            chairs: chairs,
+            ipCount: ipCount,
+            pwdCount: pwdCount,
+            marg: marg,
+            margRate: margRate,
+            brestCount: brestCount,
+            stage2Count: stage2Count,
+            sfmscCount: sfmscCount,
+            flagged: flagged
+          };
+        }
+      `;
+      vm.runInContext(volCode, sandbox);
+
+      const sampleVols = [
+        { name: 'Maria Santos', sex: 'female', chair: true, ip: false, pwd: false, kind: 'BREST', isStage2: false, flags: [] },
+        { name: 'Juan Dela Cruz', sex: 'male', chair: false, ip: true, pwd: false, kind: 'BREST', isStage2: false, flags: [] },
+        { name: 'Elena Ramos', sex: 'female', chair: true, ip: false, pwd: true, kind: 'STAGE2', isStage2: true, flags: ['twice'] },
+        { name: 'Pedro Reyes', sex: 'male', chair: false, ip: false, pwd: false, kind: 'SFMSC', isStage2: false, flags: [] }
+      ];
+
+      const res = sandbox.getVolunteersTriageSummary(sampleVols);
+      assert.strictEqual(res.total, 4);
+      assert.strictEqual(res.women, 2);
+      assert.strictEqual(res.men, 2);
+      assert.strictEqual(res.womenRate, 0.5);
+      assert.strictEqual(res.chairs, 2);
+      assert.strictEqual(res.ipCount, 1);
+      assert.strictEqual(res.pwdCount, 1);
+      assert.strictEqual(res.marg, 3); // Maria (female), Juan (IP), Elena (female, PWD)
+      assert.strictEqual(res.margRate, 0.75);
+      assert.strictEqual(res.brestCount, 2);
+      assert.strictEqual(res.stage2Count, 1);
+      assert.strictEqual(res.sfmscCount, 1);
+      assert.strictEqual(res.flagged, 1);
+    });
+
+    test('BResT Summary: getBrestTriageSummary aggregates formation and compliance metrics', () => {
+      const sandbox = {};
+      vm.createContext(sandbox);
+
+      const brestCode = `
+        function getBrestTriageSummary(brgys, brestVols) {
+          var bList = brgys || [];
+          var vList = brestVols || [];
+          var totalBrgys = bList.length;
+          var encodedBrgys = 0;
+          var needsFixBrgys = 0;
+          var notEncodedBrgys = 0;
+          var totalVols = vList.length;
+          var womenVols = vList.filter(function (v) { return v.sex === 'female'; }).length;
+          var margVols = vList.filter(function (v) { return v.sex === 'female' || v.ip || v.pwd; }).length;
+          var totalIssues = 0;
+
+          bList.forEach(function (b) {
+            var st = b.volunteers && b.volunteers.BREST ? b.volunteers.BREST.status : 'Not encoded';
+            if (st === 'Encoded') {
+              encodedBrgys++;
+            } else if (st === 'Needs fixing') {
+              needsFixBrgys++;
+              var reasons = (b.volunteers && b.volunteers.BREST && b.volunteers.BREST.reasons) || [];
+              totalIssues += reasons.length;
+            } else {
+              notEncodedBrgys++;
+            }
+          });
+
+          var womenRate = totalVols > 0 ? (womenVols / totalVols) : 0;
+          var margRate = totalVols > 0 ? (margVols / totalVols) : 0;
+          var formationRate = totalBrgys > 0 ? ((encodedBrgys + needsFixBrgys) / totalBrgys) : 0;
+
+          return {
+            totalBrgys: totalBrgys,
+            encodedBrgys: encodedBrgys,
+            needsFixBrgys: needsFixBrgys,
+            notEncodedBrgys: notEncodedBrgys,
+            totalVols: totalVols,
+            womenVols: womenVols,
+            margVols: margVols,
+            womenRate: womenRate,
+            margRate: margRate,
+            formationRate: formationRate,
+            totalIssues: totalIssues
+          };
+        }
+      `;
+      vm.runInContext(brestCode, sandbox);
+
+      const sampleBrgys = [
+        { barangay: 'Alpha', volunteers: { BREST: { status: 'Encoded', reasons: [] } } },
+        { barangay: 'Beta', volunteers: { BREST: { status: 'Needs fixing', reasons: ['Lack 30% marginalized quota', 'Missing purok 2'] } } },
+        { barangay: 'Gamma', volunteers: { BREST: { status: 'Not encoded', reasons: [] } } }
+      ];
+
+      const sampleBrestVols = [
+        { barangay: 'Alpha', sex: 'female', ip: false, pwd: false },
+        { barangay: 'Alpha', sex: 'female', ip: false, pwd: false },
+        { barangay: 'Beta', sex: 'male', ip: false, pwd: false }
+      ];
+
+      const res = sandbox.getBrestTriageSummary(sampleBrgys, sampleBrestVols);
+      assert.strictEqual(res.totalBrgys, 3);
+      assert.strictEqual(res.encodedBrgys, 1);
+      assert.strictEqual(res.needsFixBrgys, 1);
+      assert.strictEqual(res.notEncodedBrgys, 1);
+      assert.strictEqual(res.totalIssues, 2);
+      assert.strictEqual(res.totalVols, 3);
+      assert.strictEqual(res.womenVols, 2);
+      assert.strictEqual(res.womenRate, 2 / 3);
+      assert.strictEqual(res.formationRate, 2 / 3);
+    });
+
+    test('Quota Mini-Bar: quotaMiniProgressBar produces compliant progress bar and threshold markers', () => {
+      const sandbox = {
+        attr: (s) => String(s || ''),
+        n: (v) => String(v || 0)
+      };
+      vm.createContext(sandbox);
+
+      const barCode = `
+        function quotaMiniProgressBar(count, total, targetRate, targetLabel) {
+          if (!total || total <= 0) {
+            return '<span class="tiny text-muted">—</span>';
+          }
+          var rate = count / total;
+          var pct = Math.max(0, Math.min(100, Math.round(rate * 100)));
+          var isMet = rate >= targetRate;
+          var statusCls = isMet ? 'is-met' : 'is-below';
+          var colorVar = isMet ? 'var(--good-text)' : 'var(--warn-text)';
+          var targetPct = Math.round(targetRate * 100);
+
+          return (
+            '<div class="quota-mini-cell" title="' + attr(n(count) + ' of ' + n(total) + ' (' + pct + '%). ' + targetLabel) + '">' +
+              '<div class="quota-label-row">' +
+                '<strong style="color:' + colorVar + '">' + n(count) + ' <span class="tiny" style="font-size:10.5px">(' + pct + '%)</span></strong>' +
+                '<span class="tiny muted" style="font-size:9.5px">' + targetPct + '% req</span>' +
+              '</div>' +
+              '<div class="quota-progress-wrap">' +
+                '<div class="quota-progress-bar ' + statusCls + '" style="width:' + pct + '%;' + (isMet ? 'background:var(--good);' : 'background:var(--warn);') + '"></div>' +
+                '<div class="quota-threshold-marker" style="left:' + targetPct + '%;" title="Target: ' + targetPct + '%"></div>' +
+              '</div>' +
+            '</div>'
+          );
+        }
+      `;
+      vm.runInContext(barCode, sandbox);
+
+      // Met target test (50% quota met with 3/5 = 60%)
+      const metHtml = sandbox.quotaMiniProgressBar(3, 5, 0.5, 'Target ≥50% Women representation');
+      assert.ok(metHtml.includes('is-met'), 'Must have is-met class');
+      assert.ok(metHtml.includes('background:var(--good);'), 'Must have green bar styling');
+      assert.ok(metHtml.includes('left:50%;'), 'Must position threshold marker at target 50%');
+
+      // Unmet target test (50% quota with 1/5 = 20%)
+      const unmetHtml = sandbox.quotaMiniProgressBar(1, 5, 0.5, 'Target ≥50% Women representation');
+      assert.ok(unmetHtml.includes('is-below'), 'Must have is-below class');
+      assert.ok(unmetHtml.includes('background:var(--warn);'), 'Must have warning bar styling');
+
+      // Zero total edge case
+      const emptyHtml = sandbox.quotaMiniProgressBar(0, 0, 0.5, 'Target ≥50%');
+      assert.ok(emptyHtml.includes('—'), 'Must display em-dash for zero total');
+    });
+  }
+
+  // -----------------------------------------------------------------
+  // 19. Stage 2 CSPMC & MResT Modernization (src/people.js)
+  // -----------------------------------------------------------------
+  console.log('🏛️ Testing Stage 2 CSPMC & MResT Modernization (src/people.js)...');
+  {
+    const peopleCode = fs.readFileSync(path.join(ROOT, 'src', 'people.js'), 'utf8');
+
+    test('CSPMC & MResT: Function definitions and handlers exist in src/people.js', () => {
+      assert.ok(peopleCode.includes('function getCspmcTriageSummary('), 'getCspmcTriageSummary must be defined');
+      assert.ok(peopleCode.includes('function renderCspmcTriageTray('), 'renderCspmcTriageTray must be defined');
+      assert.ok(peopleCode.includes('function getMrestTriageSummary('), 'getMrestTriageSummary must be defined');
+      assert.ok(peopleCode.includes('function renderMrestTriageTray('), 'renderMrestTriageTray must be defined');
+      assert.ok(peopleCode.includes("act === 'cspmc-triage'"), 'cspmc-triage click handler must be wired');
+      assert.ok(peopleCode.includes("act === 'cspmc-chip'"), 'cspmc-chip click handler must be wired');
+      assert.ok(peopleCode.includes("act === 'cspmc-pick-brgy'"), 'cspmc-pick-brgy click handler must be wired');
+      assert.ok(peopleCode.includes("act === 'mrt-triage'"), 'mrt-triage click handler must be wired');
+      assert.ok(peopleCode.includes("act === 'mrt-chip'"), 'mrt-chip click handler must be wired');
+    });
+
+    test('CSPMC Summary: getCspmcTriageSummary computes compliant, needs fixing, and quorum metrics', () => {
+      const sandbox = {};
+      vm.createContext(sandbox);
+
+      const fnCode = `
+        var CSPMC_STATE = { status: 'all', subFilter: 'all' };
+        ${peopleCode.slice(peopleCode.indexOf('function getCspmcTriageSummary('), peopleCode.indexOf('function renderCspmc('))}
+      `;
+      vm.runInContext(fnCode, sandbox);
+
+      const sampleBrgys = [
+        { province: 'Agusan del Norte', municipality: 'Tubay', barangay: 'Poblacion 1' },
+        { province: 'Agusan del Norte', municipality: 'Tubay', barangay: 'Poblacion 2' },
+        { province: 'Agusan del Norte', municipality: 'Tubay', barangay: 'Tagmamarkay' }
+      ];
+
+      const sampleEvalMap = {
+        'Agusan del Norte|Tubay|Poblacion 1': {
+          status: 'Encoded',
+          reasons: [],
+          cmscCount: 3,
+          hasCmscLead: true,
+          hasCspmcLead: true,
+          vols: [{ name: 'A' }, { name: 'B' }, { name: 'C' }]
+        },
+        'Agusan del Norte|Tubay|Poblacion 2': {
+          status: 'Needs fixing',
+          reasons: ['CMSC lacking quorum: requires at least 3 CVs'],
+          cmscCount: 2,
+          hasCmscLead: false,
+          hasCspmcLead: true,
+          vols: [{ name: 'D' }, { name: 'E' }]
+        },
+        'Agusan del Norte|Tubay|Tagmamarkay': {
+          status: 'Not encoded',
+          reasons: ['No Stage 2 volunteers encoded'],
+          cmscCount: 0,
+          hasCmscLead: false,
+          hasCspmcLead: false,
+          vols: []
+        }
+      };
+
+      const sampleS2Vols = [
+        { sex: 'female', stage2Body: 'CMSC' },
+        { sex: 'female', stage2Body: 'CMSC' },
+        { sex: 'male', stage2Body: 'CMSC' },
+        { sex: 'male', stage2Body: 'PIT' },
+        { sex: 'male', stage2Body: 'PIT' }
+      ];
+
+      const res = sandbox.getCspmcTriageSummary(sampleBrgys, sampleEvalMap, sampleS2Vols);
+      assert.strictEqual(res.totalBrgys, 3);
+      assert.strictEqual(res.compliantBrgys, 1);
+      assert.strictEqual(res.needsFixBrgys, 1);
+      assert.strictEqual(res.notEncodedBrgys, 1);
+      assert.strictEqual(res.cmscQuorumBrgys, 1);
+      assert.strictEqual(res.totalIssues, 1);
+      assert.strictEqual(res.totalVols, 5);
+      assert.strictEqual(res.womenVols, 2);
+      assert.strictEqual(res.womenRate, 0.4);
+      assert.strictEqual(res.formationRate, 2 / 3);
+    });
+
+    test('MResT Summary: getMrestTriageSummary computes co-governance, quota, and departments', () => {
+      const sandbox = {
+        normAlpha: (s) => String(s || '').toLowerCase().replace(/[^a-z0-9]/g, '')
+      };
+      vm.createContext(sandbox);
+
+      const fnCode = `
+        ${peopleCode.slice(peopleCode.indexOf('var MREST_CLUSTERS ='), peopleCode.indexOf('function buildMrestOrgChartHtml('))}
+        ${peopleCode.slice(peopleCode.indexOf('function getMrestTriageSummary('), peopleCode.indexOf('function renderMrest('))}
+      `;
+      vm.runInContext(fnCode, sandbox);
+
+      const sampleMuniVols = [
+        { name: 'Hon. Mayor Cruz', position: 'Municipal Mayor', committee: 'MResT' },
+        { name: 'Engr. Ramos', position: 'MPDC / MDRRMO Co-Chair', committee: 'MResT' },
+        { name: 'PB Santos', position: 'Punong Barangay', committee: 'MResT' },
+        { name: 'PB Reyes', position: 'Barangay Captain', committee: 'MResT' },
+        { name: 'PB Diaz', position: 'Punong Barangay', committee: 'MResT' },
+        { name: 'Datu Lumad', position: 'IPMR Representative', committee: 'MResT' },
+        { name: 'Engr. Bautista', position: 'Municipal Engineer (MEO)', committee: 'MResT' },
+        { name: 'Dr. Garcia', position: 'MSWDO / Health Officer', committee: 'MResT' },
+        { name: 'For. Morales', position: 'MENRO Officer', committee: 'MResT' },
+        { name: 'Atty. Mendoza', position: 'Municipal Budget Officer (MBO)', committee: 'MResT' },
+        { name: 'Facilitator Jane', position: 'Area Coordinator (ACT)', committee: 'MResT' }
+      ];
+
+      const eoTagMock = {
+        rows: { 'sample-key': { s: 'match' } },
+        formCount: 11
+      };
+
+      const res = sandbox.getMrestTriageSummary(sampleMuniVols, 3, null, null, false, eoTagMock);
+      assert.strictEqual(res.totalMembers, 11);
+      assert.strictEqual(res.totalBrgys, 3);
+      assert.strictEqual(res.captainsCount, 3);
+      assert.strictEqual(res.captainsQuotaMet, true);
+      assert.strictEqual(res.hasLce, true);
+      assert.strictEqual(res.lceName, 'Hon. Mayor Cruz');
+      assert.strictEqual(res.leadsCount, 1);
+      assert.strictEqual(res.keyOfficesCount, 4, 'All 4 LGU departments must be represented');
+      assert.strictEqual(res.infraCount, 1);
+      assert.strictEqual(res.socialCount, 1);
+      assert.strictEqual(res.climateCount, 1);
+      assert.strictEqual(res.financeCount, 1);
+      assert.strictEqual(res.ipmrCount, 1);
+      assert.strictEqual(res.actCount, 1);
+      assert.strictEqual(res.internalTotal, 10, 'ACT is excluded from internal quotient');
+      assert.strictEqual(res.communityCount, 4, '3 Captains + 1 IPMR = 4 Community Wing');
+      assert.strictEqual(res.communityPct, 40);
+      assert.strictEqual(res.isQuorumMet, false, '40% is below 50% quota');
+      assert.strictEqual(res.isVerified, true);
+      assert.strictEqual(res.eoCount, 11);
+    });
+  }
+
+  // -----------------------------------------------------------------
+  // 20. DQA Audit Scorecard & Field Form Verification Modernization
+  // -----------------------------------------------------------------
+  console.log('🛡️ Testing DQA Field Form Verification & Precision Audit Modernization (src/verify.js, vendor/monitor/JS_Health.html, & src/app.js)...');
+  {
+    const verifyJs = fs.readFileSync(path.join(ROOT, 'src', 'verify.js'), 'utf8');
+    const healthHtml = fs.readFileSync(path.join(ROOT, 'vendor', 'monitor', 'JS_Health.html'), 'utf8');
+    const appJs = fs.readFileSync(path.join(ROOT, 'src', 'app.js'), 'utf8');
+
+    test('Verify Triage & Helpers: getVerifyTriageSummary & renderVerifyTriageTray exist in src/verify.js', () => {
+      assert.strictEqual(verifyJs.includes('function getVerifyTriageSummary(recs)'), true);
+      assert.strictEqual(verifyJs.includes('function renderVerifyTriageTray(summary, formKey)'), true);
+      assert.strictEqual(verifyJs.includes('renderVerifyTriageTray(summary, u.form)'), true);
+      assert.strictEqual(verifyJs.includes('quickChipsHtml'), true);
+      assert.strictEqual(verifyJs.includes("data-act=\"vf-chip\""), true);
+      assert.strictEqual(verifyJs.includes("data-act=\"vf-reset-filters\""), true);
+      assert.strictEqual(verifyJs.includes("data-act=\"vf-triage\""), true);
+      assert.strictEqual(verifyJs.includes("th('progress', 'Check Progress'"), true);
+    });
+
+    test('DQA Scorecard Precision Card: vendor/monitor/JS_Health.html embeds quotaMiniProgressBar for SM7 ≥95% target', () => {
+      assert.strictEqual(healthHtml.includes('quotaMiniProgressBar(ps.match, ps.checked, 0.95'), true);
+    });
+
+    test('Verification Triage Calculations: getVerifyTriageSummary aggregates compliance, issues, and precision', () => {
+      const sandbox = {
+        vfStats: (r) => r._stats,
+        normSearch: (s) => String(s || '').toLowerCase()
+      };
+      vm.createContext(sandbox);
+
+      const fnCode = `
+        ${verifyJs.slice(verifyJs.indexOf('function getVerifyTriageSummary('), verifyJs.indexOf('function renderVerifyTriageTray('))}
+      `;
+      vm.runInContext(fnCode, sandbox);
+
+      const mockRecs = [
+        {
+          key: 'r1',
+          _stats: { encoded: 20, checked: 20, match: 20, differs: 0, absent: 0, formCount: 20, done: true, sample: true, issues: 0 }
+        },
+        {
+          key: 'r2',
+          _stats: { encoded: 15, checked: 10, match: 9, differs: 1, absent: 0, formCount: 16, done: false, sample: false, issues: 2 } // 1 differs + (16-15) notEncoded
+        },
+        {
+          key: 'r3',
+          _stats: { encoded: 10, checked: 0, match: 0, differs: 0, absent: 0, formCount: null, done: false, sample: false, issues: 0 }
+        }
+      ];
+
+      const res = sandbox.getVerifyTriageSummary(mockRecs);
+      assert.strictEqual(res.totalRecords, 3);
+      assert.strictEqual(res.verifiedRecords, 2);
+      assert.strictEqual(res.completeRecords, 1);
+      assert.strictEqual(res.sampleRecords, 1);
+      assert.strictEqual(res.todoRecords, 1);
+      assert.strictEqual(res.recordsWithIssues, 1);
+      assert.strictEqual(res.totalEncoded, 45);
+      assert.strictEqual(res.totalChecked, 30);
+      assert.strictEqual(res.totalMatch, 29);
+      assert.strictEqual(res.totalDiffers, 1);
+      assert.strictEqual(res.totalNotEncoded, 1);
+      assert.strictEqual(res.totalIssues, 2);
+      assert.strictEqual(Math.round(res.agreementRate * 1000) / 10, 96.7);
+      assert.strictEqual(res.factor !== null, true);
+    });
+
+    test('Verification UI: renderVerifyTriageTray generates compliant action center markup', () => {
+      const sandbox = {
+        icon: (name) => `<i data-lucide="${name}"></i>`,
+        esc: (s) => String(s || ''),
+        n: (num) => String(num),
+        VF_FORMS: {
+          att: { label: 'Attendees' }
+        },
+        VERIFY: { ui: { show: 'all' } }
+      };
+      vm.createContext(sandbox);
+
+      const fnCode = `
+        ${verifyJs.slice(verifyJs.indexOf('function renderVerifyTriageTray('), verifyJs.indexOf('// ---- tagging'))}
+      `;
+      vm.runInContext(fnCode, sandbox);
+
+      const summary = {
+        totalRecords: 10,
+        verifiedRecords: 6,
+        completeRecords: 4,
+        sampleRecords: 2,
+        todoRecords: 4,
+        recordsWithIssues: 2,
+        totalIssues: 3
+      };
+
+      const html = sandbox.renderVerifyTriageTray(summary, 'att');
+      assert.strictEqual(html.includes('class="triage-tray'), true);
+      assert.strictEqual(html.includes('class="triage-head"'), true);
+      assert.strictEqual(html.includes('class="triage-title"'), true);
+      assert.strictEqual(html.includes('class="triage-badge"'), true);
+      assert.strictEqual(html.includes('data-act="vf-triage" data-v="all"'), true);
+      assert.strictEqual(html.includes('data-act="vf-triage" data-v="done"'), true);
+      assert.strictEqual(html.includes('data-act="vf-triage" data-v="issues"'), true);
+      assert.strictEqual(html.includes('data-act="vf-triage" data-v="sample"'), true);
+      assert.strictEqual(html.includes('data-act="vf-triage" data-v="todo"'), true);
+    });
+  }
+
+  // -----------------------------------------------------------------
+  // 21. Field Form Verification Split-Pane Workbench & Executive Memo Experience
+  // -----------------------------------------------------------------
+  console.log('🛡️ Testing DQA Field Form Verification Split-Pane Workbench & Executive Memo (src/verify.js, src/app.js, src/app.css, src/app.html)...');
+  {
+    const verifyJs = fs.readFileSync(path.join(__dirname, '..', 'src', 'verify.js'), 'utf8');
+    const appJs = fs.readFileSync(path.join(__dirname, '..', 'src', 'app.js'), 'utf8');
+    const appCss = fs.readFileSync(path.join(__dirname, '..', 'src', 'app.css'), 'utf8');
+    const appHtml = fs.readFileSync(path.join(__dirname, '..', 'src', 'app.html'), 'utf8');
+    const jsHealthHtml = fs.readFileSync(path.join(__dirname, '..', 'vendor', 'monitor', 'JS_Health.html'), 'utf8');
+
+    test('Workbench UI: Two-Column Split Workbench & Record Sidebar definitions exist', () => {
+      assert.ok(verifyJs.includes('function vfRecordSidebar('), 'vfRecordSidebar must exist');
+      assert.ok(verifyJs.includes('function openVerifyForm('), 'openVerifyForm must exist');
+      assert.ok(verifyJs.includes('class="vf-workbench"'), 'vf-workbench container must be rendered');
+      assert.ok(verifyJs.includes('class="vf-editor"'), 'vf-editor container must be rendered');
+      assert.ok(verifyJs.includes('class="vf-sidebar"'), 'vf-sidebar container must be rendered');
+    });
+
+    test('Workbench CSS: Layout and Live Progress styling defined in src/app.css', () => {
+      assert.ok(appCss.includes('.vf-workbench'), '.vf-workbench must exist in app.css');
+      assert.ok(appCss.includes('.vf-sidebar'), '.vf-sidebar must exist in app.css');
+      assert.ok(appCss.includes('.vf-sidebar-list'), '.vf-sidebar-list must exist in app.css');
+      assert.ok(appCss.includes('.vf-side-item'), '.vf-side-item must exist in app.css');
+      assert.ok(appCss.includes('.vf-side-progress-bar'), '.vf-side-progress-bar must exist in app.css');
+      assert.ok(appCss.includes('.vf-editor'), '.vf-editor must exist in app.css');
+      assert.ok(appCss.includes('.memo-tabs'), '.memo-tabs must exist in app.css');
+      assert.ok(appCss.includes('.memo-action-box'), '.memo-action-box must exist in app.css');
+    });
+
+    test('Executive Memo Dialog: Tabbed preview, print and raw copy elements exist in src/app.html', () => {
+      assert.ok(appHtml.includes('id="memo-tab-preview"'), '#memo-tab-preview must exist in app.html');
+      assert.ok(appHtml.includes('id="memo-tab-raw"'), '#memo-tab-raw must exist in app.html');
+      assert.ok(appHtml.includes('id="memo-preview"'), '#memo-preview container must exist in app.html');
+      assert.ok(appHtml.includes('id="memo-print"'), '#memo-print button must exist in app.html');
+    });
+
+    test('Executive Memo Parser: renderExecutiveMemoHtml formats DQA Audit Memos into structured executive view', () => {
+      const sandbox = {
+        esc: (s) => String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'),
+        $: () => null
+      };
+      vm.createContext(sandbox);
+
+      const fnCode = `
+        ${appJs.slice(appJs.indexOf('function renderExecutiveMemoHtml('), appJs.indexOf('function openHealthMemoModal('))}
+      `;
+      vm.runInContext(fnCode, sandbox);
+
+      const sampleMemo = [
+        '============================================================',
+        'DSWD FIELD OFFICE CARAGA · KALAHI-CIDSS PCRP',
+        'DATA QUALITY ASSESSMENT (DQA) AUDIT MEMORANDUM',
+        'Date of audit: 2026-10-19 · Scope: All monitored municipalities',
+        '============================================================',
+        '',
+        'I. SUMMARY',
+        '• Status: Needs attention (critical data issues open)',
+        '• Automated checks: 12 passed, 2 open (1 critical, 1 to verify)',
+        '• Precision (field forms): 96.2% agreement (SM7 target: ≥95%)',
+        '',
+        'II. ACTION ITEMS FOR PEA / MDE FOLLOW-UP',
+        '[1] Critical: Duplicate Volunteer Registry entries in Brgy Poblacion',
+        'What to do: Verify KCIS volunteer ID vs signed barangay resolution and remove duplicates.',
+        '- Poblacion (San Jose, Dinagat Islands) - Juan Dela Cruz',
+        '… and 1 more item',
+        '',
+        '[2] To verify: Missing attendance sheet signatures',
+        'What to do: Re-scan original signed attendance sheet for BA 1.',
+      ].join('\n');
+
+      const html = sandbox.renderExecutiveMemoHtml(sampleMemo);
+      assert.ok(html.includes('DATA QUALITY ASSESSMENT (DQA) AUDIT MEMORANDUM'), 'Must format header');
+      assert.ok(html.includes('I. Audit Summary'), 'Must render Summary section');
+      assert.ok(html.includes('pill bad'), 'Must render critical status pill for Needs attention');
+      assert.ok(html.includes('class="memo-action-box critical"'), 'Must render critical action box');
+      assert.ok(html.includes('CRITICAL'), 'Must render CRITICAL badge');
+      assert.ok(html.includes('SOP Guidance:</strong> Verify KCIS volunteer ID'), 'Must format SOP Guidance');
+      assert.ok(html.includes('TO VERIFY'), 'Must render TO VERIFY badge for item 2');
+    });
+
+    test('Cross-Module Deep-Linking: Scorecard card and table precision links target openVerifyForm', () => {
+      assert.ok(jsHealthHtml.includes("openVerifyForm("), 'dhPrecisionCard must use openVerifyForm for form selection');
+      assert.ok(jsHealthHtml.includes("openVerifyForm(null,"), 'dhScoreMuniTable must use openVerifyForm for municipality selection');
+    });
+  }
+
+  // -----------------------------------------------------------------
   // Summary
   // -----------------------------------------------------------------
   console.log('\n======================================================');

@@ -1,0 +1,701 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PCRP Encoding & Data Quality Assessment Tool — Official Interactive User Manual</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --primary: #0038A8;
+    --primary-dark: #002570;
+    --primary-light: #38BDF8;
+    --accent: #2563EB;
+    --bg-dark: #0F172A;
+    --bg-card: #FFFFFF;
+    --bg-subtle: #F8FAFC;
+    --border: #E2E8F0;
+    --border-dark: #1E293B;
+    --text-main: #0F172A;
+    --text-muted: #64748B;
+    --success: #15803D;
+    --success-bg: #DCFCE7;
+    --warning: #D97706;
+    --warning-bg: #FEF3C7;
+    --danger: #DC2626;
+    --danger-bg: #FEE2E2;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    background: #F1F5F9;
+    color: var(--text-main);
+    line-height: 1.6;
+    padding: 0;
+    margin: 0;
+  }
+
+  /* Sticky Top Header */
+  header.top-bar {
+    position: sticky;
+    top: 0;
+    z-index: 100;
+    background: var(--bg-dark);
+    color: #FFF;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 14px 32px;
+    box-shadow: 0 4px 12px rgba(15, 23, 42, 0.25);
+  }
+  .brand-group {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+  }
+  .brand-icon {
+    width: 38px;
+    height: 38px;
+    background: var(--primary);
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 800;
+    color: #FFF;
+    font-size: 18px;
+  }
+  .brand-title {
+    font-size: 15px;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+  }
+  .brand-subtitle {
+    font-size: 11px;
+    color: #94A3B8;
+  }
+  .header-actions {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  .btn-action {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 16px;
+    border-radius: 6px;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    text-decoration: none;
+    border: none;
+    transition: all 0.2s ease;
+  }
+  .btn-print {
+    background: #1E293B;
+    color: #F8FAFC;
+    border: 1px solid #334155;
+  }
+  .btn-print:hover { background: #334155; }
+  .btn-canva {
+    background: #7D2AE8;
+    color: #FFFFFF;
+  }
+  .btn-canva:hover { background: #6820C4; }
+
+  /* Main Container */
+  .container {
+    max-width: 1280px;
+    margin: 32px auto;
+    padding: 0 24px;
+    display: grid;
+    grid-template-columns: 280px 1fr;
+    gap: 32px;
+  }
+
+  /* Sidebar Navigation */
+  aside.sidebar {
+    position: sticky;
+    top: 86px;
+    height: calc(100vh - 110px);
+    overflow-y: auto;
+    background: #FFF;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 20px;
+    box-shadow: 0 2px 8px rgba(15, 23, 42, 0.04);
+  }
+  .sidebar h3 {
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--text-muted);
+    margin-bottom: 14px;
+  }
+  .nav-list {
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  .nav-item a {
+    display: block;
+    padding: 8px 12px;
+    font-size: 13px;
+    font-weight: 500;
+    color: #334155;
+    text-decoration: none;
+    border-radius: 6px;
+    transition: all 0.15s ease;
+  }
+  .nav-item a:hover {
+    background: #EFF6FF;
+    color: var(--primary);
+  }
+  .nav-item.active a {
+    background: #EFF6FF;
+    color: var(--primary);
+    font-weight: 700;
+  }
+
+  /* Content Area */
+  main.content {
+    background: #FFF;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 40px;
+    box-shadow: 0 2px 8px rgba(15, 23, 42, 0.04);
+  }
+
+  /* Hero Section */
+  .manual-hero {
+    display: grid;
+    grid-template-columns: 320px 1fr;
+    gap: 32px;
+    background: linear-gradient(135deg, #0F172A 0%, #1E293B 100%);
+    color: #FFF;
+    border-radius: 12px;
+    padding: 32px;
+    margin-bottom: 40px;
+    align-items: center;
+  }
+  .cover-preview {
+    width: 100%;
+    border-radius: 8px;
+    box-shadow: 0 12px 24px rgba(0, 0, 0, 0.4);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+  }
+  .hero-tag {
+    display: inline-block;
+    background: rgba(56, 189, 248, 0.15);
+    color: var(--primary-light);
+    border: 1px solid rgba(56, 189, 248, 0.4);
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    padding: 4px 10px;
+    border-radius: 999px;
+    margin-bottom: 12px;
+  }
+  .hero-title {
+    font-size: 28px;
+    font-weight: 800;
+    line-height: 1.25;
+    margin-bottom: 12px;
+    color: #FFFFFF;
+  }
+  .hero-desc {
+    color: #94A3B8;
+    font-size: 14px;
+    margin-bottom: 20px;
+  }
+  .badge-pills {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .badge-pill {
+    background: rgba(255, 255, 255, 0.08);
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    font-size: 11px;
+    font-weight: 600;
+    padding: 4px 10px;
+    border-radius: 6px;
+    color: #E2E8F0;
+  }
+
+  /* Manual Sections */
+  section.manual-section {
+    margin-bottom: 48px;
+    padding-bottom: 36px;
+    border-bottom: 1px solid var(--border);
+  }
+  section.manual-section:last-child {
+    border-bottom: none;
+    margin-bottom: 0;
+  }
+  h2.section-heading {
+    font-size: 22px;
+    font-weight: 800;
+    color: #0F172A;
+    margin-bottom: 16px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  h2.section-heading span.num-badge {
+    background: var(--primary);
+    color: #FFF;
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 13px;
+    font-weight: 700;
+  }
+  p {
+    font-size: 14px;
+    color: #334155;
+    margin-bottom: 16px;
+  }
+
+  /* Callout Containers */
+  .callout-box {
+    border-radius: 8px;
+    padding: 16px 20px;
+    margin: 20px 0;
+    font-size: 13px;
+    border-left: 4px solid;
+  }
+  .callout-info {
+    background: #EFF6FF;
+    border-color: var(--primary);
+    color: #1E3A8A;
+  }
+  .callout-warning {
+    background: var(--warning-bg);
+    border-color: var(--warning);
+    color: #92400E;
+  }
+  .callout-security {
+    background: #F0FDF4;
+    border-color: var(--success);
+    color: #14532D;
+  }
+
+  /* Image Containers */
+  .figure-card {
+    background: var(--bg-subtle);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 16px;
+    margin: 24px 0;
+    text-align: center;
+  }
+  .figure-card img {
+    max-width: 100%;
+    height: auto;
+    border-radius: 6px;
+    box-shadow: 0 4px 14px rgba(15, 23, 42, 0.08);
+  }
+  .figure-caption {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-muted);
+    margin-top: 10px;
+  }
+
+  /* Data Table */
+  table.manual-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 20px 0;
+    font-size: 13px;
+  }
+  table.manual-table th {
+    background: #F1F5F9;
+    text-align: left;
+    padding: 10px 14px;
+    font-weight: 700;
+    color: #334155;
+    border-bottom: 2px solid var(--border);
+  }
+  table.manual-table td {
+    padding: 12px 14px;
+    border-bottom: 1px solid var(--border);
+    color: #475569;
+  }
+  table.manual-table tr:hover td {
+    background: #F8FAFC;
+  }
+
+  /* Step Grid */
+  .step-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+    gap: 16px;
+    margin: 20px 0;
+  }
+  .step-box {
+    background: #F8FAFC;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 18px;
+  }
+  .step-num {
+    display: inline-block;
+    background: var(--primary);
+    color: #FFF;
+    font-size: 11px;
+    font-weight: 700;
+    padding: 2px 8px;
+    border-radius: 4px;
+    margin-bottom: 8px;
+  }
+  .step-title {
+    font-size: 14px;
+    font-weight: 700;
+    color: #0F172A;
+    margin-bottom: 6px;
+  }
+  .step-desc {
+    font-size: 12px;
+    color: #64748B;
+    margin: 0;
+  }
+
+  /* Status Badges */
+  .status-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 8px;
+    border-radius: 999px;
+    font-size: 11px;
+    font-weight: 700;
+  }
+  .badge-success { background: var(--success-bg); color: var(--success); }
+  .badge-danger { background: var(--danger-bg); color: var(--danger); }
+  .badge-warning { background: var(--warning-bg); color: var(--warning); }
+
+  /* Print Styles */
+  @media print {
+    header.top-bar, aside.sidebar { display: none; }
+    .container { max-width: 100%; margin: 0; padding: 0; grid-template-columns: 1fr; }
+    main.content { border: none; box-shadow: none; padding: 0; }
+    section.manual-section { page-break-inside: avoid; }
+  }
+</style>
+</head>
+<body>
+
+<!-- Header -->
+<header class="top-bar">
+  <div class="brand-group">
+    <div class="brand-icon">✓</div>
+    <div>
+      <div class="brand-title">PCRP Encoding &amp; Data Quality Assessment Tool</div>
+      <div class="brand-subtitle">KALAHI-CIDSS PCRP · Official Field Operations Manual v2.4</div>
+    </div>
+  </div>
+  <div class="header-actions">
+    <button class="btn-action btn-print" onclick="window.print()">🖨 Print / Save as PDF</button>
+    <a href="Canva_Design_And_Publishing_Guide.md" class="btn-action btn-canva" target="_blank">🎨 Canva Design Blueprint</a>
+  </div>
+</header>
+
+<!-- Main Container -->
+<div class="container">
+  
+  <!-- Sidebar Navigation -->
+  <aside class="sidebar">
+    <h3>User Manual Guide</h3>
+    <ul class="nav-list">
+      <li class="nav-item"><a href="#sec-overview">1. Executive Overview</a></li>
+      <li class="nav-item"><a href="#sec-architecture">2. 100% Offline Security</a></li>
+      <li class="nav-item"><a href="#sec-roles">3. Roles &amp; Geographic Scope</a></li>
+      <li class="nav-item"><a href="#sec-launch">4. System Launch &amp; Setup</a></li>
+      <li class="nav-item"><a href="#sec-ingestion">5. KCIS Data Ingestion</a></li>
+      <li class="nav-item"><a href="#sec-dashboard">6. Executive Dashboard</a></li>
+      <li class="nav-item"><a href="#sec-quorum">7. 70% Quorum &amp; K2 Scorecard</a></li>
+      <li class="nav-item"><a href="#sec-volunteers">8. BResT &amp; MResT Governance</a></li>
+      <li class="nav-item"><a href="#sec-verify">9. SM7 Table 8 Verification</a></li>
+      <li class="nav-item"><a href="#sec-health">10. Data Health &amp; 7-Day Rule</a></li>
+      <li class="nav-item"><a href="#sec-exports">11. Session Save &amp; Excel</a></li>
+      <li class="nav-item"><a href="#sec-faq">12. FAQ &amp; Troubleshooting</a></li>
+    </ul>
+  </aside>
+
+  <!-- Main Content -->
+  <main class="content">
+
+    <!-- Hero Card -->
+    <div class="manual-hero">
+      <img src="assets/pcrp_manual_cover_1792498002508.jpg" alt="PCRP User Manual Cover" class="cover-preview">
+      <div>
+        <div class="hero-tag">Official Operational Guide</div>
+        <h1 class="hero-title">PCRP Encoding &amp; Data Quality Assessment Tool</h1>
+        <p class="hero-desc">The complete field operations manual for Project Evaluation Assistants (PEA), Municipal Data Monitors (MDM), and Area Coordinating Teams (ACT) across KALAHI-CIDSS PCRP municipalities.</p>
+        <div class="badge-pills">
+          <span class="badge-pill">100% Zero-Cloud Offline</span>
+          <span class="badge-pill">RA 10173 Compliant</span>
+          <span class="badge-pill">SM1 &amp; SM7 Standard</span>
+          <span class="badge-pill">Role Isolation Engine</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Section 1 -->
+    <section id="sec-overview" class="manual-section">
+      <h2 class="section-heading"><span class="num-badge">1</span> Executive Overview &amp; Field Purpose</h2>
+      <p>The <strong>PCRP Encoding and Data Quality Assessment Tool</strong> (Monitor Desktop v2.4) is an offline-first analytical console designed to support field monitoring teams. It provides instantaneous validation of raw KALAHI-CIDSS Comprehensive Information System (KCIS) data against the official Social Mobilization Sub-Manual (SM1) and Monitoring &amp; Evaluation Sub-Manual (SM7).</p>
+      
+      <div class="step-grid">
+        <div class="step-box">
+          <div class="step-num">FUNCTION 1</div>
+          <div class="step-title">Quorum Testing</div>
+          <p class="step-desc">Calculates strict 70% household quorum compliance for barangay assemblies automatically.</p>
+        </div>
+        <div class="step-box">
+          <div class="step-num">FUNCTION 2</div>
+          <div class="step-title">Physical Cross-Check</div>
+          <p class="step-desc">Generates random 10% sampling to reconcile digital records against physical paper attendance sheets.</p>
+        </div>
+        <div class="step-box">
+          <div class="step-num">FUNCTION 3</div>
+          <div class="step-title">Role Isolation</div>
+          <p class="step-desc">Strictly limits PEA/MDM field staff to their assigned LGU, preventing unauthorized cross-municipality leaks.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- Section 2 -->
+    <section id="sec-architecture" class="manual-section">
+      <h2 class="section-heading"><span class="num-badge">2</span> 100% Offline Architecture &amp; Data Privacy</h2>
+      <p>Because field operations frequently operate in isolated, zero-connectivity island or mountain barangays, the application runs 100% within your local browser memory.</p>
+
+      <div class="figure-card">
+        <img src="assets/pcrp_workflow_infographic_1792498025344.jpg" alt="PCRP Modern Secure Data Pipeline Workflow">
+        <div class="figure-caption">Figure 2.1 — End-to-End Offline Data Processing and Local Memory Pipeline</div>
+      </div>
+
+      <div class="callout-box callout-security">
+        <strong>Statutory Compliance with RA 10173 (Philippine Data Privacy Act):</strong><br>
+        Raw KCIS files contain names, birthdates, and household demographics. The tool processes files exclusively in memory. No network requests are sent, and no data is transmitted to cloud servers.
+      </div>
+    </section>
+
+    <!-- Section 3 -->
+    <section id="sec-roles" class="manual-section">
+      <h2 class="section-heading"><span class="num-badge">3</span> User Roles &amp; Geographic Scope Isolation</h2>
+      <p>The system enforces strict access control through two dedicated workspace personas:</p>
+
+      <table class="manual-table">
+        <thead>
+          <tr>
+            <th>Feature / Capability</th>
+            <th>PEA / MDM (Municipal Field Workspace)</th>
+            <th>Regional RPMO (Executive Oversight)</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><strong>Geographic Scope</strong></td>
+            <td>Locked strictly to 1 assigned Municipality</td>
+            <td>Full access across all 26 LGUs &amp; 516 Barangays</td>
+          </tr>
+          <tr>
+            <td><strong>Municipalities Tab</strong></td>
+            <td>Hidden (to prevent data spillover)</td>
+            <td>Visible with multi-LGU comparison matrix</td>
+          </tr>
+          <tr>
+            <td><strong>Barangay Views</strong></td>
+            <td>Shows only barangays belonging to user's LGU</td>
+            <td>Multi-LGU filterable table with provincial chips</td>
+          </tr>
+          <tr>
+            <td><strong>Excel Export</strong></td>
+            <td>Clean, single-municipality workbook</td>
+            <td>Comprehensive regional consolidation workbook</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <!-- Section 4 -->
+    <section id="sec-launch" class="manual-section">
+      <h2 class="section-heading"><span class="num-badge">4</span> Getting Started &amp; System Launch</h2>
+      <p>Getting started requires zero software installation or administrator rights:</p>
+      <div class="step-grid">
+        <div class="step-box">
+          <div class="step-num">STEP 1</div>
+          <div class="step-title">Locate File</div>
+          <p class="step-desc">Open <code>dist/PCRP Encoding and Data Quality Assessment Tool.html</code> on your laptop.</p>
+        </div>
+        <div class="step-box">
+          <div class="step-num">STEP 2</div>
+          <div class="step-title">Double Click</div>
+          <p class="step-desc">Double-click to open in Microsoft Edge or Google Chrome (works completely offline).</p>
+        </div>
+        <div class="step-box">
+          <div class="step-num">STEP 3</div>
+          <div class="step-title">Select Scope</div>
+          <p class="step-desc">Choose PEA/MDM and your designated LGU name to initialize data isolation.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- Section 5 -->
+    <section id="sec-ingestion" class="manual-section">
+      <h2 class="section-heading"><span class="num-badge">5</span> KCIS Data Export &amp; Ingestion Guide</h2>
+      <p>The tool accepts official exports directly from the KCIS Web Portal. Do not alter column headers in Excel before loading.</p>
+
+      <div class="figure-card">
+        <img src="assets/01-settings-import-wireframe.svg" alt="Settings and Data Import Wireframe">
+        <div class="figure-caption">Figure 5.1 — Settings &amp; Data Import Workspace (Screen 1)</div>
+      </div>
+
+      <div class="callout-box callout-info">
+        <strong>Supported Files:</strong>
+        <ul style="margin-left: 20px; margin-top: 6px;">
+          <li><strong>Participants Export (.xlsx / .csv):</strong> Contains attendance logs, sex, birthdate, and conduct dates.</li>
+          <li><strong>Household Roster / K2 (.xlsx / .csv):</strong> Masterlist of household heads and target counts.</li>
+          <li><strong>Community Volunteer List (.xlsx / .csv):</strong> Committee rosters (BResT, PIT, PT, CMSC, SFMSC).</li>
+        </ul>
+      </div>
+    </section>
+
+    <!-- Section 6 -->
+    <section id="sec-dashboard" class="manual-section">
+      <h2 class="section-heading"><span class="num-badge">6</span> Executive Overview Dashboard</h2>
+      <p>Upon clicking "Show Findings", the dashboard displays instant analytical findings for your LGU.</p>
+
+      <div class="figure-card">
+        <img src="assets/pcrp_dashboard_interface_1792498043704.jpg" alt="Active Monitor Dashboard Interface">
+        <div class="figure-caption">Figure 6.1 — Active Overview Dashboard and Quorum Scorecard</div>
+      </div>
+
+      <div class="figure-card">
+        <img src="assets/02-overview-dashboard-wireframe.svg" alt="Overview Dashboard Wireframe">
+        <div class="figure-caption">Figure 6.2 — Dashboard Wireframe Layout and Milestone Pipeline (Screen 2)</div>
+      </div>
+    </section>
+
+    <!-- Section 7 -->
+    <section id="sec-quorum" class="manual-section">
+      <h2 class="section-heading"><span class="num-badge">7</span> 70% Quorum &amp; Household Participation Scorecard</h2>
+      <p>Under KALAHI-CIDSS SM1, a Barangay Assembly is valid only if at least <strong>70% of registered households</strong> attend.</p>
+      
+      <div class="callout-box callout-info" style="font-family: monospace; font-size: 14px;">
+        Participation Rate (%) = (Unique Households Present / Total Barangay Households) × 100
+      </div>
+
+      <p>Barangays with rates &ge; 70% display <span class="status-badge badge-success">✓ Quorum Met</span>. Barangays falling below 70% display <span class="status-badge badge-danger">⚠ Quorum Not Met</span>, indicating that an ACT/MCT reseating assembly is required before sub-project proposals can be endorsed.</p>
+    </section>
+
+    <!-- Section 8 -->
+    <section id="sec-volunteers" class="manual-section">
+      <h2 class="section-heading"><span class="num-badge">8</span> Community Volunteer &amp; BResT/MResT Governance</h2>
+      <p>Community resilience committees must adhere to statutory composition rules:</p>
+      <div class="step-grid">
+        <div class="step-box">
+          <div class="step-num">BREST RULE</div>
+          <div class="step-title">30% Marginalized Quota</div>
+          <p class="step-desc">At least 30% of members must represent Women, Senior Citizens, IPs, PWDs, 4Ps, or Youth.</p>
+        </div>
+        <div class="step-box">
+          <div class="step-num">BREST RULE</div>
+          <div class="step-title">Gender Balance</div>
+          <p class="step-desc">A minimum of 50% women representation across all volunteer committees.</p>
+        </div>
+        <div class="step-box">
+          <div class="step-num">MREST RULE</div>
+          <div class="step-title">Executive Order Audit</div>
+          <p class="step-desc">Validates presence of a signed Mayoral Executive Order organizing the Municipal Resilience Team.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- Section 9 -->
+    <section id="sec-verify" class="manual-section">
+      <h2 class="section-heading"><span class="num-badge">9</span> SM7 Table 8 Field Verification Engine</h2>
+      <p>Digital records must be validated against physical paper records in the municipal archive.</p>
+
+      <div class="figure-card">
+        <img src="assets/03-dqa-verification-wireframe.svg" alt="DQA Verification Workspace Wireframe">
+        <div class="figure-caption">Figure 9.1 — SM7 Table 8 Field Verification Engine &amp; 10% Sampling Workspace (Screen 3)</div>
+      </div>
+
+      <div class="step-grid">
+        <div class="step-box">
+          <div class="step-num">STEP 1</div>
+          <div class="step-title">Generate 10% Sample</div>
+          <p class="step-desc">Click "Generate Random 10% Sample" to produce an unbiased audit selection.</p>
+        </div>
+        <div class="step-box">
+          <div class="step-num">STEP 2</div>
+          <div class="step-title">Check Physical Form</div>
+          <p class="step-desc">Compare name, birthdate, and signature against physical Form 1 / K2 sheet.</p>
+        </div>
+        <div class="step-box">
+          <div class="step-num">STEP 3</div>
+          <div class="step-title">Tag Status</div>
+          <p class="step-desc">Mark as <span class="status-badge badge-success">VERIFIED</span> or <span class="status-badge badge-warning">DISCREPANCY</span>.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- Section 10 -->
+    <section id="sec-health" class="manual-section">
+      <h2 class="section-heading"><span class="num-badge">10</span> Data Health &amp; 7-Day Encoding Rule</h2>
+      <p>The health engine evaluates 4 dimensions:</p>
+      <ul style="margin-left: 24px; font-size: 14px; color: #334155;">
+        <li><strong>Completeness (98%+ Target):</strong> Flags missing mandatory values.</li>
+        <li><strong>Timeliness (7-Day Rule):</strong> Records must be encoded into KCIS within 7 days of field activity.</li>
+        <li><strong>Validity:</strong> Detects impossible birthdates, future dates, and sequence anomalies.</li>
+        <li><strong>Integrity:</strong> Detects duplicate entries and ghost attendance records.</li>
+      </ul>
+    </section>
+
+    <!-- Section 11 -->
+    <section id="sec-exports" class="manual-section">
+      <h2 class="section-heading"><span class="num-badge">11</span> Session Management &amp; Excel Reports</h2>
+      <div class="step-grid">
+        <div class="step-box">
+          <div class="step-num">ACTION 1</div>
+          <div class="step-title">Save .pcrp Session</div>
+          <p class="step-desc">Exports an encrypted snapshot file to transfer your work or back it up.</p>
+        </div>
+        <div class="step-box">
+          <div class="step-num">ACTION 2</div>
+          <div class="step-title">Delta Sync (.pcrpd)</div>
+          <p class="step-desc">Updates KCIS rows without losing your manually tagged field verification audits.</p>
+        </div>
+        <div class="step-box">
+          <div class="step-num">ACTION 3</div>
+          <div class="step-title">Export to Excel</div>
+          <p class="step-desc">Generates a clean, scoped Excel workbook ready for LGU and RPMO presentation.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- Section 12 -->
+    <section id="sec-faq" class="manual-section">
+      <h2 class="section-heading"><span class="num-badge">12</span> FAQ &amp; Troubleshooting</h2>
+      <div class="callout-box callout-warning">
+        <strong>How do I clear personal data before handing my laptop to another staff member?</strong><br>
+        Navigate to <strong>Settings</strong> and click the red button: <strong>"Forget Saved Data"</strong>. This immediately purges all encrypted local storage, participant names, and audit tags from that browser.
+      </div>
+    </section>
+
+  </main>
+</div>
+
+</body>
+</html>

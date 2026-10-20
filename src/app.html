@@ -4,6 +4,9 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>PCRP Encoding and Data Quality Assessment Tool</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 <style>
 /*@@APP_CSS@@*/
 /*@@DH_CSS@@*/
@@ -20,12 +23,12 @@
       <div class="brand-sub"><span class="brand-tag">KALAHI-CIDSS PCRP</span> <span>Offline Field Console · Monitor v@@VERSION@@</span></div>
     </div>
   </div>
-  <button class="home-chip" id="home-chip" type="button" title="Change active municipality scope" hidden></button>
+  <button class="home-chip" id="home-chip" type="button" hidden></button>
   <div class="top-actions">
-    <button class="btn ghost icon-btn" id="btn-theme" type="button" title="Toggle light / dark theme" aria-label="Toggle light or dark theme">
+    <button class="btn ghost icon-btn" id="btn-theme" type="button" aria-label="Toggle light or dark theme">
       <i data-lucide="sun"></i>
     </button>
-    <button class="btn ghost on" id="btn-import-top" type="button" title="Settings &amp; Setup"><i data-lucide="settings"></i> <span>Settings &amp; Setup</span> <span class="tab-badge" id="badge-settings" hidden></span></button>
+    <button class="btn ghost on" id="btn-import-top" type="button"><i data-lucide="settings"></i> <span>Settings &amp; Setup</span> <span class="tab-badge" id="badge-settings" hidden></span></button>
     <button class="btn primary" id="btn-export" type="button" disabled><i data-lucide="download"></i> <span>Export to Excel</span></button>
   </div>
 </header>
@@ -34,7 +37,7 @@
   <button role="tab" data-page="overview" disabled><i data-lucide="layout-dashboard"></i> <span>Overview</span></button>
   <button role="tab" data-page="kpisummary" id="tab-kpisummary" disabled><i data-lucide="gauge"></i> <span>KPI Summary</span> <span class="tab-badge" id="badge-kpisummary" hidden></span></button>
   <button role="tab" data-page="munis" id="tab-munis" disabled><i data-lucide="building-2"></i> <span>Municipalities</span> <span class="tab-badge" id="badge-munis" hidden></span></button>
-  <button role="tab" data-page="brgys" disabled><i data-lucide="map-pin"></i> <span>Barangays</span> <span class="tab-badge" id="badge-brgys" hidden></span></button>
+  <button role="tab" data-page="brgys" id="tab-brgys" disabled><i data-lucide="map-pin"></i> <span>Barangays</span> <span class="tab-badge" id="badge-brgys" hidden></span></button>
   <!-- Group 1: Attendance & Households -->
   <div class="nav-tab-group" id="group-attendance-wrap">
     <button role="tab" class="tab-group-trigger" id="tab-group-attendance" data-group="attendance" disabled>
@@ -292,18 +295,24 @@
   </form>
 </dialog>
 
-<dialog id="memo-dialog" class="memo">
+<dialog id="memo-dialog" class="memo" style="max-width:860px;width:95vw;">
   <form method="dialog">
     <div class="dialog-head">
       <div>
         <h2>DQA Audit Memo</h2>
-        <div class="tiny">Formatted plain-text field audit memo ready to copy into an email, chat, or document.</div>
+        <div class="tiny">Kalahi-CIDSS SM7 Field Quality Audit Memo &amp; Corrective Action Plan</div>
       </div>
       <button class="btn ghost icon-btn" value="close" aria-label="Close dialog" title="Close (Esc)"><i data-lucide="x"></i></button>
     </div>
-    <textarea id="memo-text" rows="20" readonly></textarea>
+    <div class="memo-tabs">
+      <button type="button" class="memo-tab-btn active" id="memo-tab-preview"><i data-lucide="file-text"></i> <span>Executive Preview</span></button>
+      <button type="button" class="memo-tab-btn" id="memo-tab-raw"><i data-lucide="code"></i> <span>Raw Plain Text</span></button>
+    </div>
+    <div id="memo-preview" class="memo-preview-panel"></div>
+    <textarea id="memo-text" rows="20" readonly style="display:none;"></textarea>
     <div class="row-actions dialog-foot">
       <button class="btn primary" type="button" id="memo-copy"><i data-lucide="copy"></i> <span>Copy memo</span></button>
+      <button class="btn ghost" type="button" id="memo-print"><i data-lucide="printer"></i> <span>Print</span></button>
       <button class="btn ghost" type="button" id="memo-save"><i data-lucide="download"></i> <span>Save as .txt</span></button>
       <button class="btn ghost" value="close">Close</button>
     </div>

@@ -996,7 +996,7 @@ function dhPrecisionCard(d) {
   var formName = function (f) { return typeof VF_FORMS !== 'undefined' && VF_FORMS[f] ? VF_FORMS[f].label : f; };
   var lines = Object.keys(ps.byForm).map(function (f) {
     var x = ps.byForm[f];
-    return '<li><button class="dh-dim-check' + (x.checked && !(x.differs + x.absent + x.notEncoded) ? ' ok' : (x.checked ? ' sev-verify' : '')) + '" onclick="openVerify()">' +
+    return '<li><button class="dh-dim-check' + (x.checked && !(x.differs + x.absent + x.notEncoded) ? ' ok' : (x.checked ? ' sev-verify' : '')) + '" onclick="typeof openVerifyForm===\'function\'?openVerifyForm(\'' + dhArg(f) + '\'):openVerify()">' +
       '<i data-lucide="' + (x.checked ? 'clipboard-check' : 'clipboard') + '" class="w-3.5 h-3.5"></i>' +
       '<span>' + esc(formName(f)) + '</span><span class="dh-dim-n">' + n(x.verified) + ' of ' + n(x.records) + ' verified' +
       (x.checked ? ' · ' + (Math.round(x.agreement * 1000) / 10).toFixed(1) + '% match' : '') + '</span></button></li>';
@@ -1009,7 +1009,8 @@ function dhPrecisionCard(d) {
     '</div>' +
     (ps.checked
       ? '<div class="dh-dim-score"><strong>' + (Math.round(ps.agreement * 1000) / 10).toFixed(1) + '%</strong> of ' + n(ps.checked) + ' rows checked match the forms' +
-          (ps.factor !== null ? ' · on the form ÷ encoded <strong style="font-size:13px">' + ps.factor.toFixed(2) + '</strong>' : '') + '</div>'
+          (ps.factor !== null ? ' · on the form ÷ encoded <strong style="font-size:13px">' + ps.factor.toFixed(2) + '</strong>' : '') + '</div>' +
+          (typeof quotaMiniProgressBar === 'function' ? '<div style="margin:6px 0 8px">' + quotaMiniProgressBar(ps.match, ps.checked, 0.95, 'SM7 Precision Target: ≥95% agreement') + '</div>' : '')
       : '<p class="dh-dim-none">Nothing checked against the paper forms yet in ' + esc(dhScopeLabel()) + '.</p>') +
     (lines ? '<ul class="dh-dim-list">' + lines + '</ul>' : '') +
     '<button class="btn ghost dh-btn-sm" onclick="openVerify()"><i data-lucide="clipboard-check" class="w-3.5 h-3.5"></i> Verify against the forms</button>' +
@@ -1091,7 +1092,8 @@ function dhScoreMuniTable(o, evs) {
       cells + (canVerify ? (function () {
         var ps = dhPrecision(function (p) { return p.province === r.province && p.municipality === r.municipality; });
         var issues = ps ? ps.differs + ps.absent + ps.notEncoded : 0;
-        return '<td data-label="Precision" class="num ' + (issues ? 'dh-n-warn' : '') + '"><div>' +
+        var clickAttr = ' onclick="event.stopPropagation();if(typeof openVerifyForm===\'function\'){openVerifyForm(null,\'' + dhArg(r.province + '|' + r.municipality) + '\');}else if(typeof openVerify===\'function\'){openVerify();}" style="cursor:pointer;" title="Verify paper forms for ' + esc(r.municipality) + '"';
+        return '<td data-label="Precision" class="num ' + (issues ? 'dh-n-warn' : '') + '"' + clickAttr + '><div>' +
           (ps && ps.checked ? (Math.round(ps.agreement * 1000) / 10).toFixed(1) + '%' : '<span class="dh-zero">—</span>') + '</div></td>';
       })() : '') +
       '<td data-label="Checks passed" class="num"><div><strong>' + ok + '</strong> of ' + all + '</div></td></tr>';
