@@ -26,8 +26,9 @@ var K2_TARGET = 0.70;   // SM7 Annex D: households represented, every year
 
 /**
  * Optional Baseline column: each barangay's total households from the community
- * profile. Not available yet, so K2 is measured against the households listed in
- * KCIS; once this column is filled the two are shown side by side for consistency.
+ * profile. K2 is measured against "Total Hh In Barangay" from the KCIS Household
+ * Participation export; once this column is filled the two are shown side by
+ * side for consistency.
  */
 var CP_HH_HEADERS = ['Total HH (Community Profile)', 'Total HH', 'Total Households',
                      'Community Profile HH', 'CP Total HH'];
@@ -75,11 +76,85 @@ function upsertAppraisalRows(rows, province, municipality, status, dateIso) {
   return out;
 }
 
-/** A household count from a sheet cell: a positive number, or null when blank or unusable. */
-function parseHhCount(v) {
+/**
+ * A household count from a sheet cell: a positive number, or null when blank or
+ * unusable. allowZero keeps a 0 (households represented can be none).
+ */
+function parseHhCount(v, allowZero) {
   if (v === null || v === undefined || v === '') return null;
   var x = typeof v === 'number' ? v : Number(String(v).replace(/[,\s]/g, ''));
-  return (isFinite(x) && x > 0) ? Math.round(x) : null;
+  return (isFinite(x) && (x > 0 || (allowZero && x === 0))) ? Math.round(x) : null;
+}
+
+/**
+ * One barangay assembly's household counts from its KCIS records. An assembly
+ * can carry several records (sittings, or one encoded twice), and they do not
+ * always agree. Records with no count are ignored, identical ones collapse, and
+ * the most complete one is used: both counts given, then the largest total, then
+ * the largest number represented. Two or more different counts is a conflict,
+ * flagged in Data Health.
+ *
+ * records: [{total, represented, detail}] as cell values (detail: the
+ * breakdown cells, optional). Returns
+ *   {total, represented, records, variants: [{total, represented}], conflict, detail}
+ * where total / represented are null when not encoded, and detail is the
+ * breakdown of the record used (null when there is none).
+ */
+function resolveHhCounts(records) {
+  var seen = {}, variants = [];
+  (records || []).forEach(function (r) {
+    var t = parseHhCount(r.total), p = parseHhCount(r.represented, true);
+    if (t === null && p === null) return;
+    var k = t + '|' + p;
+    if (seen[k]) {
+      if (!seen[k].detail && hasHhDetail_(r.detail)) seen[k].detail = r.detail;   // the copy that carries the breakdown
+      return;
+    }
+    seen[k] = { detail: hasHhDetail_(r.detail) ? r.detail : null };
+    variants.push({ total: t, represented: p });
+  });
+  var filled = function (v) { return (v.total !== null ? 1 : 0) + (v.represented !== null ? 1 : 0); };
+  variants.sort(function (a, b) {
+    return (filled(b) - filled(a)) || ((b.total || 0) - (a.total || 0)) || ((b.represented || 0) - (a.represented || 0));
+  });
+  var best = variants[0] || { total: null, represented: null };
+  return { total: best.total, represented: best.represented, records: (records || []).length,
+           variants: variants, conflict: variants.length > 1,
+           detail: variants.length ? seen[best.total + '|' + best.represented].detail : null };
+}
+
+/**
+ * Optional breakdown columns of the Household Participation export: individuals
+ * by sex, and the 4Ps, IP and SLP households (and families) among those
+ * represented, plus KCIS's own participation rate (a percent). Shown beside K2;
+ * K2 itself is computed from the two required counts only.
+ */
+var HH_DETAIL_HEADERS = {
+  indivFemale: 'Individual Female', indivMale: 'Individual Male', indivTotal: 'Individual Total',
+  hh4Ps: 'Total 4Ps Hh Represented', fam4Ps: 'Total 4Ps Families Represented',
+  hhIp: 'Total Ip Hh Represented',
+  hhSlp: 'Total Slp Hh Represented', famSlp: 'Total Slp Families Represented',
+  kcisRate: 'Hh Participation Rate'
+};
+
+function hasHhDetail_(d) {
+  return !!d && Object.keys(d).some(function (k) { return d[k] !== null && d[k] !== undefined && d[k] !== ''; });
+}
+
+/** Breakdown cells -> numbers ({indivFemale, ..., kcisRate}), or null when none is encoded. */
+function hhDetailOf(raw) {
+  if (!hasHhDetail_(raw)) return null;
+  var out = {};
+  Object.keys(HH_DETAIL_HEADERS).forEach(function (k) {
+    var v = raw[k];
+    if (k === 'kcisRate') {
+      var x = v === null || v === undefined || v === '' ? NaN : Number(String(v).replace(/[%,\s]/g, ''));
+      out[k] = isFinite(x) ? Math.round(x * 100) / 100 : null;
+    } else {
+      out[k] = parseHhCount(v, true);
+    }
+  });
+  return out;
 }
 
 /**
@@ -202,18 +277,21 @@ function validateTargets(list, activities) {
   return errors;
 }
 
-/** Column order of the two KCIS exports. Import fails loudly if these move. */
+/** Required columns of the KCIS exports. Import fails loudly if one is missing. */
 var PARTICIPANT_HEADERS = [
   'Region Name', 'Province Name', 'City Name', 'Barangay Name', 'Sequence No',
   'Name', 'Activity Title', 'Is Copy Plan', 'First Name', 'Middle Name',
   'Last Name', 'Sex Description'
 ];
-var HOUSEHOLD_HEADERS = [
+/**
+ * The Household Participation export: one row per activity record, with the
+ * households already counted by KCIS. Total Hh In Barangay is the K2
+ * denominator and Total Hh Represented the numerator. It replaces the
+ * household roster export (one row per household member), which is no longer read.
+ */
+var HH_COUNT_HEADERS = [
   'Region Name', 'Province Name', 'City Name', 'Barangay Name', 'Name',
-  'Activity Title', 'Is Copy Plan', 'First Name', 'Middle Name', 'Last Name',
-  'Sex Description', 'Birthdate', 'Is Hh Head', 'Is Present',
-  'Total 4Ps Families Present', 'Total Ip Families Present',
-  'Total Non Ip 4Ps Slp Families Present', 'Total Slp Families Present'
+  'Activity Title', 'Is Copy Plan', 'Total Hh In Barangay', 'Total Hh Represented'
 ];
 
 /** Zero-based positions for backward compatibility. */
@@ -221,7 +299,7 @@ var P_DEFAULT = {
   province: 1, muni: 2, brgy: 3, seq: 4, name: 5, title: 6, first: 8, middle: 9, last: 10, sex: 11, activityId: 22
 };
 var H_DEFAULT = {
-  province: 1, muni: 2, brgy: 3, name: 4, title: 5, first: 7, middle: 8, last: 9, sex: 10, present: 13, activityId: 22
+  province: 1, muni: 2, brgy: 3, name: 4, title: 5, psgcBrgy: 10, activityId: 11, hhTotal: 12, hhRepresented: 13
 };
 
 var P = P_DEFAULT;
@@ -250,6 +328,16 @@ function buildColumnIndex(headerRow, fallback) {
     present: map[normKey('Is Present')] !== undefined ? map[normKey('Is Present')] : fb.present,
     birthdate: map[normKey('Birthdate')],
     isHead: map[normKey('Is Hh Head')],
+    hhTotal: map[normKey('Total Hh In Barangay')] !== undefined ? map[normKey('Total Hh In Barangay')] : fb.hhTotal,
+    hhRepresented: map[normKey('Total Hh Represented')] !== undefined ? map[normKey('Total Hh Represented')] : fb.hhRepresented,
+    hhDetail: (function () {           // optional breakdown columns: key -> position, only those present
+      var o = {};
+      Object.keys(HH_DETAIL_HEADERS).forEach(function (k) {
+        var i = map[normKey(HH_DETAIL_HEADERS[k])];
+        if (i !== undefined) o[k] = i;
+      });
+      return o;
+    })(),
     // Extended fields:
     psgcRegion: map[normKey('lib_region.code_correspondence')],
     psgcProvince: map[normKey('lib_province.code_correspondence')],
@@ -1182,124 +1270,6 @@ function isoDayNumber(iso) {
   return Math.round(Date.UTC(+m[1], +m[2] - 1, +m[3]) / 86400000);
 }
 
-/**
- * Household roster checks for Data Health. Three lists, flags only — K2 is not
- * changed by them:
- *   blank          rows with no first and no last name, per barangay + assembly
- *   duplicates     the same name + birthdate listed more than once in the same
- *                  barangay for the same assembly
- *   crossBarangay  the same household head (Is Hh Head = TRUE) in more than one
- *                  barangay. "Likely" when the birthdates match; "Possible" when
- *                  the name matches but a birthdate is missing. Two different
- *                  birthdates are two different people and are not flagged.
- * Names are compared after normAlpha (case, spacing, punctuation, accents).
- */
-function householdRosterIssues(blankMap, sameMap, headsMap) {
-  var byPlace = function (a, b) {
-    return (a.province + '|' + a.municipality + '|' + a.barangay)
-      .localeCompare(b.province + '|' + b.municipality + '|' + b.barangay);
-  };
-
-  var blank = Object.keys(blankMap).map(function (k) { return blankMap[k]; }).sort(byPlace);
-
-  var duplicates = [], dupExtraRows = 0, dupExtraPresent = 0;
-  Object.keys(sameMap).forEach(function (k) {
-    var list = sameMap[k];
-    if (list.length < 2) return;
-    var presentCount = list.filter(function (e) { return e.present; }).length;
-    dupExtraRows += list.length - 1;
-    dupExtraPresent += Math.max(0, presentCount - 1);
-    duplicates.push({
-      province: list[0].province, municipality: list[0].municipality, barangay: list[0].barangay,
-      actCode: list[0].actCode, name: list[0].name, birthdate: list[0].birthdate,
-      times: list.length, presentCount: presentCount
-    });
-  });
-  duplicates.sort(function (a, b) { return byPlace(a, b) || a.name.localeCompare(b.name); });
-
-  function places(entries) {
-    var out = {}, order = [];
-    entries.forEach(function (e) {
-      var pk = e.brgyKey + '|' + e.actCode;
-      if (!out[pk]) {
-        out[pk] = { province: e.province, municipality: e.municipality, barangay: e.barangay,
-                    actCode: e.actCode, birthdate: e.birthdate, present: false, times: 0, brgyKey: e.brgyKey };
-        order.push(pk);
-      }
-      out[pk].times++;
-      if (e.present) out[pk].present = true;
-      if (!out[pk].birthdate && e.birthdate) out[pk].birthdate = e.birthdate;
-    });
-    return order.map(function (pk) { return out[pk]; });
-  }
-  function distinct(list, f) {
-    var s = {};
-    list.forEach(function (x) { s[f(x)] = true; });
-    return Object.keys(s).length;
-  }
-
-  var crossBarangay = [];
-  Object.keys(headsMap).forEach(function (person) {
-    var entries = headsMap[person];
-    if (distinct(entries, function (e) { return e.brgyKey; }) < 2) return;
-    var bdays = {};
-    entries.forEach(function (e) { if (e.birthdate) bdays[e.birthdate] = true; });
-    var bdList = Object.keys(bdays);
-    var groups = [];
-    if (!bdList.length) {
-      groups.push({ confidence: 'Possible', birthdate: '', entries: entries });
-    } else if (bdList.length === 1) {
-      var withB = entries.filter(function (e) { return e.birthdate === bdList[0]; });
-      groups.push({
-        confidence: distinct(withB, function (e) { return e.brgyKey; }) > 1 ? 'Likely' : 'Possible',
-        birthdate: bdList[0], entries: entries
-      });
-    } else {
-      bdList.forEach(function (bd) {
-        var same = entries.filter(function (e) { return e.birthdate === bd; });
-        if (distinct(same, function (e) { return e.brgyKey; }) > 1) {
-          groups.push({ confidence: 'Likely', birthdate: bd, entries: same });
-        }
-      });
-    }
-    groups.forEach(function (g) {
-      var pl = places(g.entries);
-      crossBarangay.push({
-        name: g.entries[0].name, birthdate: g.birthdate, confidence: g.confidence,
-        acrossMunicipalities: distinct(pl, function (p) { return p.province + '|' + p.municipality; }) > 1,
-        barangays: pl.map(function (p) {
-          return { province: p.province, municipality: p.municipality, barangay: p.barangay,
-                   actCode: p.actCode, birthdate: p.birthdate, present: p.present, times: p.times };
-        })
-      });
-    });
-  });
-  crossBarangay.sort(function (a, b) {
-    if (a.acrossMunicipalities !== b.acrossMunicipalities) return a.acrossMunicipalities ? -1 : 1;
-    if (a.confidence !== b.confidence) return a.confidence === 'Likely' ? -1 : 1;
-    return byPlace(a.barangays[0], b.barangays[0]) || a.name.localeCompare(b.name);
-  });
-
-  var blankBrgys = {};
-  blank.forEach(function (b) { blankBrgys[b.province + '|' + b.municipality + '|' + b.barangay] = true; });
-  return {
-    blank: blank,
-    duplicates: duplicates,
-    crossBarangay: crossBarangay,
-    summary: {
-      blankRows: blank.reduce(function (s, b) { return s + b.rows; }, 0),
-      blankPresent: blank.reduce(function (s, b) { return s + b.present; }, 0),
-      blankBarangays: Object.keys(blankBrgys).length,
-      dupGroups: duplicates.length,
-      dupExtraRows: dupExtraRows,
-      dupExtraPresent: dupExtraPresent,
-      crossLikely: crossBarangay.filter(function (c) { return c.confidence === 'Likely'; }).length,
-      crossPossible: crossBarangay.filter(function (c) { return c.confidence === 'Possible'; }).length,
-      crossAcrossMunicipalities: crossBarangay.filter(function (c) { return c.acrossMunicipalities; }).length
-    }
-  };
-}
-
 // ---- data quality (DQA) helpers, for Data Health. Flags only. -------------
 
 /** Activities dated before this cannot be PCRP Stage 1 (the volunteer term check uses the same start). */
@@ -1330,65 +1300,31 @@ function dqaPlace_(base, prov, muni, brgy) {
 }
 
 /**
- * A birthdate cell as YYYY-MM-DD. An .xlsx export stores dates as day
- * numbers; formatDateVal reads those only from 1954 (20000), which leaves out
- * anyone born earlier, so any number here is read as a day number.
- */
-function birthdateIso(v) {
-  if (typeof v === 'number' && isFinite(v)) {
-    var d = new Date(-2209161600000 + Math.round(v) * 86400000);   // 1899-12-30, the spreadsheet epoch
-    return isNaN(d.getTime()) ? null : d.toISOString().slice(0, 10);
-  }
-  return formatDateVal(v);
-}
-
-/** Whole years between two YYYY-MM-DD dates, NaN if either is not one. */
-function ageOn_(birthIso, onIso) {
-  var b = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(birthIso || ''));
-  var d = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(onIso || ''));
-  if (!b || !d) return NaN;
-  var age = +d[1] - +b[1];
-  if (+d[2] < +b[2] || (+d[2] === +b[2] && +d[3] < +b[3])) age--;
-  return age;
-}
-
-/**
  * Every open Data Health item that belongs to a place, one per check, place,
  * activity and kind of problem, for the Fix list and the DQA_Findings ledger.
  * Places and counts only, never names. The region-level checks (unclassified
  * rows, barangays not in the baseline, sex not recorded) have no place and are
- * left out. health: snapshot.health; hh: the household roster lists.
+ * left out. health: snapshot.health.
  *
  * The check ids are the ones in JS_Health.html dhChecks(), which owns the
  * names, explanations and steps.
  */
-function dqaFindings(health, hh) {
+function dqaFindings(health) {
   var out = [];
   var h = health || {}, dq = h.dqa || {}, v = h.volunteerIssues || null;
-  hh = hh || {};
   function add(check, r, act, part, count) {
     if (!r || !r.municipality) return;
     out.push({ check: check, province: r.province || '', municipality: r.municipality, barangay: r.barangay || '',
                act: act || '', part: part || '', count: count === undefined ? 1 : count });
   }
   (dq.lateAttendance || []).forEach(function (r) { add('late', r, r.actCode, '', 1); });
-  (h.householdFlags || []).forEach(function (r) { add('quorum', r, 'BA1', '', 1); });
+  (h.householdFlags || []).forEach(function (r) { add('quorum', r, r.actCode, r.kind, 1); });
+  (h.householdCountsMissing || []).forEach(function (r) { add('hhcounts', r, r.actCode, '', 1); });
   (h.outOfSequenceRows || []).forEach(function (r) { add('sequence', r, '', '', 1); });
-  (hh.blank || []).forEach(function (r) { add('noname', r, r.actCode, '', r.rows); });
-  // The roster lists hold one entry per person; the ledger keeps one line per barangay.
-  var agg = {};
-  function addAgg(check, r, act) {
-    var k = check + '|' + r.province + '|' + r.municipality + '|' + r.barangay + '|' + (act || '');
-    if (agg[k]) agg[k].count++;
-    else { add(check, r, act, '', 1); agg[k] = out[out.length - 1]; }
-  }
-  (hh.duplicates || []).forEach(function (r) { addAgg('dup', r, r.actCode); });
-  (hh.crossBarangay || []).forEach(function (c) { (c.barangays || []).forEach(function (b) { addAgg('cross', b, b.actCode); }); });
   (dq.dateIssues || []).forEach(function (r) { add('dates', r, r.actCode, r.problems.join('; '), 1); });
   (dq.multiDate || []).forEach(function (r) { add('multidate', r, r.actCode, '', r.sittings.length); });
   (dq.attendeeDuplicates || []).forEach(function (r) { add('attdup', r, r.actCode, '', r.rows); });
   (dq.nameIssues || []).forEach(function (r) { add('names', r, r.actCode, r.source, r.rows); });
-  (dq.birthdateIssues || []).forEach(function (r) { add('bday', r, r.actCode, r.problem, r.rows); });
   if (v) {
     (v.missing || []).forEach(function (r) { add('cv_missing', r, 'BA1', r.missing.join(' and '), 1); });
     (v.sfmscFix || []).forEach(function (r) { add('cv_sfmsc', r, 'BA1', '', 1); });
@@ -1445,9 +1381,10 @@ function dqaCompare(current, ledger) {
 }
 
 /**
- * Turn the two raw exports into every figure the app shows.
+ * Turn the raw exports into every figure the app shows.
  *
  * participants / households: arrays of arrays, WITHOUT the header row.
+ * households is the Household Participation export (HH_COUNT_HEADERS).
  * Returns a snapshot object; nothing else in the app recomputes anything.
  */
 function computeSnapshot(participants, households, baselineRows, monitored,
@@ -1614,18 +1551,14 @@ function computeSnapshot(participants, households, baselineRows, monitored,
     }
   });
 
-  // ---- tally the household export --------------------------------
-  // Households attach to Assemblies: BA1 (Seq 2), BA2 (Seq 6), BA3 (Seq 9)
-  var hh = {};                  // "prov|muni|brgy|CODE" -> {listed, present}
+  // ---- household participation counts ------------------------------
+  // Households attach to Assemblies: BA1 (Seq 2), BA2 (Seq 6), BA3 (Seq 9).
+  // KCIS counts them per activity record; resolveHhCounts settles an assembly
+  // that has several records.
+  var hhRecs = {};              // "prov|muni|brgy|CODE" -> [{total, represented}]
   var hhUnmapped = 0, hhNotInBaseline = 0;
   var hhActsMap = {};
   activities.forEach(function (a) { if (a.households) hhActsMap[a.code] = true; });
-  var hhBlank = {};             // "prov|muni|brgy|CODE" -> rows with no first and no last name
-  var hhSame = {};              // "prov|muni|brgy|CODE|person|birthdate" -> [entry]
-  var hhHeads = {};             // "first middle last" (household heads) -> [entry]
-  var bdayMemo = {};
-  var hhQuality = {};           // "prov|muni|brgy|CODE" -> data quality counts (Data Health only)
-  var dqaDate = evalDateIso || todayIso();
 
   households.forEach(function (row) {
     if (!hasValue(row[0])) return;
@@ -1665,73 +1598,16 @@ function computeSnapshot(participants, households, baselineRows, monitored,
 
     if (!hKnown) { hhNotInBaseline++; return; }
 
-    var isRecord = hasValue(row[colH.first]) || hasValue(row[colH.middle]) ||
-                   hasValue(row[colH.last]) || hasValue(row[colH.sex]) ||
-                   hasValue(row[colH.present]);
-    if (!isRecord) return;
-
     var k = finalProv + '|' + finalMuni + '|' + finalBrgy + '|' + code;
-    if (!hh[k]) hh[k] = { listed: 0, present: 0 };
-    hh[k].listed++;
-    var isPresent = isTrue(row[colH.present]);
-    if (isPresent) hh[k].present++;
-
-    // ---- roster integrity, for Data Health. Flags only: K2 above is unchanged.
-    var brgyKey = finalProv + '|' + finalMuni + '|' + finalBrgy;
-    var bRow = base.brgyRowByKey[brgyKey] || {
-      province: normText(row[colH.province]), municipality: normText(row[colH.muni]), barangay: normText(row[colH.brgy])
-    };
-    var firstA = normAlpha(row[colH.first]), lastA = normAlpha(row[colH.last]);
-    if (!firstA && !lastA) {
-      if (!hhBlank[k]) {
-        hhBlank[k] = { province: bRow.province, municipality: bRow.municipality, barangay: bRow.barangay,
-                       actCode: code, rows: 0, present: 0 };
-      }
-      hhBlank[k].rows++;
-      if (isPresent) hhBlank[k].present++;
-      return;
-    }
-    var person = firstA + ' ' + normAlpha(row[colH.middle]) + ' ' + lastA;
-    var rawBday = colH.birthdate !== undefined ? row[colH.birthdate] : '';
-    var bday = '';
-    if (hasValue(rawBday)) {
-      // ~100k rows; formatDateVal goes through Utilities.formatDate, so memoise.
-      var bdKey = typeof rawBday + ':' + String(rawBday);
-      if (bdayMemo[bdKey] === undefined) bdayMemo[bdKey] = birthdateIso(rawBday) || normText(rawBday);
-      bday = bdayMemo[bdKey];
-    }
-    var entry = {
-      province: bRow.province, municipality: bRow.municipality, barangay: bRow.barangay, brgyKey: brgyKey,
-      actCode: code, birthdate: bday, present: isPresent,
-      name: [row[colH.first], row[colH.middle], row[colH.last]].map(normText).filter(Boolean).join(' ')
-    };
-    // Names and birthdates that cannot be right. A blank birthdate is not
-    // flagged: the export does not tell whether KCIS requires it. The age test
-    // applies to household heads only, as the roster may list other members.
-    var isHead = colH.isHead !== undefined && isTrue(row[colH.isHead]);
-    var oddName = isOddName_(firstA, lastA);
-    var bdProblem = '';
-    if (bday) {
-      var age = ageOn_(bday, dqaDate);
-      if (isNaN(age)) bdProblem = 'unreadable';
-      else if (bday > dqaDate) bdProblem = 'future';
-      else if (age > 110) bdProblem = 'old';
-      else if (isHead && age < 15) bdProblem = 'young';
-    }
-    if (oddName || bdProblem) {
-      var q = hhQuality[k] || (hhQuality[k] = { province: bRow.province, municipality: bRow.municipality, barangay: bRow.barangay,
-                                                 actCode: code, oddNames: 0, unreadable: 0, future: 0, old: 0, young: 0 });
-      if (oddName) q.oddNames++;
-      if (bdProblem) q[bdProblem]++;
-    }
-
-    var sameKey = k + '|' + person + '|' + bday;
-    (hhSame[sameKey] = hhSame[sameKey] || []).push(entry);
-    if (firstA && lastA && isHead) {
-      (hhHeads[person] = hhHeads[person] || []).push(entry);
-    }
+    var detail = {};
+    Object.keys(colH.hhDetail || {}).forEach(function (dk) { detail[dk] = row[colH.hhDetail[dk]]; });
+    (hhRecs[k] = hhRecs[k] || []).push({
+      total: colH.hhTotal !== undefined ? row[colH.hhTotal] : null,
+      represented: colH.hhRepresented !== undefined ? row[colH.hhRepresented] : null,
+      detail: detail
+    });
   });
-  var hhIssues = householdRosterIssues(hhBlank, hhSame, hhHeads);
+  var hhImported = households.length > 0;
 
   // ---- status per record -----------------------------------------
   function statusOf(key) {
@@ -1769,7 +1645,8 @@ function computeSnapshot(participants, households, baselineRows, monitored,
   // ---- barangay-level detail --------------------------------------
   var barangayRows = [];
   var outOfSequence = 0;
-  var hhFlags = [];
+  var hhFlags = [];             // household counts that do not add up, one per problem
+  var hhMissing = [];           // assembly encoded, no household counts
   var noAttendeesRecords = [];
 
   base.rows.forEach(function (r) {
@@ -1799,10 +1676,42 @@ function computeSnapshot(participants, households, baselineRows, monitored,
       };
 
       if (a.households) {
-        var hObj = hh[pk + '|' + mk + '|' + bk + '|' + a.code] || { listed: 0, present: 0 };
-        actObj.hhListed = hObj.listed;
-        actObj.hhPresent = hObj.present;
-        actObj.hhRate = hObj.listed ? hObj.present / hObj.listed : null;
+        // hhListed = Total Hh In Barangay and hhPresent = Total Hh Represented,
+        // set only when both are encoded, so hhListed > 0 still means "reports
+        // K2". hhTotal / hhRepresented hold what was encoded, even one alone.
+        var hc = resolveHhCounts(hhRecs[key]);
+        var both = hc.total !== null && hc.represented !== null;
+        actObj.hhListed = both ? hc.total : 0;
+        actObj.hhPresent = both ? hc.represented : 0;
+        actObj.hhRate = both ? hc.represented / hc.total : null;
+        actObj.hhTotal = hc.total;
+        actObj.hhRepresented = hc.represented;
+        actObj.hhRecords = hc.records;
+        actObj.hhConflict = hc.conflict;
+        actObj.hhIncomplete = !both && (hc.total !== null || hc.represented !== null);
+        actObj.hhDetail = hhDetailOf(hc.detail);   // individuals by sex, 4Ps / IP / SLP households; null when not encoded
+
+        var place = { province: r.province, municipality: r.municipality, barangay: r.barangay, actCode: a.code };
+        var flag = function (kind, issue) { hhFlags.push(Object.assign({ kind: kind, issue: issue }, place)); };
+        var pair = function (v) { return (v.total === null ? '—' : v.total) + ' / ' + (v.represented === null ? '—' : v.represented); };
+        if (hc.conflict) {
+          flag('Conflicting records', hc.variants.length + ' different counts in ' + hc.records + ' KCIS records (total / represented: ' +
+               hc.variants.map(pair).join(', ') + '); ' + pair(hc) + ' is used');
+        }
+        if (actObj.hhIncomplete) {
+          flag('Counts incomplete', hc.total !== null
+            ? 'Households in barangay (' + hc.total + ') encoded, households represented blank'
+            : 'Households represented (' + hc.represented + ') encoded, households in barangay blank');
+        }
+        if (both && hc.represented > hc.total) {
+          flag('Represented over total', 'Households represented (' + hc.represented + ') exceeds households in barangay (' + hc.total + ')');
+        }
+        if (both && actObj.attendees > 0 && hc.represented > actObj.attendees) {
+          flag('Represented over attendees', 'Households represented (' + hc.represented + ') exceeds attendees encoded (' + actObj.attendees + ')');
+        }
+        if (hhImported && isApplicable && st !== STATUS.NOT_ENCODED && hc.total === null && hc.represented === null) {
+          hhMissing.push(Object.assign({ records: hc.records }, place));
+        }
       }
       row.activities[a.code] = actObj;
 
@@ -1836,10 +1745,13 @@ function computeSnapshot(participants, households, baselineRows, monitored,
     });
 
     // BA1 legacy fields for backwards compatibility
-    var ba1Hh = hh[pk + '|' + mk + '|' + bk + '|BA1'];
-    row.hhListed = ba1Hh ? ba1Hh.listed : 0;
-    row.hhPresent = ba1Hh ? ba1Hh.present : 0;
-    row.hhRate = row.hhListed ? row.hhPresent / row.hhListed : null;
+    var ba1Hh = row.activities['BA1'] || {};
+    row.hhListed = ba1Hh.hhListed || 0;
+    row.hhPresent = ba1Hh.hhPresent || 0;
+    row.hhRate = ba1Hh.hhRate === undefined ? null : ba1Hh.hhRate;
+    row.hhConflict = !!ba1Hh.hhConflict;
+    row.hhIncomplete = !!ba1Hh.hhIncomplete;
+    row.hhDetail = ba1Hh.hhDetail || null;
 
     // Sequence gaps evaluated per stage
     var stage1BrgyActs = brgyActs.filter(function (a) { return (a.stage || 1) === 1 && (!a.prioOnly || r.stage2Prio); });
@@ -1861,16 +1773,6 @@ function computeSnapshot(participants, households, baselineRows, monitored,
                ' not encoded while a later milestone is active'
       });
       if (outOfSequenceSamples.length < 15) outOfSequenceSamples.push(outOfSequenceRows[outOfSequenceRows.length - 1]);
-    }
-
-    var ba = row.activities['BA1'];
-    if (row.hhListed > 0 && row.hhPresent === 0) {
-      hhFlags.push({ province: r.province, municipality: r.municipality, barangay: r.barangay,
-        issue: row.hhListed + ' households listed, none flagged present' });
-    } else if (ba && row.hhPresent > ba.attendees && ba.attendees > 0) {
-      hhFlags.push({ province: r.province, municipality: r.municipality, barangay: r.barangay,
-        issue: 'households present (' + row.hhPresent +
-               ') exceeds attendees encoded (' + ba.attendees + ')' });
     }
     barangayRows.push(row);
   });
@@ -2040,7 +1942,7 @@ function computeSnapshot(participants, households, baselineRows, monitored,
   });
 
   // ---- data quality lists, for Data Health (places and counts, never names) --
-  var dqa = { dateIssues: [], multiDate: [], attendeeDuplicates: [], nameIssues: [], birthdateIssues: [], lateAttendance: [] };
+  var dqa = { dateIssues: [], multiDate: [], attendeeDuplicates: [], nameIssues: [], lateAttendance: [] };
   var muniRows = {};            // "Province|Municipality" -> participant rows: a municipality with none has nothing to test
   Object.keys(rec).forEach(function (key) {
     var s = rec[key], parts = key.split('|'), code = parts[3];
@@ -2061,16 +1963,6 @@ function computeSnapshot(participants, households, baselineRows, monitored,
     }
     if (s.dupRows) dqa.attendeeDuplicates.push(at({ people: s.dupPeople, rows: s.dupRows }));
     if (s.oddNames) dqa.nameIssues.push(at({ source: 'Attendance', rows: s.oddNames }));
-  });
-  var BDAY_PROBLEMS = { unreadable: 'Birthdate not readable', future: 'Birthdate after the KCIS pull date',
-                        old: 'Older than 110', young: 'Household head younger than 15' };
-  Object.keys(hhQuality).forEach(function (k) {
-    var q = hhQuality[k];
-    var at = function (extra) { return Object.assign({ province: q.province, municipality: q.municipality, barangay: q.barangay, actCode: q.actCode }, extra); };
-    if (q.oddNames) dqa.nameIssues.push(at({ source: 'Household roster', rows: q.oddNames }));
-    Object.keys(BDAY_PROBLEMS).forEach(function (p) {
-      if (q[p]) dqa.birthdateIssues.push(at({ problem: BDAY_PROBLEMS[p], rows: q[p] }));
-    });
   });
   // SM7 Annex F: encoded into the MIS within seven days after the activity.
   // Only records with an activity date can be aged; those without are counted.
@@ -2132,9 +2024,6 @@ function computeSnapshot(participants, households, baselineRows, monitored,
       ba1Female: sexTally.female
     },
     noAttendeesRecords: noAttendeesRecords,
-    // Names and birthdates. Never sent by apiOverview; apiHouseholdIssues hands
-    // them out, and only to editors.
-    hhIssues: { blank: hhIssues.blank, duplicates: hhIssues.duplicates, crossBarangay: hhIssues.crossBarangay },
     pipeline: pipeline,
     k2: k2,
     k2_ba2: k2_ba2,
@@ -2160,8 +2049,15 @@ function computeSnapshot(participants, households, baselineRows, monitored,
       outOfSequence: outOfSequence,
       outOfSequenceSamples: outOfSequenceSamples,
       outOfSequenceRows: outOfSequenceRows,
-      householdFlags: hhFlags,
-      householdRoster: hhIssues.summary,   // counts only; the named lists are in hhIssues
+      householdFlags: hhFlags,             // {place, actCode, kind, issue}
+      householdCountsMissing: hhMissing,   // {place, actCode, records}; empty until the export is imported
+      householdCounts: {
+        imported: hhImported,
+        records: households ? households.length : 0,
+        conflicts: hhFlags.filter(function (f) { return f.kind === 'Conflicting records'; }).length,
+        incomplete: hhFlags.filter(function (f) { return f.kind === 'Counts incomplete'; }).length,
+        missing: hhMissing.length
+      },
       volunteerIssues: volunteers.issues,  // places and counts only; null until the volunteer list is imported
       sexNotRecorded: sexTally.unset,
       dqa: dqa,                            // date, record, name, birthdate and timeliness checks; places and counts only
@@ -2258,18 +2154,18 @@ function isVolunteerHistoryCode(code) { return String(code || '').indexOf(CV_HIS
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     STATUS: STATUS, FIELD_CONDUCT: FIELD_CONDUCT, K2_TARGET: K2_TARGET,
-    CP_HH_HEADERS: CP_HH_HEADERS, parseHhCount: parseHhCount, sequenceGaps: sequenceGaps,
+    CP_HH_HEADERS: CP_HH_HEADERS, parseHhCount: parseHhCount, resolveHhCounts: resolveHhCounts, HH_DETAIL_HEADERS: HH_DETAIL_HEADERS, hhDetailOf: hhDetailOf, sequenceGaps: sequenceGaps,
     APPRAISAL_STATUSES: APPRAISAL_STATUSES, appraisalList: appraisalList, upsertAppraisalRows: upsertAppraisalRows,
     DEFAULT_TARGET_DEADLINES: DEFAULT_TARGET_DEADLINES,
     legacyTargets: legacyTargets, targetsFromRows: targetsFromRows, targetsToRows: targetsToRows,
     targetCodes: targetCodes, validateTargets: validateTargets,
-    PARTICIPANT_HEADERS: PARTICIPANT_HEADERS, HOUSEHOLD_HEADERS: HOUSEHOLD_HEADERS,
+    PARTICIPANT_HEADERS: PARTICIPANT_HEADERS, HH_COUNT_HEADERS: HH_COUNT_HEADERS,
     DEFAULT_ACTIVITIES: DEFAULT_ACTIVITIES,
     normKey: normKey, normText: normText, isTrue: isTrue, hasValue: hasValue,
     isZeroActivityId: isZeroActivityId,
     buildActivityIndex: buildActivityIndex, classify: classify,
     buildBaseline: buildBaseline, computeSnapshot: computeSnapshot,
-    householdRosterIssues: householdRosterIssues, todayIso: todayIso, isoDayNumber: isoDayNumber,
+    todayIso: todayIso, isoDayNumber: isoDayNumber, dqaFindings: dqaFindings,
     VOLUNTEER_HEADERS: VOLUNTEER_HEADERS, CV_BODIES: CV_BODIES, volunteerHeaders: volunteerHeaders,
     cvCommitteeKind: cvCommitteeKind, cvStatus: cvStatus, volunteerSnapshot: volunteerSnapshot,
     isVolunteerHistoryCode: isVolunteerHistoryCode,

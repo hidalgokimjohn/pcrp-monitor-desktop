@@ -12,9 +12,6 @@
 // Every check is described once in dhChecks(); the list, the detail panel,
 // the municipality table, the CSV files and the memo all read from it, so a
 // check has one name and one count everywhere.
-//
-// The household roster lists (names) come from apiHouseholdIssues, which sends
-// names and birthdates to editors only.
 // ===================================================================
 
 S.healthView = 'check';      // 'check' | 'muni' | 'score' | 'fix'
@@ -27,16 +24,14 @@ S.healthPage = {};           // check id -> rows shown
 S.healthGroup = {};          // check id -> grouped by municipality
 S.healthShowPassed = false;
 S.healthShowClean = false;
-S.hhIssues = null;
-S.hhIssuesFor = '';
-S.hhIssuesLoading = false;
 S.fixList = null;            // apiFixList for S.fixListFor
 S.fixListFor = '';
 S.fixListLoading = false;
 S.fixStatus = 'open';        // 'open' | 'new' | 'still' | 'resolved'
 
 var DH_PAGE = 25;
-var DH_SHORT = { quorum: 'Quorum', sequence: 'Sequence', noname: 'No name', dup: 'Listed twice', cross: 'Other barangay',
+// noname, dup, cross and bday were household roster checks: kept so earlier pulls' Fix list items still read.
+var DH_SHORT = { quorum: 'HH counts', hhcounts: 'HH not encoded', sequence: 'Sequence', noname: 'No name', dup: 'Listed twice', cross: 'Other barangay',
                  late: 'Late 7+ days', dates: 'Dates', multidate: 'Several dates', attdup: 'Attendee twice', names: 'Names', bday: 'Birthdates',
                  cv_missing: 'Volunteers missing', cv_sfmsc: 'SFMSC to fix', cv_tagging: 'CV untagged', cv_gaps: 'CV gaps' };
 
@@ -87,34 +82,6 @@ function openHealthMuni(prov, muni) {
   S.healthPage = {};
   renderHealth();
   window.scrollTo({ top: 0, behavior: 'smooth' });
-}
-
-// ---- household roster lists ------------------------------------------
-
-function hhIssuesKey(o) {
-  return (o && o.generatedAt || '') + '|' + (o && o.editor ? 'editor' : 'viewer');
-}
-
-function loadHouseholdIssues() {
-  if (S.hhIssuesLoading) return;
-  S.hhIssuesLoading = true;
-  var key = hhIssuesKey(S.overview);
-  call('apiHouseholdIssues', getEditorPasskey()).then(function (d) {
-    S.hhIssues = d;
-  }).catch(function (e) {
-    S.hhIssues = { error: e.message };
-  }).then(function () {
-    S.hhIssuesFor = key;
-    S.hhIssuesLoading = false;
-    renderHealth();
-  });
-}
-
-/** The roster lists when they match the loaded snapshot, else null (and a load starts). */
-function dhRoster(o) {
-  if (!o.health.householdRoster) return null;
-  if (S.hhIssuesFor !== hhIssuesKey(o)) { loadHouseholdIssues(); return null; }
-  return S.hhIssues && !S.hhIssues.error ? S.hhIssues : null;
 }
 
 // ---- small helpers -----------------------------------------------------
@@ -202,10 +169,6 @@ function dhFindingLink(checkId, r, val, count, title, extra) {
  */
 function dhChecks(o) {
   var h = o.health;
-  var roster = dhRoster(o);
-  var rs = h.householdRoster;
-  var editor = !!(roster && roster.editor);
-  var hidden = '<span class="dh-locked"><i data-lucide="lock" class="w-3 h-3"></i> Hidden</span>';
   var one = function (r) { return [r]; };
   var unmappedReal = Math.max(0, (h.unmapped || 0) - (h.unmappedBlank || h.unmappedBlankNameAndSeq || 0));
 
@@ -250,20 +213,21 @@ function dhChecks(o) {
       detail: function (r) { return 'Activity ' + (r.activity || ''); }
     },
     {
-      id: 'quorum', dim: 'reliability', name: 'Household quorum inconsistencies', icon: 'scale', severity: 'critical',
-      unit: ['barangay', 'barangays'], total: (h.householdFlags || []).length,
-      meaning: 'Barangays where the 1st BA household figures cannot both be right, which makes the 70% quorum unreliable.',
-      why: 'Households marked present exceed the attendees encoded, or households are listed but none is marked present. Usually an attendance sheet not yet encoded, or "Is Present" left blank.',
-      steps: ['Compare the household roster with the signed attendance sheet for that assembly.',
-              'Encode the missing attendees, or correct "Is Present" in the household roster in KCIS.',
-              'Re-export and re-import both files.'],
+      id: 'quorum', dim: 'reliability', name: 'Household counts that do not add up', icon: 'scale', severity: 'critical',
+      unit: ['problem', 'problems'], total: (h.householdFlags || []).length,
+      meaning: 'Assemblies whose household counts in the Household Participation export cannot be right, which makes the 70% quorum unreliable.',
+      why: 'Only one of the two counts is encoded, the assembly has several KCIS records with different counts, or more households are represented than the barangay has, or than attendees were encoded.',
+      steps: ['Compare "Total Hh In Barangay" and "Total Hh Represented" with the Household Participation Form of that assembly.',
+              'Correct the counts in KCIS; where an assembly has several records, give them the same counts or keep them on one record.',
+              'Re-export and re-import the Household Participation export.'],
       rows: function () { return h.householdFlags || []; }, places: one,
-      cols: [colMuni, colProv, colBrgy,
+      cols: [colMuni, colProv, colBrgy, colAsm,
+             col('Problem', function (r) { return '<span class="tiny">' + esc(r.kind || '') + '</span>'; }, function (r) { return r.kind; }),
              col('What does not add up', function (r) {
                return dhFindingLink('quorum', r, r.issue, 1, 'Inspect Quorum Scorecard for ' + r.barangay, { search: r.barangay });
              }, function (r) { return r.issue; })],
-      text: function (r) { return [r.province, r.municipality, r.barangay, r.issue]; },
-      detail: function (r) { return r.issue; }
+      text: function (r) { return [r.province, r.municipality, r.barangay, hhActLabel(r.actCode), r.kind, r.issue]; },
+      detail: function (r) { return hhActLabel(r.actCode) + ': ' + r.issue; }
     },
     {
       id: 'sequence', dim: 'completeness', name: 'Encoded out of sequence', icon: 'git-merge', severity: 'verify',
@@ -280,98 +244,8 @@ function dhChecks(o) {
       text: function (r) { return [r.province, r.municipality, r.barangay, r.issue]; },
       detail: function (r) { return r.issue; }
     },
-    {
-      id: 'noname', dim: 'completeness', name: 'Household rows with no name', icon: 'user-round-x', severity: 'verify', roster: true,
-      unit: ['barangay assembly', 'barangay assemblies'], total: rs ? rs.blankBarangays : 0,
-      meaning: 'Household roster rows with no first and no last name.',
-      why: 'Blank lines added to the roster and never filled in, or names typed into the wrong field.',
-      steps: ['Open the barangay\'s household roster in KCIS for that assembly.',
-              'Fill in the household head\'s name from the attendance sheet, or delete the row if it is not a real household.',
-              'Re-export and re-import the household file.'],
-      rows: function () { return roster ? roster.blank || [] : null; }, places: one,
-      sub: function (rows) {
-        var t = rows.reduce(function (a, b) { a.r += b.rows; a.p += b.present; return a; }, { r: 0, p: 0 });
-        return n(t.r) + ' rows · ' + n(t.p) + ' marked present, counted in K2';
-      },
-      subRegion: rs ? n(rs.blankRows) + ' rows · ' + n(rs.blankPresent) + ' marked present, counted in K2' : '',
-      cols: [colMuni, colProv, colBrgy, colAsm,
-             col('Rows with no name', function (r) {
-               return dhFindingLink('noname', r, r.rows, r.rows, 'Inspect in Household Roster Directory (' + n(r.rows) + ' rows with no name)', { flag: 'noname' });
-             }, function (r) { return r.rows; }, 'num'),
-             col('Marked present', function (r) { return n(r.present); }, function (r) { return r.present; }, 'num')],
-      text: function (r) { return [r.province, r.municipality, r.barangay, hhActLabel(r.actCode), String(r.rows), String(r.present)]; },
-      detail: function (r) { return r.rows + ' rows with no name (' + r.present + ' marked present), ' + hhActLabel(r.actCode); }
-    },
-    {
-      id: 'dup', dim: 'integrity', name: 'Same person listed twice in a barangay', icon: 'copy', severity: 'verify', roster: true, names: true,
-      unit: ['person', 'people'], total: rs ? rs.dupGroups : 0,
-      meaning: 'The same name and birthdate appears more than once in one barangay\'s roster for the same assembly.',
-      why: 'The household was encoded twice, often when two encoders worked on one roster or an upload was repeated.',
-      steps: ['Keep one row per household in the barangay roster in KCIS.',
-              'Where the copies disagree on "Is Present", keep the value on the signed attendance sheet.',
-              'Re-export and re-import the household file.'],
-      rows: function () { return roster ? roster.duplicates || [] : null; }, places: one,
-      sub: function (rows) {
-        var x = rows.reduce(function (a, d) { a.r += d.times - 1; a.p += Math.max(0, d.presentCount - 1); return a; }, { r: 0, p: 0 });
-        return n(x.r) + ' extra rows · add ' + n(x.p) + ' present households to K2';
-      },
-      subRegion: rs ? n(rs.dupExtraRows) + ' extra rows · add ' + n(rs.dupExtraPresent) + ' present households to K2' : '',
-      cols: [colMuni, colProv, colBrgy, colAsm,
-             col('Name', function (r) {
-               return editor ? dhFindingLink('dup', r, r.name, r.times, 'Inspect duplicate entries in Household Roster', { flag: 'twice', name: r.name }) : hidden;
-             }, function (r) { return editor ? r.name : ''; }),
-             col('Birthdate', function (r) { return editor ? esc(r.birthdate || '—') : hidden; }, function (r) { return editor ? r.birthdate : ''; }),
-             col('Listed', function (r) {
-               return dhFindingLink('dup', r, r.times + '×', r.times, 'Inspect duplicate entries in Household Roster', { flag: 'twice', name: r.name });
-             }, function (r) { return r.times; }, 'num'),
-             col('Marked present', function (r) { return n(r.presentCount) + ' of ' + n(r.times); }, function (r) { return r.presentCount; }, 'num')],
-      text: function (r) { return [r.province, r.municipality, r.barangay, r.name, r.birthdate, hhActLabel(r.actCode)]; },
-      detail: function (r) { return (editor ? r.name + ', ' : '') + 'listed ' + r.times + '× (' + hhActLabel(r.actCode) + ')'; }
-    },
-    {
-      id: 'cross', dim: 'integrity', name: 'Same household head in two or more barangays', icon: 'git-compare', severity: 'verify', roster: true, names: true,
-      unit: ['household head', 'household heads'], total: rs ? rs.crossLikely + rs.crossPossible : 0,
-      meaning: 'A household head is listed in more than one barangay. A household belongs to one barangay, so one listing is probably wrong.',
-      why: 'The household was tagged to the wrong barangay, moved and was listed again, or two people share a name (more likely for Possible matches). Likely = same name and birthdate; Possible = same name, a birthdate missing.',
-      steps: ['Ask the MDE/PEA of each barangay listed where the household actually lives.',
-              'Remove or re-tag the listing in the wrong barangay in KCIS.',
-              'For Possible matches, compare birthdates on the attendance sheets before changing anything.'],
-      rows: function () { return roster ? roster.crossBarangay || [] : null; },
-      places: function (c) { return c.barangays; },
-      sub: function (rows) {
-        var lk = rows.filter(function (c) { return c.confidence === 'Likely'; }).length;
-        var ax = rows.filter(function (c) { return c.acrossMunicipalities; }).length;
-        return n(lk) + ' likely · ' + n(rows.length - lk) + ' possible · ' + n(ax) + ' across municipalities';
-      },
-      subRegion: rs ? n(rs.crossLikely) + ' likely · ' + n(rs.crossPossible) + ' possible · ' + n(rs.crossAcrossMunicipalities) + ' across municipalities' : '',
-      cols: [col('Household head', function (r) {
-               return editor ? dhFindingLink('cross', r, r.name, 1, 'Search household head across barangays in Roster', { name: r.name }) : hidden;
-             }, function (r) { return editor ? r.name : ''; }),
-             col('Birthdate', function (r) { return editor ? esc(r.birthdate || '—') : hidden; }, function (r) { return editor ? r.birthdate : ''; }),
-             col('Match', function (r) {
-               return '<span class="pill ' + (r.confidence === 'Likely' ? 'bad' : 'warn') + ' text-[10px] font-bold">' + esc(r.confidence) + '</span>' +
-                 (r.acrossMunicipalities ? ' <span class="pill bad text-[10px] font-bold">Other municipality</span>' : '');
-             }, function (r) { return r.confidence + (r.acrossMunicipalities ? ' (across municipalities)' : ''); }),
-             col('Listed in', function (r) {
-               return r.barangays.map(function (b) {
-                 var bRow = Object.assign({}, r, b);
-                 return '<div class="dh-place">' +
-                   dhFindingLink('cross', bRow, b.barangay, 1, 'Inspect ' + b.barangay + ' in Household Roster', { name: r.name }) + ', ' + dhMuniCell(b) +
-                   '<span class="tiny"> · ' + esc(hhActLabel(b.actCode)) + (b.present ? ' · present' : ' · not present') +
-                   (b.times > 1 ? ' · listed ' + b.times + '×' : '') + '</span></div>';
-               }).join('');
-             }, function (r) { return r.barangays.map(function (b) { return b.barangay + ', ' + b.municipality + ' (' + b.province + ')'; }).join(' ; '); })],
-      text: function (r) {
-        return [r.name, r.birthdate, r.confidence, r.acrossMunicipalities ? 'Other municipality' : ''].concat(
-          r.barangays.map(function (b) { return b.municipality + ' ' + b.barangay + ' ' + b.province + ' ' + hhActLabel(b.actCode); })
-        );
-      },
-      detail: function (r) {
-        return (editor ? r.name + ': ' : '') + r.confidence + ' match in ' +
-          r.barangays.map(function (b) { return b.barangay + ', ' + b.municipality; }).join(' and ');
-      }
-    },
-  ].concat(dhQualityChecks(dq, col, colMuni, colProv, colBrgyOrMuni, colAct, one))
+  ].concat(dhHouseholdCountChecks(o, col, colMuni, colProv, colAsm, one))
+   .concat(dhQualityChecks(dq, col, colMuni, colProv, colBrgyOrMuni, colAct, one))
    .concat(dhVolunteerChecks(o, col, colMuni, colProv, colBrgy, one)).concat([
     {
       id: 'sex', dim: 'completeness', name: 'Attendees with no sex recorded', icon: 'user-x', severity: 'verify', regionLevel: true,
@@ -393,7 +267,7 @@ function dhChecks(o) {
 }
 
 /**
- * Date, record, name, birthdate and timeliness checks (health.dqa). Places and
+ * Date, record, name and timeliness checks (health.dqa). Places and
  * counts only, never names: they go to every viewer. Not added on a snapshot
  * saved before the checks existed, where they would read as "passed".
  */
@@ -475,9 +349,9 @@ function dhQualityChecks(dq, col, colMuni, colProv, colPlace, colAct, one) {
     {
       id: 'names', dim: 'accuracy', name: 'Names that look mistyped', icon: 'spell-check', severity: 'verify',
       unit: ['row', 'rows'], total: sumRows(dq.nameIssues), countOf: sumRows,
-      meaning: 'Attendee or household rows whose first or last name has a digit, is a single letter, or is a placeholder such as N/A or None.',
+      meaning: 'Attendee rows whose first or last name has a digit, is a single letter, or is a placeholder such as N/A or None.',
       why: 'A name typed into the wrong field, an initial typed instead of the name, or a placeholder entered when the name was not known. These rows cannot be matched across the exports.',
-      steps: ['Find the row on the attendance sheet or the household roster.',
+      steps: ['Find the row on the attendance sheet.',
               'Type the full name in KCIS as it is written on the form.',
               'Re-export and re-import the file.'],
       rows: function () { return dq.nameIssues; }, places: one,
@@ -486,21 +360,34 @@ function dhQualityChecks(dq, col, colMuni, colProv, colPlace, colAct, one) {
              col('Rows', function (r) { return dhFindingLink('names', r, r.rows, r.rows, 'Inspect ' + r.rows + ' rows in ' + r.source, { source: r.source }); }, function (r) { return r.rows; }, 'num')],
       text: function (r) { return place(r).concat([r.source]); },
       detail: function (r) { return r.rows + ' row' + (r.rows === 1 ? '' : 's') + ' in the ' + r.source.toLowerCase() + ' (' + hhActLabel(r.actCode) + ')'; }
-    },
+    }
+  ];
+}
+
+/**
+ * Household Participation export checks. Only added once the export is
+ * imported: before that every assembly would read as "counts not encoded".
+ */
+function dhHouseholdCountChecks(o, col, colMuni, colProv, colAsm, one) {
+  var h = o.health || {};
+  if (!h.householdCounts || !h.householdCounts.imported) return [];
+  return [
     {
-      id: 'bday', dim: 'accuracy', name: 'Birthdates that cannot be right', icon: 'cake', severity: 'verify',
-      unit: ['row', 'rows'], total: sumRows(dq.birthdateIssues), countOf: sumRows,
-      meaning: 'Household roster birthdates that are unreadable, after the KCIS pull date, older than 110, or a household head younger than 15.',
-      why: 'The year was mistyped, or the day and month were swapped. The birthdate is what tells two people with the same name apart, so a wrong one hides duplicates.',
-      steps: ['Check the birthdate on the household roster form.',
-              'Correct it in KCIS.',
-              'Re-export and re-import the household file.'],
-      rows: function () { return dq.birthdateIssues; }, places: one,
-      cols: [colMuni, colProv, colPlace, colAct,
-             col('Problem', function (r) { return esc(r.problem); }, function (r) { return r.problem; }),
-             col('Rows', function (r) { return dhFindingLink('bday', r, r.rows, r.rows, 'Inspect birthdates in Household Roster'); }, function (r) { return r.rows; }, 'num')],
-      text: function (r) { return place(r).concat([r.problem]); },
-      detail: function (r) { return r.rows + ' row' + (r.rows === 1 ? '' : 's') + ': ' + r.problem + ' (' + hhActLabel(r.actCode) + ')'; }
+      id: 'hhcounts', dim: 'completeness', name: 'Assembly encoded, household counts not encoded', icon: 'home', severity: 'verify',
+      unit: ['barangay assembly', 'barangay assemblies'], total: (h.householdCountsMissing || []).length,
+      meaning: 'The assembly has records in KCIS, but none of them carries "Total Hh In Barangay" or "Total Hh Represented", so the barangay is left out of K2.',
+      why: 'The household counts from the Household Participation Form were not encoded on the activity in KCIS.',
+      steps: ['Get the Household Participation Form of that assembly.',
+              'Encode "Total Hh In Barangay" and "Total Hh Represented" on the activity in KCIS.',
+              'Re-export and re-import the Household Participation export.'],
+      rows: function () { return h.householdCountsMissing || []; }, places: one,
+      cols: [colMuni, colProv,
+             col('Barangay', function (r) {
+               return dhFindingLink('hhcounts', r, r.barangay || '—', 1, 'Inspect Quorum Scorecard for ' + r.barangay, { search: r.barangay });
+             }, function (r) { return r.barangay; }),
+             colAsm],
+      text: function (r) { return [r.province, r.municipality, r.barangay, hhActLabel(r.actCode)]; },
+      detail: function (r) { return hhActLabel(r.actCode) + ': household counts not encoded'; }
     }
   ];
 }
@@ -588,7 +475,7 @@ function dhVolunteerChecks(o, col, colMuni, colProv, colBrgy, one) {
 }
 
 /**
- * The numbers for one check in the current scope: count (null while the roster
+ * The numbers for one check in the current scope: count (null while its list
  * loads), the rows in scope, the rows matching the search, municipalities touched.
  */
 function dhEval(c, q) {
@@ -693,7 +580,7 @@ function dhHeader(o, evs) {
       '<div class="dh-bar" role="img" aria-label="' + c.critical + ' critical, ' + c.verify + ' to verify, ' + c.passed + ' passed">' +
         seg('critical', 'bad') + seg('verify', 'warn') + seg('passed', 'good') + seg('pending', 'idle') +
       '</div>' +
-      '<p class="dh-meta">Checked ' + esc(asOfStr) + ' · ' + n(h.participantRows) + ' participant rows · ' + n(h.householdRows) + ' household rows · ' +
+      '<p class="dh-meta">Checked ' + esc(asOfStr) + ' · ' + n(h.participantRows) + ' participant rows · ' + n(h.householdRows) + ' household participation records · ' +
         n(o.baseline.barangays) + ' barangays monitored' + (o.baseline.barangaysNotMonitored ? ' (' + n(o.baseline.barangaysNotMonitored) + ' switched off)' : '') + '</p>' +
     '</div>' +
     '<div class="dh-head-actions">' +
@@ -829,12 +716,7 @@ function dhCheckDetail(e, q) {
   '</div>';
 
   var notes = [];
-  if (c.names && S.hhIssues && !S.hhIssues.editor) {
-    notes.push('<div class="dh-note"><i data-lucide="lock" class="w-4 h-4"></i> Names and birthdates are hidden in the public view. ' +
-      '<button class="btn ghost dh-btn-sm" onclick="openPasskeyModal()">Unlock Editor Mode</button></div>');
-  }
   if (c.sample) notes.push('<div class="dh-note"><i data-lucide="info" class="w-4 h-4"></i> The export keeps up to 5 examples for this check; the count above is every row.</div>');
-  if (c.roster) notes.push('<div class="dh-note"><i data-lucide="info" class="w-4 h-4"></i> Flagged for checking only. These rows are still counted in K2 until the RPMO decides how to treat them.</div>');
 
   if (e.pending) {
     return '<div class="dh-detail">' + guide + notes.join('') + '<div class="dh-loading"><span class="spin"></span> Loading the list…</div></div>';
@@ -1351,20 +1233,7 @@ function dhCsvCheck(id) {
   var e = dhFindEval(id);
   if (!e || e.pending) return;
   var c = e.check;
-  if (id === 'cross') {
-    // one line per listing, so the file sorts and filters cleanly in Excel
-    var ed = S.hhIssues && S.hhIssues.editor, lines = [];
-    e.rows.forEach(function (r, i) {
-      r.barangays.forEach(function (b) {
-        lines.push(['Case ' + (i + 1)].concat(ed ? [r.name, b.birthdate || r.birthdate] : [])
-          .concat([r.confidence, r.acrossMunicipalities ? 'Yes' : 'No', b.province, b.municipality, b.barangay, hhActLabel(b.actCode), b.present ? 'Yes' : 'No', b.times]));
-      });
-    });
-    downloadCsv(dhCsvName('household_head_in_two_barangays'), hhCsv([['Case'].concat(ed ? ['Household head', 'Birthdate'] : [])
-      .concat(['Match', 'Different municipalities', 'Province', 'Municipality', 'Barangay', 'Assembly', 'Marked present', 'Times listed'])].concat(lines)));
-    return;
-  }
-  var cols = c.cols.filter(function (x) { return x.csv && (!c.names || (S.hhIssues && S.hhIssues.editor) || ['Name', 'Birthdate', 'Household head'].indexOf(x.label) === -1); });
+  var cols = c.cols.filter(function (x) { return x.csv; });
   downloadCsv(dhCsvName(c.name.toLowerCase().replace(/[^a-z0-9]+/g, '_')),
     hhCsv([cols.map(function (x) { return x.label; })].concat(e.rows.map(function (r) { return cols.map(function (x) { return x.csv(r); }); }))));
 }
@@ -1431,7 +1300,7 @@ function dhMemoText() {
   if (region.length) {
     L.push('\nNot split by municipality (region-wide): ' + region.map(function (e) { return e.check.name + ' ' + dhUnit(e.count, e.check.unit[0], e.check.unit[1]); }).join('; ') + '.');
   }
-  L.push('\nHousehold roster items are flagged for verification; they remain counted in K2 until the RPMO decides how to treat them.');
+  L.push('\nK2 uses the household counts of the KCIS Household Participation export; where an assembly has several records with different counts, the most complete one is used and the assembly is flagged above.');
   L.push('\n====================================================');
   L.push('Please coordinate with your Area Coordinators (ACs) and Municipal Financial & Encoding Monitors (MFAMs) to resolve these items.');
   L.push('Generated via PCRP Encoding Monitor');

@@ -7,7 +7,6 @@
 
 var TABS = {};          // sheet name -> { headers, rows }
 var SNAP = null;        // the computed snapshot
-var HH_LISTS = null;    // household roster lists (names)
 
 // ---- the Sheet ---------------------------------------------------------
 readRawTable = function (name) {
@@ -30,7 +29,6 @@ readAppraisal = function () { return []; };
 apiGetRecipientDirectory = function () { return {}; };
 historyDates = function () { return []; };
 getSnapshot = function () { return SNAP; };
-getHouseholdIssues = function () { return HH_LISTS; };
 
 /** google.script.run, locally: the server functions are right here. */
 function call(fn) {
@@ -44,9 +42,6 @@ function getEditorPasskey() { return ''; }
 /** Recompute everything from the tables loaded now. evalDate: the KCIS pull date (YYYY-MM-DD), today when empty. */
 function computeAll(evalDate) {
   SNAP = buildSnapshot(evalDate || undefined);
-  HH_LISTS = SNAP.hhIssues || { blank: [], duplicates: [], crossBarangay: [] };
-  HH_LISTS.generatedAt = SNAP.generatedAt;
-  delete SNAP.hhIssues;
   return SNAP;
 }
 
@@ -174,19 +169,25 @@ function toTable(rows) {
   return { headers: headers, rows: body };
 }
 
-/** What a table is, from its headers: participants | households | volunteers | baseline | activities | null. */
+/**
+ * What a table is, from its headers: participants | households (the Household
+ * Participation export) | volunteers | baseline | activities | roster | null.
+ * 'roster' is the old household roster export, which is no longer read.
+ */
 function detectKind(headers, sheetName) {
   var keys = {}, names = 0;
   headers.forEach(function (h) { var k = normKey(h); keys[k] = true; if (k === 'name') names++; });
   var has = function (h) { return !!keys[normKey(h)]; };
   var sn = normKey(sheetName || '');
   if (sn === 'raw_participants') return 'participants';
-  if (sn === 'raw_households') return 'households';
+  if (sn === 'raw_hh_participation') return 'households';
+  if (sn === 'raw_households') return 'roster';
   if (sn === 'raw_volunteers') return 'volunteers';
   if (sn === 'baseline') return 'baseline';
   if (sn === 'activities') return 'activities';
   if (names >= 3 || (has('Committee') && has('Position'))) return 'volunteers';
-  if (has('Is Present') || has('Is Hh Head') && has('Birthdate')) return 'households';
+  if (has('Total Hh Represented') || has('Total Hh In Barangay')) return 'households';
+  if (has('Is Present') || has('Is Hh Head') && has('Birthdate')) return 'roster';
   if (has('Sequence No') && has('First Name')) return 'participants';
   if ((has('Barangay') || has('Barangay Name')) && (has('Municipality') || has('City Name')) && !has('First Name')) return 'baseline';
   if (has('Code') && has('KCIS Name')) return 'activities';
@@ -195,7 +196,7 @@ function detectKind(headers, sheetName) {
 
 var KIND_INFO = {
   participants: { sheet: 'Raw_Participants', label: 'Participants export', expected: function () { return PARTICIPANT_HEADERS; } },
-  households:   { sheet: 'Raw_Households',   label: 'Households export',   expected: function () { return HOUSEHOLD_HEADERS; } },
+  households:   { sheet: 'Raw_HH_Participation', label: 'Household Participation export', expected: function () { return HH_COUNT_HEADERS; } },
   volunteers:   { sheet: 'Raw_Volunteers',   label: 'Community Volunteer List', expected: function () { return VOLUNTEER_HEADERS; } },
   baseline:     { sheet: 'Baseline',         label: 'Baseline (monitored barangays)', expected: function () { return ['Province', 'Municipality', 'Barangay']; } },
   activities:   { sheet: 'Activities',       label: 'Activities (field conduct)', expected: function () { return ['Seq', 'Code']; } }
@@ -211,13 +212,14 @@ function readDataFile(file, onProgress) {
     if (isCsv) return { Sheet1: parseCsv(new TextDecoder('utf-8').decode(buf).replace(/^﻿/, '')) };
     return readXlsx(buf, onProgress);
   }).then(function (sheets) {
-    var names = Object.keys(sheets), found = [];
+    var names = Object.keys(sheets), found = [], roster = false;
     var multi = names.some(function (n) { return /^raw_/i.test(n); });
     names.forEach(function (nm, i) {
       if (!multi && i > 0) return;                       // a KCIS export: its first sheet
       var t = toTable(sheets[nm]);
       if (!t.headers.length) return;
       var kind = detectKind(t.headers, multi ? nm : '');
+      if (kind === 'roster') { roster = true; return; }  // the old household roster: K2 now comes from the counts
       if (!kind) return;
       if (kind === 'volunteers') t.headers = volunteerHeaders(t.headers);
       var expected = KIND_INFO[kind].expected();
@@ -227,7 +229,11 @@ function readDataFile(file, onProgress) {
       if (kind === 'activities') missing = [];
       found.push({ file: file.name, sheet: nm, kind: kind, table: t, missing: missing });
     });
-    if (!found.length) throw new Error(file.name + ': not a participants, households, volunteer or baseline file (the column headers were not recognised).');
+    if (!found.length && roster) {
+      throw new Error(file.name + ': this is the household roster export, which is no longer used. ' +
+                      'Import the KCIS Household Participation export (Total Hh In Barangay, Total Hh Represented) instead.');
+    }
+    if (!found.length) throw new Error(file.name + ': not a participants, household participation, volunteer or baseline file (the column headers were not recognised).');
     return found;
   });
   function has3(headers) {

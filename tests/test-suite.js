@@ -14,6 +14,18 @@ let passed = 0;
 let failed = 0;
 const results = [];
 
+/** The source of one top-level function declaration in a file, by brace matching. */
+function extractFn(code, name) {
+  const start = code.indexOf('function ' + name + '(');
+  if (start === -1) throw new Error('function ' + name + ' not found');
+  let i = code.indexOf('{', start), depth = 0;
+  for (; i < code.length; i++) {
+    if (code[i] === '{') depth++;
+    else if (code[i] === '}' && --depth === 0) return code.slice(start, i + 1);
+  }
+  throw new Error('function ' + name + ' is not closed');
+}
+
 function test(name, fn) {
   try {
     const res = fn();
@@ -997,11 +1009,10 @@ async function runAll() {
         SAVE_DB: 'pcrp-desktop',
         SAVE_STORE: 'kv',
         SAVE_KEEP_PULLS: 12,
-        SAVE_TABLES: ['Raw_Participants', 'Raw_Households', 'Raw_Volunteers'],
+        SAVE_TABLES: ['Raw_Participants', 'Raw_HH_Participation', 'Raw_Volunteers'],
         SAVE_FORMAT: 'pcrp-desktop-save',
         SAVED: { current: null, ledger: {}, available: true, dataStamp: '' },
         SNAP: null,
-        HH_LISTS: null,
         STATE: { computed: false }
       };
 
@@ -1534,91 +1545,36 @@ async function runAll() {
       assert.ok(unrepHtml.includes('—'), 'Must show dash for zero listed');
     });
 
-    test('Household Calculations: getHouseholdTriageSummary aggregates K2 quorum and roster metrics', () => {
+    test('Household Calculations: getHouseholdTriageSummary aggregates K2 quorum per assembly', () => {
+      // hhListed / hhPresent are set only when both counts are encoded (see computeSnapshot)
+      const act = (o) => ({ BA1: Object.assign({ hhListed: 0, hhPresent: 0, hhRate: null, hhConflict: false, hhIncomplete: false }, o) });
       const sampleBrgys = [
-        { barangay: 'Brgy 1', hhListed: 100, hhPresent: 75, hhRate: 0.75 }, // Met
-        { barangay: 'Brgy 2', hhListed: 100, hhPresent: 60, hhRate: 0.60 }, // Below
-        { barangay: 'Brgy 3', hhListed: 0, hhPresent: 0, hhRate: 0 }         // No report
+        { barangay: 'Brgy 1', activities: act({ hhListed: 100, hhPresent: 75, hhRate: 0.75, hhConflict: true }) }, // Met, conflicting records
+        { barangay: 'Brgy 2', activities: act({ hhListed: 100, hhPresent: 60, hhRate: 0.60 }) },                   // Below
+        { barangay: 'Brgy 3', activities: act({ hhIncomplete: true }) },                                          // One count only
+        { barangay: 'Brgy 4', activities: act({}) },                                                              // Not encoded
+        { barangay: 'Brgy 5', activities: { BA1: { notApplicable: true } } },                                     // Not in scope of the assembly
+        { barangay: 'Legacy', hhListed: 50, hhPresent: 40, hhRate: 0.8 }                                          // BA1 fields on the row itself
       ];
-
-      const sampleRoster = [
-        { name: 'Pedro', head: true, present: true, flags: [] },
-        { name: 'Maria', head: false, present: true, flags: [] },
-        { name: 'Juan', head: true, present: false, flags: [] },
-        { name: '', head: false, present: false, flags: ['noname'] }
-      ];
-
-      const sandbox = {
-        console
-      };
+      const sandbox = { console };
       vm.createContext(sandbox);
+      vm.runInContext(['hhOf', 'hhStatus', 'getHouseholdTriageSummary'].map(f => extractFn(peopleCode, f)).join('\n'), sandbox);
+      const res = sandbox.getHouseholdTriageSummary(sampleBrgys, 'BA1');
 
-      const hhCode = `
-        function getHouseholdTriageSummary(brgys, P, inScope) {
-          var bList = brgys || [];
-          var totalBrgys = bList.length;
-          var reportingBrgys = 0;
-          var metQuorumBrgys = 0;
-          var belowQuorumBrgys = 0;
-          var noReportBrgys = 0;
-          var totListed = 0;
-          var totPresent = 0;
-
-          bList.forEach(function (b) {
-            if (b.hhListed > 0) {
-              reportingBrgys++;
-              totListed += b.hhListed;
-              totPresent += b.hhPresent;
-              if (b.hhRate >= 0.7) metQuorumBrgys++;
-              else belowQuorumBrgys++;
-            } else {
-              noReportBrgys++;
-            }
-          });
-
-          var overallRate = totListed > 0 ? (totPresent / totListed) : null;
-          var roster = ((P && P.households) ? P.households : []).filter(inScope || function () { return true; });
-          var totalRoster = roster.length;
-          var rosterHeads = roster.filter(function (r) { return r.head; }).length;
-          var rosterPresent = roster.filter(function (r) { return r.present; }).length;
-          var rosterAbsent = roster.filter(function (r) { return !r.present; }).length;
-          var rosterMissingName = roster.filter(function (r) { return r.flags && r.flags.indexOf('noname') !== -1; }).length;
-
-          return {
-            totalBrgys: totalBrgys,
-            reportingBrgys: reportingBrgys,
-            metQuorumBrgys: metQuorumBrgys,
-            belowQuorumBrgys: belowQuorumBrgys,
-            noReportBrgys: noReportBrgys,
-            totListed: totListed,
-            totPresent: totPresent,
-            overallRate: overallRate,
-            totalRoster: totalRoster,
-            rosterHeads: rosterHeads,
-            rosterPresent: rosterPresent,
-            rosterAbsent: rosterAbsent,
-            rosterMissingName: rosterMissingName
-          };
-        }
-      `;
-      vm.runInContext(hhCode, sandbox);
-      const res = sandbox.getHouseholdTriageSummary(sampleBrgys, { households: sampleRoster }, null);
-
-      assert.strictEqual(res.totalBrgys, 3);
-      assert.strictEqual(res.reportingBrgys, 2);
-      assert.strictEqual(res.metQuorumBrgys, 1);
+      assert.strictEqual(res.totalBrgys, 5);
+      assert.strictEqual(res.reportingBrgys, 3);
+      assert.strictEqual(res.metQuorumBrgys, 2);
       assert.strictEqual(res.belowQuorumBrgys, 1);
+      assert.strictEqual(res.incompleteBrgys, 1);
       assert.strictEqual(res.noReportBrgys, 1);
-      assert.strictEqual(res.totListed, 200);
-      assert.strictEqual(res.totPresent, 135);
-      assert.strictEqual(res.overallRate, 135 / 200);
+      assert.strictEqual(res.conflictBrgys, 1);
+      assert.strictEqual(res.totListed, 250);
+      assert.strictEqual(res.totPresent, 175);
+      assert.strictEqual(res.overallRate, 175 / 250);
 
-      // Roster checks
-      assert.strictEqual(res.totalRoster, 4);
-      assert.strictEqual(res.rosterHeads, 2);
-      assert.strictEqual(res.rosterPresent, 2);
-      assert.strictEqual(res.rosterAbsent, 2);
-      assert.strictEqual(res.rosterMissingName, 1);
+      const ba2 = sandbox.getHouseholdTriageSummary(sampleBrgys, 'BA2');
+      assert.strictEqual(ba2.reportingBrgys, 0, 'no BA2 counts: nothing reports');
+      assert.strictEqual(ba2.overallRate, null);
     });
   }
 
@@ -2191,16 +2147,20 @@ async function runAll() {
     });
 
     test('Universal Check Links: All major check tables format finding values with dhFindingLink', () => {
-      const requiredChecks = ['noname', 'dup', 'cross', 'quorum', 'sequence', 'late', 'dates', 'multidate', 'attdup', 'names', 'bday', 'cv_missing', 'cv_sfmsc', 'cv_tagging', 'cv_gaps'];
+      const requiredChecks = ['quorum', 'hhcounts', 'sequence', 'late', 'dates', 'multidate', 'attdup', 'names', 'cv_missing', 'cv_sfmsc', 'cv_tagging', 'cv_gaps'];
       requiredChecks.forEach(id => {
         assert.ok(jsHealth.includes("dhFindingLink('" + id + "'"), 'JS_Health.html must link findings for check "' + id + '"');
       });
     });
 
-    test('Household Roster Filter: flag matching for presets without custom test functions is not inverted', () => {
-      // Must use === -1 (keeps matching flags) instead of !== -1 (which dropped them)
-      assert.ok(peopleJs.includes('r.flags.indexOf(flagObj.id) === -1'), 'Household Roster filtering must use === -1 to keep flagged records');
-      assert.strictEqual(peopleJs.includes('r.flags.indexOf(flagObj.id) !== -1'), false, 'Inverted !== -1 filter must be removed');
+    test('Household Roster Removed: Data Health has no roster checks; the scorecard filters by assembly and status', () => {
+      ["id: 'noname'", "id: 'dup'", "id: 'cross'", "id: 'bday'", 'apiHouseholdIssues', 'householdRoster'].forEach(s => {
+        assert.strictEqual(jsHealth.includes(s), false, 'JS_Health.html must not keep the roster check ' + s);
+      });
+      assert.ok(peopleJs.includes('function hhScorecardRows('), 'people.js must define hhScorecardRows');
+      assert.ok(peopleJs.includes('hhStatus(h) === HH_STATE.quorum'), 'scorecard must filter by quorum status');
+      assert.ok(peopleJs.includes('data-act="hh-asm"'), 'scorecard must switch assemblies');
+      assert.strictEqual(peopleJs.includes('P.households'), false, 'people.js must not read a household roster');
     });
 
     test('Router & Action Handlers: src/app.js handles dqa-jump and dqa-return', () => {
@@ -2248,24 +2208,22 @@ async function runAll() {
       assert.ok(peopleJs.includes("Duplicate"), 'renderAttendees must render Duplicate label in badge');
     });
 
-    test('Household Duplicate Triage & Presets: getHouseholdTriageSummary and quick chips support duplicates', () => {
-      assert.ok(peopleJs.includes("rosterDuplicates = roster.filter"), 'getHouseholdTriageSummary must calculate rosterDuplicates');
-      assert.ok(peopleJs.includes("data-act=\"hh-triage\" data-v=\"duplicates\""), 'renderHouseholdTriageTray must include duplicates card');
-      assert.ok(peopleJs.includes("id: 'duplicates', label: 'All Duplicates'"), 'PEOPLE_FLAGS.households must define duplicates preset');
-      assert.ok(peopleJs.includes("h.dupCount = same[k]"), 'buildPeopleIndex must record dupCount on household records');
+    test('Household Conflict Triage & Presets: the scorecard counts and filters conflicting KCIS records', () => {
+      assert.ok(peopleJs.includes("if (h.hhConflict) s.conflictBrgys++;"), 'getHouseholdTriageSummary must count conflicting records');
+      assert.ok(peopleJs.includes("card('conflict'"), 'renderHouseholdTriageTray must include a conflicting-records card');
+      assert.ok(peopleJs.includes("{ id: 'conflict', label: '⚠ Conflicting Records'"), 'scorecard must offer a conflicting-records preset');
     });
 
-    test('Household Roster Table Highlighting: renderHouseholds applies row-duplicate, row-cross-brgy and badges', () => {
-      assert.ok(peopleJs.includes("row-cross-brgy"), 'renderHouseholds must apply row-cross-brgy class for otherbrgy');
-      assert.ok(peopleJs.includes("badge-dup alert"), 'renderHouseholds must apply badge-dup alert for cross-barangay heads');
-      assert.ok(peopleJs.includes("Cross-Brgy"), 'renderHouseholds must render Cross-Brgy badge');
+    test('Household Scorecard Highlighting: renderHouseholds marks conflicting records', () => {
+      assert.ok(peopleJs.includes("h.hhConflict ? ' class=\"row-duplicate\"'"), 'renderHouseholds must apply row-duplicate to conflicting records');
+      assert.ok(peopleJs.includes('⚠ Conflicting</span>'), 'renderHouseholds must render a Conflicting badge');
     });
 
-    test('Profile & Cross-Module Action Router: openPerson hints and dqa-jump auto-selects duplicate filters', () => {
+    test('Profile & Cross-Module Action Router: openPerson hints and dqa-jump opens the household scorecard', () => {
       assert.ok(peopleJs.includes("a.flags.indexOf('duplicate') !== -1"), 'openPerson must inspect duplicate attendance flags');
       assert.ok(appJs.includes("if (checkId === 'attdup') { ATT_STATE.flag = 'duplicate'; }"), 'dqa-jump must activate duplicate filter for attdup');
-      assert.ok(appJs.includes("if (checkId === 'dup' && !flag) HH_STATE.flag = 'twice';"), 'dqa-jump must activate twice filter for dup');
-      assert.ok(appJs.includes("if (checkId === 'cross' && !flag) HH_STATE.flag = 'otherbrgy';"), 'dqa-jump must activate otherbrgy filter for cross');
+      assert.ok(appJs.includes("if (checkId === 'quorum' || checkId === 'hhcounts') {"), 'dqa-jump must route household count checks');
+      assert.ok(appJs.includes('if (actCode) HH_STATE.asm = actCode;'), 'dqa-jump must open the assembly of the finding');
     });
 
     test('CSS Definitions: app.css defines row-duplicate, row-cross-brgy, badge-dup and dark theme support', () => {
@@ -2300,6 +2258,19 @@ async function runAll() {
     test('About Attribution: src/app.js includes Caraga Region & Vibe coded by: kjahidalgo', () => {
       assert.ok(appJs.includes('Caraga Region Implementation'), 'app.js must reference Caraga Region in About section');
       assert.ok(appJs.includes('Vibe coded by: <strong>kjahidalgo</strong>'), 'app.js must include Vibe coded by: kjahidalgo in About section');
+    });
+
+    test('Institutional Footer: src/app.html defines footer with version, status wrap and developer attribution', () => {
+      assert.ok(appHtml.includes('<footer class="app-footer" id="app-footer">'), 'app.html must contain app-footer');
+      assert.ok(appHtml.includes('Offline Field Console · Monitor v@@VERSION@@'), 'footer must contain Offline Field Console text');
+      assert.ok(appHtml.includes('<span id="brand-update-status" class="brand-status-wrap"></span>'), 'footer must contain brand-update-status');
+      assert.ok(appHtml.includes('vided coded by <strong>kjahidalgo</strong>'), 'footer must contain vided coded by attribution');
+    });
+
+    test('Footer CSS: src/app.css styles .app-footer, .footer-container, and sticky layout', () => {
+      assert.ok(appCss.includes('.app-footer'), 'app.css must define .app-footer');
+      assert.ok(appCss.includes('.footer-container'), 'app.css must define .footer-container');
+      assert.ok(appCss.includes('html.dark .app-footer'), 'app.css must define dark theme footer styling');
     });
   }
 
@@ -2344,6 +2315,130 @@ async function runAll() {
       assert.ok(appJs.includes("checkForUpdates(false);\n  }, 1200);"), 'app.js must trigger automated check on boot after short delay');
       assert.ok(appJs.includes("30 * 60 * 1000"), 'app.js must configure 30-minute background poll interval');
       assert.ok(!appJs.includes("Date.now() - last > 24 * 60 * 60 * 1000"), 'app.js must not restrict checks with 24hr limit');
+    });
+  }
+
+  // -----------------------------------------------------------------
+  // 23. K2 from the Household Participation export (vendor/monitor/Code.js, src/runtime.js)
+  // -----------------------------------------------------------------
+  console.log('🏠 Testing K2 from per-activity household counts (vendor/monitor/Code.js, src/runtime.js)...');
+  {
+    const sandbox = { console, TextDecoder, TextEncoder };
+    sandbox.window = sandbox;
+    vm.createContext(sandbox);
+    ['Code.js', 'Store.js', 'WebApp.js'].forEach(f => vm.runInContext(fs.readFileSync(path.join(ROOT, 'vendor', 'monitor', f), 'utf8'), sandbox, { filename: f }));
+    vm.runInContext(fs.readFileSync(path.join(ROOT, 'src', 'runtime.js'), 'utf8'), sandbox, { filename: 'runtime.js' });
+    const ref = JSON.parse(fs.readFileSync(path.join(ROOT, 'data', 'reference.json'), 'utf8'));
+
+    test('resolveHhCounts: identical records collapse, the most complete wins, disagreements are conflicts', () => {
+      const r = (recs) => JSON.parse(JSON.stringify(sandbox.resolveHhCounts(recs)));
+      assert.deepStrictEqual(r([]), { total: null, represented: null, records: 0, variants: [], conflict: false, detail: null });
+      const same = r([{ total: 513, represented: 371 }, { total: '513', represented: '371' }, { total: '', represented: '' }]);
+      assert.strictEqual(same.total, 513); assert.strictEqual(same.represented, 371);
+      assert.strictEqual(same.records, 3); assert.strictEqual(same.conflict, false);
+      const conflict = r([{ total: 3, represented: '' }, { total: 513, represented: 371 }]);
+      assert.strictEqual(conflict.total, 513, 'both counts beat one count');
+      assert.strictEqual(conflict.conflict, true);
+      const bigger = r([{ total: 234, represented: 219 }, { total: 234, represented: 220 }]);
+      assert.strictEqual(bigger.represented, 220, 'then the largest represented');
+      const totalOnly = r([{ total: '1,006', represented: null }]);
+      assert.strictEqual(totalOnly.total, 1006); assert.strictEqual(totalOnly.represented, null);
+      assert.strictEqual(r([{ total: 100, represented: 0 }]).represented, 0, 'none represented is a count, not a blank');
+    });
+
+    test('MResT composition: members in KCIS are not "formed" until the SM1 Section 3.1 composition is complete', () => {
+      const peopleCode = fs.readFileSync(path.join(ROOT, 'src', 'people.js'), 'utf8');
+      const sb = { console };
+      vm.createContext(sb);
+      vm.runInContext(extractFn(peopleCode, 'mrestComposition'), sb);
+      const full = { totalMembers: 30, hasLce: true, leadsCount: 2, totalBrgys: 13, captainsCount: 13, captainsQuotaMet: true,
+                     communityPct: 60, isQuorumMet: true, keyOfficesCount: 4 };
+      assert.strictEqual(sb.mrestComposition({ totalMembers: 0 }).status, 'none');
+      assert.strictEqual(sb.mrestComposition(full).status, 'complete');
+      const part = sb.mrestComposition(Object.assign({}, full, { hasLce: false, captainsCount: 10, captainsQuotaMet: false, communityPct: 40, isQuorumMet: false, keyOfficesCount: 2 }));
+      assert.strictEqual(part.status, 'incomplete');
+      assert.deepStrictEqual(JSON.parse(JSON.stringify(part.gaps)), ['Mayor as chair', '3 of 13 Punong Barangays', 'community wing at 40% (needs at least 50%)', '2 of 4 core LGU offices']);
+    });
+
+    test('Household breakdown: the record used supplies the 4Ps / IP / SLP and individual counts', () => {
+      const r = (recs) => JSON.parse(JSON.stringify(sandbox.resolveHhCounts(recs)));
+      const res = r([{ total: 513, represented: 371, detail: { hh4Ps: '', indivTotal: '' } },
+                     { total: 513, represented: 371, detail: { hh4Ps: 132, indivTotal: 370 } },
+                     { total: 3, represented: '', detail: { hh4Ps: 9 } }]);
+      assert.strictEqual(res.detail.hh4Ps, 132, 'the copy of the used counts that carries the breakdown');
+      const d = JSON.parse(JSON.stringify(sandbox.hhDetailOf({ hh4Ps: '132', hhIp: 0, indivFemale: '250', kcisRate: '72.32%' })));
+      assert.strictEqual(d.hh4Ps, 132); assert.strictEqual(d.hhIp, 0); assert.strictEqual(d.indivFemale, 250);
+      assert.strictEqual(d.kcisRate, 72.32); assert.strictEqual(d.hhSlp, null);
+      assert.strictEqual(sandbox.hhDetailOf({ hh4Ps: '', indivTotal: null }), null, 'no breakdown encoded');
+    });
+
+    test('detectKind: the Household Participation export is read; the old household roster is not', () => {
+      assert.strictEqual(sandbox.detectKind(sandbox.HH_COUNT_HEADERS.slice(), ''), 'households');
+      assert.strictEqual(sandbox.detectKind(['Region Name', 'Barangay Name', 'First Name', 'Birthdate', 'Is Hh Head', 'Is Present'], ''), 'roster');
+      assert.strictEqual(sandbox.detectKind(['x', 'y', 'z'], 'Raw_HH_Participation'), 'households');
+      assert.strictEqual(sandbox.detectKind(['x', 'y', 'z'], 'Raw_Households'), 'roster');
+      assert.strictEqual(sandbox.KIND_INFO.households.sheet, 'Raw_HH_Participation');
+    });
+
+    test('computeSnapshot: K2 uses Total Hh Represented ÷ Total Hh In Barangay, with conflicts, gaps and missing counts flagged', () => {
+      const LN = ['Region XIII (Caraga)', 'Agusan del Norte', 'Las Nieves'];
+      const att = (brgy, k) => LN.concat([brgy, '2', '1st BA', '1st Barangay Assembly', '1', 'First' + k, '', 'Last' + k, 'Female']);
+      const hh = (brgy, total, repr, f4ps) => LN.concat([brgy, '1st BA', '1st Barangay Assembly', '1', total, repr, f4ps === undefined ? '' : f4ps, '']);
+      sandbox.TABS.Baseline = ref.Baseline;
+      sandbox.TABS.Activities = ref.Activities;
+      sandbox.TABS.Raw_Participants = { headers: sandbox.PARTICIPANT_HEADERS.slice(), rows: [
+        att('Ambacon', 1), att('Ambacon', 2), att('Ambacon', 3), att('Ambacon', 4),
+        att('Balungagan', 1), att('Balungagan', 2), att('Balungagan', 3), att('Balungagan', 4), att('Balungagan', 5),
+        att('Bonifacio', 1),
+        att('Ambacon', 5).map((v, i) => i === 3 ? 'Casiklan' : v)           // Casiklan: 1st BA encoded, no counts
+      ] };
+      sandbox.TABS.Raw_HH_Participation = { headers: sandbox.HH_COUNT_HEADERS.concat(['Total 4Ps Hh Represented', 'Individual Total']), rows: [
+        hh('Ambacon', 4, 3), hh('Ambacon', '4', '3', 2),                       // identical records: 75%, met
+        hh('Balungagan', 10, 5), hh('Balungagan', 3, ''),                   // conflicting records: 10 / 5 is used, 50%
+        hh('Bonifacio', 8, '')                                              // one count only
+      ] };
+      const snap = sandbox.computeAll('2026-10-26');
+      const ba1 = (b) => snap.barangayRows.filter(r => r.municipality === 'Las Nieves' && r.barangay === b)[0].activities.BA1;
+
+      assert.strictEqual(snap.k2.reporting, 2);
+      assert.strictEqual(snap.k2.listed, 14);
+      assert.strictEqual(snap.k2.present, 8);
+      assert.strictEqual(snap.k2.met, 1);
+      assert.strictEqual(snap.k2.rate, 8 / 14);
+
+      assert.strictEqual(ba1('Ambacon').hhRate, 0.75);
+      assert.strictEqual(ba1('Ambacon').hhConflict, false);
+      assert.strictEqual(ba1('Ambacon').hhDetail.hh4Ps, 2, 'breakdown read from the optional columns');
+      assert.strictEqual(ba1('Ambacon').hhDetail.indivTotal, null);
+      assert.strictEqual(ba1('Balungagan').hhDetail, null, 'no breakdown encoded');
+      assert.strictEqual(ba1('Balungagan').hhConflict, true);
+      assert.strictEqual(ba1('Balungagan').hhListed, 10);
+      assert.strictEqual(ba1('Bonifacio').hhListed, 0, 'one count only does not report K2');
+      assert.strictEqual(ba1('Bonifacio').hhIncomplete, true);
+      assert.strictEqual(ba1('Bonifacio').hhTotal, 8);
+
+      const kinds = JSON.parse(JSON.stringify(snap.health.householdFlags.map(f => f.barangay + ':' + f.kind + ':' + f.actCode).sort()));
+      assert.deepStrictEqual(kinds, ['Balungagan:Conflicting records:BA1', 'Bonifacio:Counts incomplete:BA1']);
+      const missing = JSON.parse(JSON.stringify(snap.health.householdCountsMissing.filter(m => m.municipality === 'Las Nieves').map(m => m.barangay)));
+      assert.deepStrictEqual(missing, ['Casiklan']);
+      assert.strictEqual(snap.health.householdCounts.imported, true);
+      assert.strictEqual(snap.hhIssues, undefined, 'no household roster lists');
+
+      const fx = sandbox.dqaFindings(snap.health).filter(f => f.municipality === 'Las Nieves');
+      assert.ok(fx.some(f => f.check === 'quorum' && f.barangay === 'Balungagan' && f.act === 'BA1' && f.part === 'Conflicting records'));
+      assert.ok(fx.some(f => f.check === 'hhcounts' && f.barangay === 'Casiklan'));
+
+      const muni = sandbox.apiMatrix().rows.filter(r => r.municipality === 'Las Nieves')[0].households;
+      assert.strictEqual(muni.reporting, 2); assert.strictEqual(muni.conflicts, 1); assert.strictEqual(muni.incomplete, 1);
+    });
+
+    test('computeSnapshot: no Household Participation export means no K2 and no "counts not encoded" list', () => {
+      delete sandbox.TABS.Raw_HH_Participation;
+      const snap = sandbox.computeAll('2026-10-26');
+      assert.strictEqual(snap.k2.reporting, 0);
+      assert.strictEqual(snap.k2.rate, null);
+      assert.strictEqual(snap.health.householdCounts.imported, false);
+      assert.strictEqual(snap.health.householdCountsMissing.length, 0);
     });
   }
 

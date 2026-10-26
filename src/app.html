@@ -6,7 +6,10 @@
 <title>PCRP Encoding and Data Quality Assessment Tool</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<!-- Republic of the Philippines brand guidelines, section 04:
+     Figtree speaks (display, semibold & bold only), Inter works (body and
+     interface), JetBrains Mono labels (metadata only, never sentences). -->
+<link href="https://fonts.googleapis.com/css2?family=Figtree:wght@600;700&family=Inter:ital,wght@0,400;0,500;0,600;0,700;1,400&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
 /*@@APP_CSS@@*/
 /*@@DH_CSS@@*/
@@ -23,9 +26,6 @@
       <div class="brand-sub">
         <span class="brand-tag">KALAHI-CIDSS PCRP</span>
         <span class="brand-tag region">Caraga Region</span>
-        <span>Offline Field Console · Monitor v@@VERSION@@</span>
-        <span class="brand-sep" aria-hidden="true">·</span>
-        <span id="brand-update-status" class="brand-status-wrap"></span>
       </div>
     </div>
   </div>
@@ -63,7 +63,7 @@
         <i data-lucide="home"></i>
         <div class="nav-drop-info">
           <span class="nav-drop-title">Household Participation</span>
-          <span class="nav-drop-sub">K2 Quorum scorecard &amp; roster</span>
+          <span class="nav-drop-sub">K2 Quorum scorecard per assembly</span>
         </div>
         <span class="tab-badge" id="badge-households" hidden></span>
       </button>
@@ -228,7 +228,7 @@
               <input type="file" id="file-input" multiple accept=".xlsx,.csv,.pcrp" hidden>
               <div class="drop-icon"><i data-lucide="upload-cloud"></i></div>
               <span class="drop-title">Drop .xlsx, .csv, or .pcrp files here, or click to browse</span>
-              <span class="drop-sub">Participants export · Households export · Community Volunteer List · or a saved .pcrp session file</span>
+              <span class="drop-sub">Participants export · Household Participation export · Community Volunteer List · or a saved .pcrp session file</span>
               <div class="drop-badges">
                 <span class="drop-badge">.xlsx Workbook</span>
                 <span class="drop-badge">.csv Export</span>
@@ -286,6 +286,20 @@
   <section class="page" id="page-verify"><div id="vf-body"></div></section>
   <section class="page" id="page-health"><div id="he-body" class="dh-page"></div></section>
 </main>
+
+<footer class="app-footer" id="app-footer">
+  <div class="footer-container">
+    <div class="footer-left">
+      <span id="footer-scope-pill" class="footer-scope-pill" hidden></span>
+      <span class="footer-console">Offline Field Console · Monitor v@@VERSION@@</span>
+      <span class="brand-sep" aria-hidden="true">·</span>
+      <span id="brand-update-status" class="brand-status-wrap"></span>
+    </div>
+    <div class="footer-right">
+      <span class="footer-credit" title="Vibe coded by: kjahidalgo">vided coded by <strong>kjahidalgo</strong></span>
+    </div>
+  </div>
+</footer>
 
 <dialog id="scope-dialog" class="memo scope-dialog">
   <form method="dialog">

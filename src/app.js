@@ -267,7 +267,7 @@ var PCRP_GLOSSARY = {
   'k2': {
     title: 'K2 Household Quorum Standard',
     badge: 'Policy: ≥70% Target',
-    desc: 'Mandatory quorum standard: At least 70% of registered beneficiary households in the barangay must be represented at the 1st Barangay Assembly (BA1).',
+    desc: 'Mandatory quorum standard: At least 70% of the households in the barangay must be represented at the barangay assembly. Measured as Total Hh Represented ÷ Total Hh In Barangay from the KCIS Household Participation export.',
     ref: 'SM1 §4.2 · Household Quorum'
   },
   'brest': {
@@ -1068,6 +1068,18 @@ function renderHome() {
       chip.title = 'Click to switch role or change municipality scope';
     }
   }
+  var footerPill = $('footer-scope-pill');
+  if (footerPill) {
+    if (h) {
+      footerPill.innerHTML = '<button type="button" class="footer-scope-btn" data-act="open-scope" title="Active Scope: ' + esc(homeLabel()) + '. Click to switch scope.">' +
+        (isRegionalUser() ? '<span class="role-badge region">' + icon('building-2') + ' RPMO Regional</span>' : '<span class="role-badge field">' + icon('map-pin') + ' PEA / MDM Scope</span>') +
+        ' <span style="font-family:var(--font-mono);font-size:11px;font-weight:600;color:var(--text-main);">' + esc(isRegionalUser() ? 'Caraga Region' : h.municipality) + '</span>' +
+      '</button><span class="brand-sep" aria-hidden="true">·</span>';
+      footerPill.hidden = false;
+    } else {
+      footerPill.hidden = true;
+    }
+  }
 }
 
 function openScopeDialog() {
@@ -1576,8 +1588,6 @@ function computeAndShow(thenPage) {
       PEOPLE = null;                    // the People index is rebuilt on first use
       S.overview = apiOverview('');
       S.matrix = apiMatrix();
-      S.hhIssues = apiHouseholdIssues('');
-      S.hhIssuesFor = hhIssuesKey(S.overview);
       S.healthOpen = null;
       STATE.computed = true; STATE.computedAt = new Date(); STATE.ms = Date.now() - t0;
       applyHomeScope();
@@ -1606,7 +1616,7 @@ function renderImport() {
   renderSavedBar();
   var kinds = [
     { k: 'participants', ico: 'users', desc: 'Needed for every activity & attendance finding.' },
-    { k: 'households', ico: 'building-2', desc: 'Needed for K2 quorum and household roster checks.' },
+    { k: 'households', ico: 'building-2', desc: 'Needed for K2 quorum: households in barangay and households represented, counted per assembly.' },
     { k: 'volunteers', ico: 'list-checks', desc: 'Needed for 1st BA BResT / SFMSC & MResT tracking.' }
   ];
   var p = prefs();
@@ -1822,13 +1832,12 @@ function getScopedCompositeMetrics() {
   var brestRate = totalBrgys > 0 ? (brestCompliant / totalBrgys) : 0;
 
   var munisList = (typeof baselineMunis === 'function') ? baselineMunis().filter(function (m) { return !STATE.prov || m.province === STATE.prov; }) : [];
-  var regionalMrestEnc = munisList.filter(function (m) {
-    return (P.mrest || []).some(function (r) { return r.province === m.province && r.municipality === m.municipality; });
-  }).length;
+  // MResT formed per its composition (mrestComposition), not merely encoded in KCIS
+  var regionalMrestFormed = munisList.filter(function (m) { return mrestStatusOf(m.province, m.municipality).status === 'complete'; }).length;
 
   var compositeIndex = isMuni
     ? Math.round(0.4 * (pipeRate * 100) + 0.3 * ((k2.rate ? Math.min(1, k2.rate / 0.7) : 0) * 100) + 0.3 * (brestRate * 100))
-    : Math.round(0.35 * (pipeRate * 100) + 0.25 * ((k2.rate ? Math.min(1, k2.rate / 0.7) : 0) * 100) + 0.25 * (brestRate * 100) + 0.15 * ((regionalMrestEnc / (munisList.length || 1)) * 100));
+    : Math.round(0.35 * (pipeRate * 100) + 0.25 * ((k2.rate ? Math.min(1, k2.rate / 0.7) : 0) * 100) + 0.25 * (brestRate * 100) + 0.15 * ((regionalMrestFormed / (munisList.length || 1)) * 100));
 
   return {
     isMuni: isMuni,
@@ -1843,7 +1852,7 @@ function getScopedCompositeMetrics() {
     brestCompliant: brestCompliant,
     brestRate: brestRate,
     munisList: munisList,
-    regionalMrestEnc: regionalMrestEnc,
+    regionalMrestFormed: regionalMrestFormed,
     compositeIndex: isNaN(compositeIndex) ? 0 : compositeIndex
   };
 }
@@ -2163,7 +2172,7 @@ function renderOverview() {
       kpiCard({
         label: 'K2 · 1st BA households',
         value: pctText(k2.rate),
-        sub: k2.listed ? n(k2.present) + ' of ' + n(k2.listed) + ' listed households present (target 70%)' : 'Not reported: load the households export',
+        sub: k2.listed ? n(k2.present) + ' of ' + n(k2.listed) + ' households represented (target 70%)' : 'Not reported: load the Household Participation export',
         ico: 'users',
         accent: k2.rate === null ? 'accent-idle' : (k2.rate >= 0.7 ? 'accent-good' : 'accent-warn'),
         bar: k2.listed ? progressBar(k2.present, 0, k2.listed) : '',
@@ -2529,7 +2538,7 @@ function renderMunis() {
         th('muni', 'Municipality (' + rows.length + ')', false, null, 'Click row to view barangays in this municipality', true) +
         acts.map(function (a) { return th('act_' + a.code, esc(a.code), false, 'Seq ' + esc(a.seq), a.label); }).join('') +
         th('lacking', 'Lacking', true, null, 'Unencoded records (conducted in field > 3 days ago but missing in KCIS)') +
-        (STATE.stage === 1 ? th('k2', 'K2 (1st BA)', true, null, 'Percentage of listed households present in 1st BA (quorum threshold: 70%)', false, 'k2') : '') +
+        (STATE.stage === 1 ? th('k2', 'K2 (1st BA)', true, null, 'Households represented ÷ households in barangay at the 1st BA (quorum threshold: 70%)', false, 'k2') : '') +
         (cvOn ? th('BREST', 'BResT', true, null, 'Barangay Resiliency Team volunteer composition', false, 'brest') + th('SFMSC', 'SFMSC', true, null, 'Sub-Project Financial Management Support Committee volunteers') : '') +
       '</tr></thead><tbody>' + (body || '<tr><td colspan="30" class="empty-state">No municipality matches your active filter or search criteria.</td></tr>') + '</tbody></table></div>' +
     '</div>';
@@ -2857,8 +2866,8 @@ function renderBrgys() {
         return '<td>' + (x && x.status !== 'Not Encoded' && x.status !== 'N/A' ? link('attendees#' + bkey + '#' + a.code, pill, 'See the attendees') : pill) + '</td>';
       }).join('') +
       (STATE.stage === 1 ? '<td class="num">' + (b.hhListed
-        ? link('households#' + bkey + '#BA1', '<span style="color:' + (b.hhRate >= 0.7 ? 'var(--good-text)' : 'var(--warn-text)') + ';font-weight:700">' + pctText(b.hhRate) + '</span><div class="tiny">' + n(b.hhPresent) + '/' + n(b.hhListed) + '</div>', 'See the household roster')
-        : '<span class="tiny">not reported</span>') + '</td>' : '') +
+        ? link('households#' + bkey + '#BA1', '<span style="color:' + (b.hhRate >= 0.7 ? 'var(--good-text)' : 'var(--warn-text)') + ';font-weight:700">' + pctText(b.hhRate) + '</span><div class="tiny">' + n(b.hhPresent) + '/' + n(b.hhListed) + '</div>', 'See the household participation scorecard')
+        : '<span class="tiny">' + (b.hhIncomplete ? 'counts incomplete' : 'not reported') + '</span>') + '</td>' : '') +
       (cvOn ? '<td>' + link('volunteers#' + bkey + '#BREST', cvPill(b.volunteers, 'BREST'), 'See BResT') + '</td><td>' + link('volunteers#' + bkey + '#SFMSC', cvPill(b.volunteers, 'SFMSC'), 'See SFMSC') + '</td>' : '') +
       '<td>' + lackCell + '</td></tr>';
   }).join('');
@@ -2878,7 +2887,7 @@ function renderBrgys() {
     renderDqaBreadcrumb() +
     renderBrgyTriageTray(summary, cvOn) +
     '<div class="card"><div class="card-head"><div><h2>Barangays · ' + esc(parts[1] || '') + ' <span class="muted" style="font-weight:400">(' + esc(parts[0] || '') + ')</span></h2>' +
-      '<div class="muted">' + n(all.length) + ' monitored barangays. Click any cell to inspect the attendees, roster, or volunteers.</div></div>' +
+      '<div class="muted">' + n(all.length) + ' monitored barangays. Click any cell to inspect the attendees, household counts, or volunteers.</div></div>' +
       '<button class="btn ghost btn-sm" data-act="csv-brgys">' + icon('download') + ' <span>CSV</span></button></div>' +
       stageSwitch() +
       '<div class="toolbar-row"><div class="filters" style="margin:0">' +
@@ -2934,7 +2943,7 @@ function renderKpiSummary() {
   var pipe = metrics.pipe, pipeTot = metrics.pipeTot, pipeRate = metrics.pipeRate;
   var k2 = metrics.k2, totalBrgys = metrics.totalBrgys, brgysInScope = metrics.brgysInScope;
   var brestCompliant = metrics.brestCompliant, brestRate = metrics.brestRate;
-  var munisList = metrics.munisList, regionalMrestEnc = metrics.regionalMrestEnc, compositeIndex = metrics.compositeIndex;
+  var munisList = metrics.munisList, regionalMrestFormed = metrics.regionalMrestFormed, compositeIndex = metrics.compositeIndex;
 
   var P = people(), inScope = pScopeTest();
   var volsInScope = P.volunteers.filter(inScope);
@@ -2945,7 +2954,7 @@ function renderKpiSummary() {
 
   var brestIssues = brgysInScope.filter(function (b) { return b.volunteers && b.volunteers.BREST && b.volunteers.BREST.status === 'Needs fixing'; }).length;
   var mrestList = (P.mrest || []).filter(inScope);
-  var mrestEncoded = mrestList.length > 0;
+  var mrestComp = isMuni ? mrestStatusOf(h.province || '', h.municipality || '') : null;
   var eoTag = isMuni ? ((typeof vfTag === 'function') ? vfTag('mrest|' + (h.province || '') + '|' + (h.municipality || '') + '||MREST') : null) : null;
   var eoVerified = eoTag && eoTag.rows && Object.keys(eoTag.rows).length > 0;
 
@@ -2976,7 +2985,7 @@ function renderKpiSummary() {
       '<div class="kpi-mini-card ' + (k2.rate !== null && k2.rate >= 0.7 ? 'accent-good' : (k2.rate !== null ? 'accent-warn' : 'accent-idle')) + '" data-term="k2">' +
         '<div class="kpi-mini-label">K2 Assembly Quorum (≥70%)</div>' +
         '<div class="kpi-mini-val">' + (k2.rate !== null ? pctText(k2.rate) : '—') + '</div>' +
-        '<div class="kpi-mini-sub">' + (k2.listed ? n(k2.present) + ' of ' + n(k2.listed) + ' households (' + n(k2.met) + ' brgys met)' : 'Load households export') + '</div>' +
+        '<div class="kpi-mini-sub">' + (k2.listed ? n(k2.present) + ' of ' + n(k2.listed) + ' households represented (' + n(k2.met) + ' brgys met)' : 'Load the Household Participation export') + '</div>' +
       '</div>' +
       '<div class="kpi-mini-card accent-good" data-term="femaleratio">' +
         '<div class="kpi-mini-label">Volunteer Inclusion &amp; Leadership</div>' +
@@ -2988,10 +2997,10 @@ function renderKpiSummary() {
         '<div class="kpi-mini-val">' + pctText(brestRate) + '</div>' +
         '<div class="kpi-mini-sub">' + n(brestCompliant) + ' of ' + n(totalBrgys) + ' teams compliant with active lead</div>' +
       '</div>' +
-      '<div class="kpi-mini-card ' + (isMuni ? (eoVerified ? 'accent-good' : (mrestEncoded ? 'accent-warn' : 'accent-bad')) : (regionalMrestEnc === munisList.length ? 'accent-good' : 'accent-warn')) + '" data-term="mrest">' +
+      '<div class="kpi-mini-card ' + (isMuni ? (mrestComp.status === 'complete' ? (eoVerified ? 'accent-good' : 'accent-warn') : (mrestComp.status === 'incomplete' ? 'accent-warn' : 'accent-bad')) : (regionalMrestFormed === munisList.length ? 'accent-good' : 'accent-warn')) + '" data-term="mrest">' +
         '<div class="kpi-mini-label">MResT Institutionalization</div>' +
-        '<div class="kpi-mini-val">' + (isMuni ? (eoVerified ? '✓ EO Verified' : (mrestEncoded ? '✓ Encoded' : '○ Pending')) : n(regionalMrestEnc) + ' / ' + n(munisList.length)) + '</div>' +
-        '<div class="kpi-mini-sub">' + (isMuni ? (eoVerified ? 'Matched against Mayor\'s EO' : (mrestEncoded ? 'Pending EO precision tag' : 'No MResT committee in KCIS')) : 'Municipal LGUs with encoded MResT') + '</div>' +
+        '<div class="kpi-mini-val">' + (isMuni ? (mrestComp.status === 'complete' ? (eoVerified ? '✓ Formed · EO Verified' : '✓ Formed') : (mrestComp.status === 'incomplete' ? '⚠ Incomplete' : '○ Pending')) : n(regionalMrestFormed) + ' / ' + n(munisList.length)) + '</div>' +
+        '<div class="kpi-mini-sub">' + (isMuni ? (mrestComp.status === 'complete' ? (eoVerified ? 'Matched against Mayor\'s EO' : 'Pending EO precision tag') : (mrestComp.status === 'incomplete' ? 'Missing: ' + esc(mrestComp.gaps.join('; ')) : 'No MResT committee in KCIS')) : 'LGUs with MResT formed per composition') + '</div>' +
       '</div>' +
       '<div class="kpi-mini-card ' + (compositeIndex >= 80 ? 'accent-good' : (compositeIndex >= 60 ? 'accent-warn' : 'accent-bad')) + '" data-tooltip="Weighted composite performance index across Pipeline completion, K2 Quorum, BResT formation, and MResT institutionalization" data-tooltip-title="Overall Composite Readiness" data-tooltip-badge="Strategic Metric">' +
         '<div class="kpi-mini-label">Overall Composite Readiness</div>' +
@@ -3166,11 +3175,11 @@ function renderKpiSummary() {
       var k2Rate = h.listed ? (h.present / h.listed) : null;
       var brestEnc = mBrgys.filter(function (b) { return b.volunteers && b.volunteers.BREST && b.volunteers.BREST.status === 'Encoded'; }).length;
       var bRate = mBrgys.length > 0 ? (brestEnc / mBrgys.length) : 0;
-      var mVols = (P.mrest || []).filter(function (x) { return x.province === r.province && x.municipality === r.municipality; });
       var mRecKey = 'mrest|' + r.province + '|' + r.municipality + '||MREST';
       var mTag = (typeof vfTag === 'function') ? vfTag(mRecKey) : null;
       var mVer = mTag && mTag.rows && Object.keys(mTag.rows).length > 0;
-      var mScore = mVols.length > 0 ? (mVer ? 100 : 75) : 0;
+      var mComp = mrestStatusOf(r.province, r.municipality);
+      var mScore = mComp.status === 'complete' ? (mVer ? 100 : 75) : (mComp.status === 'incomplete' ? 25 : 0);
 
       var compScore = Math.round(0.35 * pScore + 0.25 * k2Score + 0.25 * (bRate * 100) + 0.15 * mScore);
       return {
@@ -3184,7 +3193,7 @@ function renderKpiSummary() {
         k2Rate: k2Rate,
         brestCompliant: brestEnc,
         brestRate: bRate,
-        mrestEnc: mVols.length > 0,
+        mrestComp: mComp,
         mrestVer: mVer,
         owed: totOwed,
         score: compScore
@@ -3228,7 +3237,7 @@ function renderKpiSummary() {
       pipe: function (x) { return x.pipeRate; },
       k2: function (x) { return x.k2Rate === null ? -1 : x.k2Rate; },
       brest: function (x) { return x.brestRate; },
-      mrest: function (x) { return x.mrestVer ? 2 : (x.mrestEnc ? 1 : 0); },
+      mrest: function (x) { return { complete: 2, incomplete: 1, none: 0 }[x.mrestComp.status] + (x.mrestVer ? 0.5 : 0); },
       lacking: function (x) { return x.owed; },
       score: function (x) { return x.score; }
     };
@@ -3243,9 +3252,7 @@ function renderKpiSummary() {
       var k2Pill = x.k2Rate === null
         ? '<span class="tiny">—</span>'
         : (x.k2Rate >= 0.7 ? '<span class="pill good">✓ ' + pctText(x.k2Rate) + '</span>' : '<span class="pill warn">⚠ ' + pctText(x.k2Rate) + '</span>');
-      var mrestPill = x.mrestVer
-        ? '<span class="pill good">✓ EO Verified</span>'
-        : (x.mrestEnc ? '<span class="pill good">✓ Encoded</span>' : '<span class="pill bad">○ Pending</span>');
+      var mrestPill = mrestStatusPill(x.mrestComp) + (x.mrestVer ? ' <span class="pill good">✓ EO Verified</span>' : '');
       var scoreBadge = x.score >= 80
         ? '<span class="pill good"><strong>' + x.score + '%</strong> High</span>'
         : (x.score >= 50 ? '<span class="pill warn"><strong>' + x.score + '%</strong> Moderate</span>' : '<span class="pill bad"><strong>' + x.score + '%</strong> Critical</span>');
@@ -3304,7 +3311,7 @@ function exportKpiSummaryCsv() {
 
   if (isMuni) {
     var brgys = (SNAP.barangayRows || []).filter(function (b) { return b.province + '|' + b.municipality === key; });
-    var head = ['Barangay', 'Municipality', 'Province', 'Activities Expected', 'With Attn Sheet', 'Missing Attn Sheet', 'Pipeline Completion %', 'K2 Listed', 'K2 Present', 'K2 Quorum %', 'BResT Status', 'Lacking Records', 'Composite Score %'];
+    var head = ['Barangay', 'Municipality', 'Province', 'Activities Expected', 'With Attn Sheet', 'Missing Attn Sheet', 'Pipeline Completion %', 'K2 HH in Barangay', 'K2 HH Represented', 'K2 Quorum %', 'BResT Status', 'Lacking Records', 'Composite Score %'];
     var rows = brgys.map(function (b) {
       var bActs = Object.keys(b.activities).map(function (k) { return b.activities[k]; });
       var bExp = bActs.filter(function (x) { return !x.notApplicable && x.status !== 'N/A'; }).length;
@@ -3328,7 +3335,7 @@ function exportKpiSummaryCsv() {
     downloadCsv('PCRP_KPI_Summary_' + (h.municipality || 'muni').replace(/[^A-Za-z0-9]+/g, '_') + '_' + stamp() + '.csv', csvOf([head].concat(rows)));
   } else {
     var mRows = overviewRows();
-    var head = ['Municipality', 'Province', 'Monitored Barangays', 'Pipeline Target', 'With Attn Sheet', 'Pipeline Completion %', 'K2 Listed', 'K2 Present', 'K2 Quorum %', 'BResT Compliant', 'BResT Rate %', 'MResT Status', 'Lacking Records', 'Composite Score %'];
+    var head = ['Municipality', 'Province', 'Monitored Barangays', 'Pipeline Target', 'With Attn Sheet', 'Pipeline Completion %', 'K2 HH in Barangay', 'K2 HH Represented', 'K2 Quorum %', 'BResT Compliant', 'BResT Rate %', 'MResT Status', 'Lacking Records', 'Composite Score %'];
     var rows = mRows.map(function (r) {
       var mKey = r.province + '|' + r.municipality;
       var mBrgys = (SNAP.barangayRows || []).filter(function (b) { return b.province + '|' + b.municipality === mKey; });
@@ -3349,11 +3356,11 @@ function exportKpiSummaryCsv() {
       var k2Rate = h.listed ? (h.present / h.listed) : null;
       var brestEnc = mBrgys.filter(function (b) { return b.volunteers && b.volunteers.BREST && b.volunteers.BREST.status === 'Encoded'; }).length;
       var bRate = mBrgys.length > 0 ? (brestEnc / mBrgys.length) : 0;
-      var mVols = (P.mrest || []).filter(function (x) { return x.province === r.province && x.municipality === r.municipality; });
       var mRecKey = 'mrest|' + r.province + '|' + r.municipality + '||MREST';
       var mTag = (typeof vfTag === 'function') ? vfTag(mRecKey) : null;
       var mVer = mTag && mTag.rows && Object.keys(mTag.rows).length > 0;
-      var mScore = mVols.length > 0 ? (mVer ? 100 : 75) : 0;
+      var mComp = mrestStatusOf(r.province, r.municipality);
+      var mScore = mComp.status === 'complete' ? (mVer ? 100 : 75) : (mComp.status === 'incomplete' ? 25 : 0);
       var compScore = Math.round(0.35 * pScore + 0.25 * k2Score + 0.25 * (bRate * 100) + 0.15 * mScore);
 
       return [
@@ -3361,7 +3368,7 @@ function exportKpiSummaryCsv() {
         totExp, totComp, (totExp > 0 ? (totComp / totExp * 100).toFixed(1) + '%' : '100%'),
         h.listed || 0, h.present || 0, (k2Rate !== null ? (k2Rate * 100).toFixed(1) + '%' : 'N/A'),
         brestEnc, (bRate * 100).toFixed(1) + '%',
-        (mVer ? 'EO Verified' : (mVols.length ? 'Encoded' : 'Pending')),
+        ({ complete: 'Formed', incomplete: 'Incomplete (missing: ' + mComp.gaps.join('; ') + ')', none: 'Not in KCIS' }[mComp.status] + (mVer ? ' · EO Verified' : '')),
         totOwed, compScore + '%'
       ];
     });
@@ -3585,7 +3592,7 @@ function renderSettings() {
           '<li><strong>PCRP Encoding and Data Quality Assessment Tool</strong> runs the Encoding Monitor v' + esc(BUILT_IN.monitorVersion) + ' rules on this computer. Files are never uploaded.</li>' +
           '<li><strong>Caraga Region Implementation</strong> · Vibe coded by: <strong>kjahidalgo</strong>.</li>' +
           '<li>The loaded exports, the findings of earlier pulls, and the verification tags are kept in this browser until you choose "Forget saved data" on the Import card; settings above are remembered too.</li>' +
-          '<li>Household heads\' names appear in Data Health, as for an editor of the web monitor. Handle the exports and any downloaded file under the Data Privacy Act.</li>' +
+          '<li>Attendee and volunteer names appear in the app, as for an editor of the web monitor. Handle the exports and any downloaded file under the Data Privacy Act.</li>' +
         '</ul>' +
       '</div>' +
       '<div class="card" style="margin-top:16px">' +
@@ -3633,7 +3640,7 @@ function muniTable(allStages) {
   var cvOn = S.overview.volunteers && S.overview.volunteers.imported;
   var head = ['Province', 'Municipality'];
   acts.forEach(function (a) { head.push(a.code + ' with sheet', a.code + ' target', a.code + ' no sheet', a.code + ' lacking'); });
-  head.push('K2 listed', 'K2 present', 'K2 %');
+  head.push('K2 HH in barangay', 'K2 HH represented', 'K2 %');
   if (cvOn) head.push('BResT encoded', 'BResT target', 'SFMSC encoded', 'SFMSC to fix', 'SFMSC target');
   // the export compares the chosen municipality with the rest of its province
   var h = home(), exportRows = S.matrix.rows.filter(function (r) { return !h || h.region || r.province === h.province; });
@@ -3651,11 +3658,16 @@ function brgyTable(rows, allStages) {
   var acts = allStages ? S.overview.activities : stageActs();
   var cvOn = S.overview.volunteers && S.overview.volunteers.imported;
   var head = ['Province', 'Municipality', 'Barangay', 'PSGC'].concat(acts.map(function (a) { return a.code + ' (Seq ' + a.seq + ')'; }))
-    .concat(['K2 listed', 'K2 present', 'K2 %']).concat(cvOn ? ['BResT', 'BResT volunteers', 'SFMSC', 'SFMSC volunteers', 'SFMSC to fix'] : []).concat(['Lacking']);
+    .concat(['K2 HH in barangay', 'K2 HH represented', 'K2 %', '4Ps HH represented', 'IP HH represented', 'SLP HH represented',
+             'Individuals female', 'Individuals male', 'Individuals total']).concat(cvOn ? ['BResT', 'BResT volunteers', 'SFMSC', 'SFMSC volunteers', 'SFMSC to fix'] : []).concat(['Lacking']);
   var st = function (x) { return !x || x.notApplicable || x.status === 'N/A' ? 'N/A' : x.status === 'Complete' ? 'With sheet (' + x.attendees + ')' : x.status === 'No Attendees' ? 'No sheet' : 'Not encoded'; };
   return [head].concat(rows.map(function (b) {
     var line = [b.province, b.municipality, b.barangay, b.psgcBrgy || ''].concat(acts.map(function (a) { return st(b.activities[a.code]); }))
-      .concat([b.hhListed || 0, b.hhPresent || 0, b.hhListed ? Math.round(b.hhRate * 1000) / 10 : '']);
+      .concat([b.hhListed || 0, b.hhPresent || 0, b.hhListed ? Math.round(b.hhRate * 1000) / 10 : ''])
+      .concat(['hh4Ps', 'hhIp', 'hhSlp', 'indivFemale', 'indivMale', 'indivTotal'].map(function (k) {
+        var d = b.hhDetail;   // the 1st BA breakdown, when KCIS has it
+        return d && d[k] !== null && d[k] !== undefined ? d[k] : '';
+      }));
     if (cvOn) {
       var v = b.volunteers || {}, B = v.BREST || {}, F = v.SFMSC || {};
       line = line.concat([B.status || '', B.members || 0, F.status || '', F.members || 0, (F.reasons || []).join('; ')]);
@@ -3672,7 +3684,7 @@ function healthTable() {
     var c = e.check;
     if (!e.rows.length && e.count) { lines.push([c.name, DH_SEV[c.severity].label, '', '', '', e.count + ' ' + c.unit[e.count === 1 ? 0 : 1] + ' (count only)']); return; }
     e.rows.forEach(function (r) {
-      // the listing inside the chosen municipality (a household head can be listed in two)
+      // the place inside the chosen municipality
       var p = c.places(r).filter(dhInScope)[0] || c.places(r)[0] || {};
       lines.push([c.name, DH_SEV[c.severity].label, p.province || '', p.municipality || '', p.barangay || '', c.detail(r)]);
     });
@@ -3697,7 +3709,7 @@ function exportExcel() {
     ['Pull date', prefs().evalDate || today()],
     ['Monitor rules', 'v' + BUILT_IN.monitorVersion],
     ['Participants file', LOADED.participants ? LOADED.participants.file : ''],
-    ['Households file', LOADED.households ? LOADED.households.file : ''],
+    ['Household participation file', LOADED.households ? LOADED.households.file : ''],
     ['Volunteer file', LOADED.volunteers ? LOADED.volunteers.file : ''], []];
   STATE.prov = '';
   [1, 2].forEach(function (s) { STATE.stage = s; summary.push(['Stage ' + s]); summary = summary.concat(pipelineTable()); summary.push([]); });
@@ -3757,7 +3769,7 @@ document.addEventListener('click', function (ev) {
       if (typeof ATT_STATE !== 'undefined') { ATT_STATE.brgy = bkey; ATT_STATE.act = sub; }
       go('attendees');
     } else if (targetTab === 'households') {
-      if (typeof HH_STATE !== 'undefined') { HH_STATE.brgy = bkey; HH_STATE.tab = 'roster'; }
+      if (typeof HH_STATE !== 'undefined') { HH_STATE.brgy = bkey; HH_STATE.quorum = 'all'; if (sub) HH_STATE.asm = sub; }
       go('households');
     } else if (targetTab === 'volunteers') {
       if (sub === 'BREST') {
@@ -3779,7 +3791,6 @@ document.addEventListener('click', function (ev) {
     var bkey = t.getAttribute('data-brgy') || '';
     var muniKey = t.getAttribute('data-muni') || '';
     var actCode = t.getAttribute('data-actcode') || '';
-    var flag = t.getAttribute('data-flag') || '';
     var nameVal = t.getAttribute('data-name') || t.getAttribute('data-search') || '';
     var source = t.getAttribute('data-source') || '';
     var bodyVal = t.getAttribute('data-body') || '';
@@ -3795,22 +3806,12 @@ document.addEventListener('click', function (ev) {
       count: count
     };
 
-    if (checkId === 'noname' || checkId === 'dup' || checkId === 'cross' || checkId === 'bday') {
+    if (checkId === 'quorum' || checkId === 'hhcounts') {
       if (typeof HH_STATE !== 'undefined') {
-        HH_STATE.tab = 'roster';
-        if (bkey) HH_STATE.brgy = bkey;
-        if (flag) HH_STATE.flag = flag;
-        if (nameVal) HH_STATE.search = nameVal;
-        if (!nameVal && checkId === 'noname') HH_STATE.search = '';
-        if (checkId === 'dup' && !flag) HH_STATE.flag = 'twice';
-        if (checkId === 'cross' && !flag) HH_STATE.flag = 'otherbrgy';
-      }
-      go('households');
-    } else if (checkId === 'quorum') {
-      if (typeof HH_STATE !== 'undefined') {
-        HH_STATE.tab = 'scorecard';
-        if (bkey) HH_STATE.brgy = bkey;
-        if (nameVal) HH_STATE.search = nameVal;
+        HH_STATE.quorum = 'all';
+        HH_STATE.search = '';
+        HH_STATE.brgy = bkey || '';
+        if (actCode) HH_STATE.asm = actCode;
       }
       go('households');
     } else if (checkId === 'late' || checkId === 'dates' || checkId === 'multidate' || checkId === 'attdup' || checkId === 'sex' || checkId === 'unmapped') {
@@ -3823,13 +3824,7 @@ document.addEventListener('click', function (ev) {
       }
       go('attendees');
     } else if (checkId === 'names') {
-      if (source === 'Households') {
-        if (typeof HH_STATE !== 'undefined') {
-          HH_STATE.tab = 'roster';
-          if (bkey) HH_STATE.brgy = bkey;
-        }
-        go('households');
-      } else if (source === 'Volunteers') {
+      if (source === 'Volunteers') {
         if (typeof VOL_STATE !== 'undefined') {
           if (bkey) VOL_STATE.brgy = bkey;
         }
@@ -4002,9 +3997,9 @@ document.addEventListener('click', function (ev) {
     UPDATE_STATE.result = {
       updateAvailable: true,
       remote: {
-        version: '2.15.0',
+        version: '2.17.0',
         releaseDate: today(),
-        title: 'PCRP Encoding and Data Quality Assessment Tool v2.15.0',
+        title: 'PCRP Encoding and Data Quality Assessment Tool v2.17.0',
         fileSize: '1125 KB',
         notes: [
           'Preview simulation: next-generation real-time multi-user telemetry and export sync',
@@ -4014,7 +4009,7 @@ document.addEventListener('click', function (ev) {
         releaseUrl: 'https://github.com/hidalgokimjohn/pcrp-monitor-desktop'
       }
     };
-    toast('Simulated v2.15.0 update available!');
+    toast('Simulated v2.17.0 update available!');
     renderSettings();
     updateTabBadges();
     renderStatus();
@@ -4177,7 +4172,7 @@ $('btn-compute').addEventListener('click', function () { computeAndShow('overvie
 var btnComputeSide = $('btn-compute-side');
 if (btnComputeSide) btnComputeSide.addEventListener('click', function () { computeAndShow('overview'); });
 $('btn-clear').addEventListener('click', function () {
-  delete TABS.Raw_Participants; delete TABS.Raw_Households; delete TABS.Raw_Volunteers;
+  delete TABS.Raw_Participants; delete TABS.Raw_HH_Participation; delete TABS.Raw_Volunteers;
   LOADED = {}; IMPORT_ERRORS = []; STATE.computed = false; SNAP = null; S.overview = null; S.matrix = null; PEOPLE = null;
   // The saved exports go too; earlier pulls and verification tags stay until "Forget saved data".
   SAVED.current = null;
@@ -4242,6 +4237,12 @@ if (btnPrint) {
 var homeChip = $('home-chip');
 if (homeChip) {
   homeChip.addEventListener('click', function () { openScopeDialog(); });
+}
+var footerScopePill = $('footer-scope-pill');
+if (footerScopePill) {
+  footerScopePill.addEventListener('click', function (ev) {
+    if (ev.target.closest('[data-act="open-scope"]')) openScopeDialog();
+  });
 }
 
 function initSettingsScrollSpy() {

@@ -1,4 +1,4 @@
-# PCRP Encoding and Data Quality Assessment Tool (v2.14.0)
+# PCRP Encoding and Data Quality Assessment Tool (v2.16.0)
 
 **KALAHI-CIDSS PCRP · Caraga Region Offline Field Console**
 
@@ -6,13 +6,13 @@ One offline file, `dist/PCRP Encoding and Data Quality Assessment Tool.html`, th
 
 ---
 
-## What's New in v2.14.0
+## What's New in v2.16.0
 
-- 🔗 **Universal DQA Finding Deep Links:** Every finding across the Data Quality Assessment audit tables (missing names, attendance duplicates, roster duplicates, cross-barangay household heads, unmapped activities, volunteer tagging gaps, date sanity, and sequence violations) is now an interactive one-click link (`dhFindingLink`) that immediately navigates to the exact record and filter in its parent module, complete with a contextual "Return to DQA" breadcrumb.
-- 👥 **Duplicate Record Highlighting & Triage:** Attendance sittings and Household roster duplicates feature high-visibility row tinting (amber `#f59e0b` stripe for duplicates; red-orange `#ef4444` for cross-barangay heads), inline count badges (`👥 Duplicate (2×)`, `📍 Cross-Brgy`), and dedicated 1-click filter chips (`👥 Duplicate Attendees`, `👥 Listed twice`, `📍 Head in another barangay`, `👥 All Duplicates`).
-- 🔄 **Header Subtitle Live Update Status & Auto-Polling:** The persistent header subtitle displays real-time status chips (`● Your app is up to date!`, `● 🎉 Update available: vX.X.X ↗`, `● Field Offline`, or `◌ Checking…`). Automatic update checks occur on startup (1.2s delay), on internet reconnect, and on a 30-minute background poll without 24-hour rate limits.
-- ⚙️ **Streamlined Settings Navigation:** Re-ordered settings so **Section 1: Municipal Scope & Role Assignment** comes first, followed by **Section 2: Data Import**. The top header has been decluttered by removing the title scope pill.
-- 🏛️ **Caraga Region Branding & Attribution:** Persistent header badge displays `Caraga Region`, and the About & Privacy Notice credits the Caraga Region Implementation (`Vibe coded by: kjahidalgo`).
+- 🏛️ **Institutional Civic Footer:** Added a BetterGov.ph civic editorial footer anchoring the console with live versioning (`Offline Field Console · Monitor v2.16.0`), real-time update status pill (`● Your app is up to date!`), active workspace scope pill (`PEA / MDM Scope` or `RPMO Regional`), and developer attribution (`vided coded by kjahidalgo`).
+- 🎨 **BetterGov.ph Design System Alignment:** Implemented Republic of the Philippines civic design tokens: Figtree, Inter, and JetBrains Mono triad, exposed structural 1px borders, 2px top anchor rules, sharp geometric corners, and zero SaaS bloat.
+- ✨ **Header Decluttering:** Simplified the brand header to cleanly present official KALAHI-CIDSS PCRP and Caraga Region tags.
+- 🎯 **Standardized Scope Pills:** Refined PEA / MDM and Regional RPMO scope pills across all modules and banners with consistent monospace typography, civic royal blue accents, and full dark mode support.
+- 🏠 **K2 from Household Participation Export:** Reads KCIS counts per activity (Total Hh Represented ÷ Total Hh In Barangay) directly without requiring obsolete roster exports.
 
 ---
 

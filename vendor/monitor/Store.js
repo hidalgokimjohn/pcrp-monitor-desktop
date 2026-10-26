@@ -7,7 +7,7 @@ var SHEETS = {
   BASELINE: 'Baseline',        // Province | Municipality | Barangay | Batch | Monitored
   ACTIVITIES: 'Activities',    // Seq | Code | KCIS Name | Label | Level | Households | Field conduct
   PARTICIPANTS: 'Raw_Participants',
-  HOUSEHOLDS: 'Raw_Households',
+  HH_PARTICIPATION: 'Raw_HH_Participation',  // KCIS Household Participation export (households counted per activity)
   VOLUNTEERS: 'Raw_Volunteers',  // KCIS Community Volunteer List (1st BA: BResT, SFMSC)
   HISTORY: 'History',          // long format, one row per muni per activity per snapshot
   SETTINGS: 'Settings',
@@ -22,7 +22,7 @@ var HISTORY_HEADERS = [
   'Households listed', 'Households represented', 'Backlog'
 ];
 
-var CACHE_KEY = 'pcrp_snap_v228';   // bumped: snapshot carries the DQA checks (health.dqa)
+var CACHE_KEY = 'pcrp_snap_v229';   // bumped: K2 from the Household Participation counts
 var CACHE_TTL = 21600;   // 6 hours; every import busts it explicitly
 
 function ss_() {
@@ -394,36 +394,49 @@ function columnToLetter_(column) {
   return letter;
 }
 
+/**
+ * Replace a raw tab with the header and rows given, in the monitor's
+ * spreadsheet (ss_()). Checks the rows landed and throws when they did not, so
+ * an import never reports rows it did not write. Returns {rows, spreadsheet, url}.
+ */
 function writeRaw(name, headerRow, dataRows) {
   try { PropertiesService.getScriptProperties().setProperty('LAST_IMPORT_AT', new Date().toISOString()); } catch (e) {}
   var s = sheet_(name);
+  var ss = s.getParent();   // the spreadsheet that holds the tab; the batch write must target the same one
   s.clear();
   s.getRange(1, 1, 1, headerRow.length).setValues([headerRow])
    .setFontWeight('bold').setBackground('#595959').setFontColor('#ffffff');
-  if (dataRows && dataRows.length) {
+  var n = dataRows ? dataRows.length : 0;
+  var landed = function () { SpreadsheetApp.flush(); return Math.max(0, s.getLastRow() - 1); };
+  if (n) {
     // Attempt Sheets Advanced Service v4 batch write if available
     var written = false;
     if (typeof Sheets !== 'undefined' && Sheets.Spreadsheets && Sheets.Spreadsheets.Values) {
       try {
-        var ssId = SpreadsheetApp.getActiveSpreadsheet().getId();
-        var range = name + '!A2:' + columnToLetter_(headerRow.length) + (dataRows.length + 1);
+        var range = "'" + s.getName().replace(/'/g, "''") + "'!A2:" + columnToLetter_(headerRow.length) + (n + 1);
         var valueRange = Sheets.newValueRange();
         valueRange.values = dataRows;
-        Sheets.Spreadsheets.Values.update(valueRange, ssId, range, { valueInputOption: 'USER_ENTERED' });
-        written = true;
+        Sheets.Spreadsheets.Values.update(valueRange, ss.getId(), range, { valueInputOption: 'USER_ENTERED' });
+        written = landed() === n;
+        if (!written) Logger.log('Sheets Advanced Service write left ' + landed() + ' of ' + n + ' rows; writing with setValues');
       } catch (e) {
         Logger.log('Sheets Advanced Service write failed, falling back to setValues: ' + e.message);
       }
     }
     if (!written) {
       var CH = 5000;
-      for (var i = 0; i < dataRows.length; i += CH) {
+      for (var i = 0; i < n; i += CH) {
         var part = dataRows.slice(i, i + CH);
         s.getRange(2 + i, 1, part.length, headerRow.length).setValues(part);
       }
     }
   }
   s.setFrozenRows(1);
+  var got = landed();
+  if (got !== n) {
+    throw new Error('Only ' + got + ' of ' + n + ' rows reached the "' + s.getName() + '" tab of "' + ss.getName() + '". The import did not complete; please import the file again.');
+  }
+  return { rows: got, spreadsheet: ss.getName(), url: ss.getUrl() };
 }
 
 function writeRawChunk(name, chunkIndex, totalChunks, headerRow, chunkRows, startRow) {
@@ -445,12 +458,11 @@ function writeRawChunk(name, chunkIndex, totalChunks, headerRow, chunkRows, star
 // SNAPSHOT  (computed once, then cached)
 // ===================================================================
 
-var HH_CACHE_KEY = CACHE_KEY + '_hh';   // household roster lists, cached apart from the snapshot
-
 function bustCache_() {
   var c = CacheService.getScriptCache();
   c.remove(CACHE_KEY);
-  c.remove(HH_CACHE_KEY);
+  c.remove('pcrp_snap_v228');
+  c.remove('pcrp_snap_v228_hh');
   c.remove('pcrp_snap_v215');
   c.remove('pcrp_snap_v213');
   c.remove('pcrp_snapshot_v1');
@@ -495,7 +507,7 @@ function buildSnapshot(evalDateIso) {
   var base = readBaseline();
   var acts = readActivities();
   var pTable = readRawTable(SHEETS.PARTICIPANTS);
-  var hTable = readRawTable(SHEETS.HOUSEHOLDS);
+  var hTable = readRawTable(SHEETS.HH_PARTICIPATION);
   var vTable = readRawTable(SHEETS.VOLUNTEERS);   // empty until the volunteer list is imported
   var snap = computeSnapshot(pTable.rows,
                              hTable.rows,
@@ -511,8 +523,6 @@ function buildSnapshot(evalDateIso) {
  * The whole snapshot can exceed the 100 KB cache limit once the Region is
  * encoding, so cache it in slices and reassemble.
  */
-var LAST_HH_ISSUES_ = null;   // the lists from a snapshot built in this execution
-
 function getSnapshot(force) {
   var cache = CacheService.getScriptCache();
   if (!force) {
@@ -526,25 +536,8 @@ function getSnapshot(force) {
     }
   }
   var snap = buildSnapshot();
-  // The household roster lists hold names and are only read by Data Health, so
-  // they are cached on their own instead of being re-read with every request.
-  var hh = snap.hhIssues || { blank: [], duplicates: [], crossBarangay: [] };
-  delete snap.hhIssues;
-  hh.generatedAt = snap.generatedAt;
-  LAST_HH_ISSUES_ = hh;
   cachePutChunked_(cache, CACHE_KEY, snap);
-  cachePutChunked_(cache, HH_CACHE_KEY, hh);
   return snap;
-}
-
-/** The household roster lists matching the current snapshot. */
-function getHouseholdIssues() {
-  var snap = getSnapshot(false);
-  if (LAST_HH_ISSUES_ && LAST_HH_ISSUES_.generatedAt === snap.generatedAt) return LAST_HH_ISSUES_;
-  var hh = cacheGetChunked_(CacheService.getScriptCache(), HH_CACHE_KEY);
-  if (hh && hh.generatedAt === snap.generatedAt) return hh;
-  getSnapshot(true);
-  return LAST_HH_ISSUES_;
 }
 
 // ===================================================================

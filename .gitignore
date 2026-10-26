@@ -22,3 +22,5 @@ manuals/graphify-out/.*
 
 # media binaries
 *.mp4
+
+.claude/

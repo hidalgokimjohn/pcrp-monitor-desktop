@@ -180,43 +180,6 @@ function apiNoAttendeesRecords() {
 }
 
 /**
- * Household roster checks for Data Health: rows with no name, duplicate
- * listings in one barangay, and household heads found in more than one barangay.
- * The web app is open to anonymous viewers, so names and birthdates go only to
- * editors; everyone else gets the places and counts.
- */
-function apiHouseholdIssues(passkey) {
-  if (passkey) setActivePasskey_(passkey);
-  var iss = getHouseholdIssues();
-  var snap = getSnapshot(false);
-  var editor = isEditor_(passkey);
-  var out = {
-    editor: editor,
-    summary: (snap.health && snap.health.householdRoster) || null,
-    blank: iss.blank
-  };
-  if (editor) {
-    out.duplicates = iss.duplicates;
-    out.crossBarangay = iss.crossBarangay;
-    return out;
-  }
-  out.duplicates = iss.duplicates.map(function (d) {
-    return { province: d.province, municipality: d.municipality, barangay: d.barangay,
-             actCode: d.actCode, times: d.times, presentCount: d.presentCount };
-  });
-  out.crossBarangay = iss.crossBarangay.map(function (c) {
-    return {
-      confidence: c.confidence, acrossMunicipalities: c.acrossMunicipalities,
-      barangays: c.barangays.map(function (b) {
-        return { province: b.province, municipality: b.municipality, barangay: b.barangay,
-                 actCode: b.actCode, present: b.present, times: b.times };
-      })
-    };
-  });
-  return out;
-}
-
-/**
  * The Fix list: every open Data Health item that belongs to a place, with its
  * status against the previous pull (new, still open since, better, worse) and
  * what was resolved since. Places and counts only, so it goes to every viewer.
@@ -224,7 +187,7 @@ function apiHouseholdIssues(passkey) {
  */
 function apiFixList() {
   var snap = getSnapshot(false);
-  var current = dqaFindings(snap.health, getHouseholdIssues());
+  var current = dqaFindings(snap.health);
   var dates = historyDates();
   var latest = dates.length ? dates[dates.length - 1] : '';
   var res = dqaCompare(current, readFindingsLedger(latest));
@@ -260,65 +223,39 @@ function apiMatrix() {
       });
       // Household participation belongs to Assemblies (BA1, BA2, BA3) and is
       // not carried in byMuniActivity, so it is summed from the barangay rows.
-      var hh = { listed: 0, present: 0, reporting: 0, complete: 0, noList: 0, gt30: 0, lt30: 0, zero: 0, quorumMet: 0, quorumNotMet: 0 };
-      var hh_ba2 = { listed: 0, present: 0, reporting: 0, complete: 0, noList: 0, gt30: 0, lt30: 0, zero: 0, quorumMet: 0, quorumNotMet: 0 };
-      var hh_ba3 = { listed: 0, present: 0, reporting: 0, complete: 0, noList: 0, gt30: 0, lt30: 0, zero: 0, quorumMet: 0, quorumNotMet: 0 };
+      // listed = Total Hh In Barangay, present = Total Hh Represented, over the
+      // barangays that encoded both counts (reporting). noList: assembly complete,
+      // household counts not encoded; incomplete: one of the two counts only;
+      // conflicts: KCIS records that disagree.
+      var hhTally = function () {
+        return { listed: 0, present: 0, reporting: 0, complete: 0, noList: 0, incomplete: 0, conflicts: 0,
+                 gt30: 0, lt30: 0, zero: 0, quorumMet: 0, quorumNotMet: 0 };
+      };
+      var hhSum = { BA1: hhTally(), BA2: hhTally(), BA3: hhTally() };
       snap.barangayRows.forEach(function (b) {
         if (b.municipality !== m.municipality || b.province !== m.province) return;
-        // BA1 (Seq 2)
-        if (b.hhListed > 0) {
-          hh.reporting++;
-          hh.listed += b.hhListed;
-          hh.present += b.hhPresent;
-          if (b.hhRate >= 0.7) hh.quorumMet++;
-          else hh.quorumNotMet++;
-        }
-        var lVal = b.hhListed || 0;
-        if (lVal > 30) hh.gt30++;
-        else if (lVal > 0) hh.lt30++;
-        else hh.zero++;
-        var ba = b.activities && b.activities['BA1'];
-        if (ba && ba.status === 'Complete') {
-          hh.complete++;
-          if (!b.hhListed) hh.noList++;
-        }
-
-        // BA2 (Seq 6)
-        var ba2Act = b.activities && b.activities['BA2'];
-        if (ba2Act && ba2Act.hhListed > 0) {
-          hh_ba2.reporting++;
-          hh_ba2.listed += ba2Act.hhListed;
-          hh_ba2.present += ba2Act.hhPresent;
-          if (ba2Act.hhRate >= 0.7) hh_ba2.quorumMet++;
-          else hh_ba2.quorumNotMet++;
-        }
-        var lVal2 = (ba2Act && ba2Act.hhListed) || 0;
-        if (lVal2 > 30) hh_ba2.gt30++;
-        else if (lVal2 > 0) hh_ba2.lt30++;
-        else hh_ba2.zero++;
-        if (ba2Act && ba2Act.status === 'Complete') {
-          hh_ba2.complete++;
-          if (!ba2Act.hhListed) hh_ba2.noList++;
-        }
-
-        // BA3 (Seq 9)
-        var ba3Act = b.activities && b.activities['BA3'];
-        if (ba3Act && ba3Act.hhListed > 0) {
-          hh_ba3.reporting++;
-          hh_ba3.listed += ba3Act.hhListed;
-          hh_ba3.present += ba3Act.hhPresent;
-          if (ba3Act.hhRate >= 0.7) hh_ba3.quorumMet++;
-          else hh_ba3.quorumNotMet++;
-        }
-        var lVal3 = (ba3Act && ba3Act.hhListed) || 0;
-        if (lVal3 > 30) hh_ba3.gt30++;
-        else if (lVal3 > 0) hh_ba3.lt30++;
-        else hh_ba3.zero++;
-        if (ba3Act && ba3Act.status === 'Complete') {
-          hh_ba3.complete++;
-          if (!ba3Act.hhListed) hh_ba3.noList++;
-        }
+        Object.keys(hhSum).forEach(function (code) {
+          var t = hhSum[code], act = b.activities && b.activities[code];
+          var listed = (act && act.hhListed) || 0;
+          if (listed > 0) {
+            t.reporting++;
+            t.listed += listed;
+            t.present += act.hhPresent;
+            if (act.hhRate >= K2_TARGET) t.quorumMet++;
+            else t.quorumNotMet++;
+          }
+          if (listed > 30) t.gt30++;
+          else if (listed > 0) t.lt30++;
+          else t.zero++;
+          if (act && act.hhIncomplete) t.incomplete++;
+          if (act && act.hhConflict) t.conflicts++;
+          if (act && act.status === 'Complete') {
+            t.complete++;
+            if (!listed) t.noList++;
+          }
+        });
       });
+      var hh = hhSum.BA1, hh_ba2 = hhSum.BA2, hh_ba3 = hhSum.BA3;
       var cv = snap.volunteers && snap.volunteers.imported ? (snap.volunteers.byMuni[mKey] || null) : null;
       return { province: m.province, municipality: m.municipality,
                batch: m.batch, focalArea: m.focalArea || '',
@@ -454,7 +391,7 @@ function apiMunicipality(name, province) {
           hhReporting++;
           hhListed += b.hhListed;
           hhPresent += b.hhPresent;
-          if (b.hhRate >= 0.7) hhMet++;
+          if (b.hhRate >= K2_TARGET) hhMet++;
         }
         var listedCount = b.hhListed || 0;
         if (listedCount > 30) {
@@ -896,6 +833,11 @@ function apiRefresh(passkey) {
   if (passkey) setActivePasskey_(passkey);
   getSnapshot(true);
   return apiOverview(passkey);
+}
+
+function apiSaveSnapshot(pullDate, passkey) {
+  if (passkey) setActivePasskey_(passkey);
+  return saveSnapshot(pullDate, passkey);
 }
 
 function apiSetAppraisal(province, municipality, status, dateIso, passkey) {

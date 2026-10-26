@@ -14,7 +14,8 @@
 
 var SAVED = { current: null, ledger: {}, available: true, dataStamp: '' };   // dataStamp: which exports are on screen
 var SAVE_DB = 'pcrp-desktop', SAVE_STORE = 'kv', SAVE_KEEP_PULLS = 12;
-var SAVE_TABLES = ['Raw_Participants', 'Raw_Households', 'Raw_Volunteers'];
+// Saves made before v2.15 carry 'Raw_Households' (the old household roster): it is not read back.
+var SAVE_TABLES = ['Raw_Participants', 'Raw_HH_Participation', 'Raw_Volunteers'];
 var SAVE_FORMAT = 'pcrp-desktop-save';
 var saveTimer = null;
 
@@ -187,7 +188,7 @@ historyDates = function () {
 };
 
 /**
- * Save the loaded data (participants, households, volunteers) and computed findings.
+ * Save the loaded data (participants, household participation, volunteers) and computed findings.
  * Called immediately when files are imported and whenever computation completes.
  */
 function savedSaveCurrent() {
@@ -223,7 +224,7 @@ function savedSaveCurrent() {
     dataStamp: SAVED.dataStamp || ('s' + Date.now()),
     loaded: LOADED,
     tables: tables,
-    findings: (SNAP && SNAP.health && typeof dqaFindings === 'function') ? dqaFindings(SNAP.health, HH_LISTS) : []
+    findings: (SNAP && SNAP.health && typeof dqaFindings === 'function') ? dqaFindings(SNAP.health) : []
   };
 
   savedApplyLedger();
@@ -298,6 +299,7 @@ function savedLoadCurrent(cur) {
     if (cur.tables && cur.tables[t]) TABS[t] = cur.tables[t];
   });
   LOADED = cur.loaded || {};
+  if (LOADED.households && !TABS.Raw_HH_Participation) delete LOADED.households;   // an old save's household roster
   SAVED.dataStamp = cur.dataStamp || cur.savedAt || 'restored';
   var p = prefs();
   if (cur.pullDate && (!p.evalDate || p.evalDate !== cur.pullDate)) {
@@ -316,7 +318,7 @@ function savedLoadCurrent(cur) {
   if (LOADED.participants && TABS.Raw_Participants && TABS.Raw_Participants.rows && TABS.Raw_Participants.rows.length > 0) {
     computeAndShow(savedPage || 'overview');
   } else {
-    // Only partial exports (e.g., Volunteers or Households)
+    // Only partial exports (e.g., Volunteers or Household Participation)
     setTabsEnabled(true);
     renderStatus();
     renderImport();
@@ -378,7 +380,7 @@ function savedToFile() {
     setProgress('');
     var where = homeLabel().replace(/[^A-Za-z0-9]+/g, '_').replace(/_+$/, '') || 'region';
     saveBlob(blob, 'PCRP_data_' + where + '_as_of_' + pd + '.pcrp');
-    toast('Saved. The file holds names and birthdates: keep it under the Data Privacy Act.');
+    toast('Saved. The file holds personal data (names): keep it under the Data Privacy Act.');
   }).catch(function (e) { setProgress(''); toast(e.message); });
 }
 

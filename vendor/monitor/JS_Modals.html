@@ -29,11 +29,35 @@ S.changelogSearch = '';
 
 var CHANGELOG_DATA = [
   {
-    version: '2.14.0',
-    date: 'October 21, 2026',
+    version: '2.16.0',
+    date: 'October 26, 2026',
     tag: 'Latest Release',
     tagColor: 'bg-emerald-100 text-emerald-900 border-emerald-300 dark:bg-emerald-950/60 dark:text-emerald-300 dark:border-emerald-700',
     spotlight: true,
+    items: [
+      { type: 'feature', label: 'Civic Institutional Footer & Status Anchoring', text: 'Added BetterGov.ph civic editorial footer anchoring the console with live versioning, real-time update polling pill, active workspace scope pill, and developer attribution.', page: 'admin', pageLabel: 'Workspace' },
+      { type: 'enhancement', label: 'Header & Scope Modernization', text: 'Cleaned top header branding for KALAHI-CIDSS PCRP Caraga Region; standardized sharp PEA / MDM and RPMO scope pills across all modules.', page: 'overview', pageLabel: 'Overview' },
+      { type: 'enhancement', label: 'BetterGov.ph Design System', text: 'Adopted Republic of the Philippines civic design tokens: Figtree, Inter, and JetBrains Mono triad, exposed structural borders, and sharp geometric corners.', page: 'admin', pageLabel: 'System' }
+    ]
+  },
+  {
+    version: '2.15.0',
+    date: 'October 26, 2026',
+    tag: 'Previous Release',
+    tagColor: 'bg-slate-100 text-slate-800 border-slate-300 dark:bg-slate-800 dark:text-slate-300 dark:border-slate-700',
+    spotlight: false,
+    items: [
+      { type: 'feature', label: 'K2 from the Household Participation Export', text: 'Household participation now reads the counts KCIS keeps per activity: Total Hh Represented ÷ Total Hh In Barangay. The household roster export is no longer imported or needed.', page: 'admin', pageLabel: 'Import & Setup' },
+      { type: 'feature', label: 'Household Count Checks', text: 'Data Health flags assemblies whose counts are incomplete, conflict across KCIS records, exceed the barangay total or the attendees encoded, and assemblies encoded with no household counts.', page: 'health', pageLabel: 'Data Quality' },
+      { type: 'enhancement', label: 'Quorum Scorecard per Assembly', text: 'The household quorum scorecard switches between the 1st, 2nd and 3rd Barangay Assemblies; DQA verification checks the two counts against the Household Participation Form.', page: 'people', pageLabel: 'People' },
+      { type: 'enhancement', label: 'Roster Checks Retired', text: 'Household rows with no name, duplicate roster entries, household heads in two barangays and roster birthdate checks are removed with the roster export.', page: 'health', pageLabel: 'Data Quality' }
+    ]
+  },
+  {
+    version: '2.14.0',
+    date: 'October 21, 2026',
+    tag: 'Previous Release',
+    tagColor: 'bg-slate-100 text-slate-800 border-slate-300 dark:bg-slate-900/60 dark:text-slate-300 dark:border-slate-700',
     items: [
       { type: 'feature', label: 'Universal DQA Finding Deep Links', text: 'All Data Quality findings across households, attendees, volunteers, and barangays now feature interactive deep links that jump directly into the exact module and record.', page: 'health', pageLabel: 'Data Quality' },
       { type: 'feature', label: 'Duplicate Records Highlighting', text: 'Visual highlight stripes, inline duplicate badges, and quick filter chips for duplicate attendance sittings and household roster duplicates.', page: 'people', pageLabel: 'People' },

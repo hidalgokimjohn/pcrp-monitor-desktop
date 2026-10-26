@@ -6,7 +6,8 @@
 //
 // Four forms, one record each:
 //   att    attendance sheet         per barangay (or municipality) and activity
-//   hh     household roster         per barangay and assembly
+//   hh     Household Participation Form, per barangay and assembly: its two
+//          counts (households in barangay, households represented) are the rows
 //   cv     CV Profile Form and the barangay resolution, per barangay and body (BResT, SFMSC)
 //   mrest  the Executive Order creating the MResT, per municipality
 //
@@ -25,9 +26,10 @@ var VF_FORMS = {
   att:   { label: 'Attn Sheet', paper: 'the signed attendance sheet (attn sheet)', unit: 'attendee', units: 'attendees',
            countLabel: 'Names on the signed attn sheet', absent: 'Not on the attn sheet',
            what: ['Name spelling', 'Sex', 'Other'] },
-  hh:    { label: 'Household roster', paper: 'the household roster form', unit: 'household', units: 'households',
-           countLabel: 'Households on the roster form', absent: 'Not on the roster',
-           what: ['Name spelling', 'Birthdate', 'Is Present', 'Other'] },
+  hh:    { label: 'Household Participation Form', paper: 'the Household Participation Form', unit: 'count', units: 'counts',
+           absent: 'Not on the form', noCount: true,
+           howTo: 'For each household count encoded in KCIS, mark whether it matches the figure on the form.',
+           what: ['Different figure', 'Other'] },
   cv:    { label: 'Volunteers (BResT, SFMSC)', paper: 'the CV Profile Forms and the barangay resolution', unit: 'volunteer', units: 'volunteers',
            countLabel: 'Volunteers in the resolution', absent: 'Not in the resolution',
            what: ['Name spelling', 'Sex', 'Committee', 'Position', 'Other'] },
@@ -71,16 +73,13 @@ function vfMrestRows() {
 function vfRecords(form) {
   if (!VERIFY.cache || VERIFY.cacheFor !== S.overview) { VERIFY.cache = {}; VERIFY.cacheFor = S.overview; }
   if (VERIFY.cache[form]) return VERIFY.cache[form];
+  if (form === 'hh') return (VERIFY.cache[form] = vfHouseholdRecords());
   var src, group, detail;
   var P = people();
   if (form === 'att') {
     src = P.attendees;
     group = function (r) { return r.act; };
     detail = function (r) { return [r.sex ? cap(r.sex) : 'sex not recorded', r.date].filter(Boolean).join(' · '); };
-  } else if (form === 'hh') {
-    src = P.households;
-    group = function (r) { return r.act; };
-    detail = function (r) { return [r.birthdate ? 'born ' + r.birthdate : 'no birthdate', r.head ? 'head' : '', r.present ? 'present' : 'not present'].filter(Boolean).join(' · '); };
   } else if (form === 'cv') {
     src = LOADED.volunteers ? P.volunteers.filter(function (r) { return r.body; }) : null;
     group = function (r) { return r.body; };
@@ -113,6 +112,39 @@ function vfRecords(form) {
     return (a.municipality + '|' + a.barangay + '|' + a.label).localeCompare(b.municipality + '|' + b.barangay + '|' + b.label);
   });
   return (VERIFY.cache[form] = list);
+}
+
+/**
+ * Household Participation Form records: one per barangay and assembly with a
+ * household count encoded, its two counts as the rows to check. The row keys
+ * ('total', 'represented') are fixed, so tags survive a re-import. null until
+ * the Household Participation export is loaded.
+ */
+function vfHouseholdRecords() {
+  var hc = SNAP && SNAP.health && SNAP.health.householdCounts;
+  if (!hc || !hc.imported) return null;
+  var asms = ((SNAP && SNAP.pipeline) || []).filter(function (p) { return p.households; });
+  var list = [];
+  asms.forEach(function (a) {
+    (SNAP.barangayRows || []).forEach(function (b) {
+      var h = b.activities && b.activities[a.code];
+      if (!h || h.notApplicable || (h.hhTotal === null && h.hhRepresented === null) || h.hhTotal === undefined) return;
+      var note = h.hhConflict ? 'KCIS has ' + n(h.hhRecords) + ' records with different counts; this one is used' : '';
+      var fig = function (v) { return v === null ? 'not encoded' : n(v); };
+      list.push({
+        key: ['hh', b.province, b.municipality, b.barangay, a.code].join('|'), form: 'hh',
+        province: b.province, municipality: b.municipality, barangay: b.barangay, act: a.code, label: vfActLabel('hh', a.code),
+        rows: [
+          { rk: 'total', name: 'Households in barangay: ' + fig(h.hhTotal), detail: ['Total Hh In Barangay', note].filter(Boolean).join(' · ') },
+          { rk: 'represented', name: 'Households represented: ' + fig(h.hhRepresented), detail: ['Total Hh Represented', note].filter(Boolean).join(' · ') }
+        ]
+      });
+    });
+  });
+  list.sort(function (a, b) {
+    return (a.municipality + '|' + a.barangay + '|' + a.label).localeCompare(b.municipality + '|' + b.barangay + '|' + b.label);
+  });
+  return list;
 }
 
 function cap(s) { return s ? s.charAt(0).toUpperCase() + s.slice(1) : s; }
@@ -694,7 +726,7 @@ function renderVerify(keepScroll) {
     '<div class="toolbar-row"><div class="filters" style="margin:0">' + formSel + muniSel + bySel + '</div></div>';
 
   if (!recs) {
-    body.innerHTML = subNav + head + '<div class="empty-state">Load the Community Volunteer List to verify ' + esc(F.units) + '.</div></div>';
+    body.innerHTML = subNav + head + '<div class="empty-state">Load the ' + (VERIFY.ui.form === 'hh' ? 'Household Participation export' : 'Community Volunteer List') + ' to verify ' + esc(F.units) + '.</div></div>';
     afterVerifyRender(); return;
   }
   var t = vfTotals(recs);
@@ -918,9 +950,9 @@ function vfRecordView(rec) {
       '<h2 style="margin-top:4px">' + esc(rec.barangay || rec.municipality) + ' · ' + esc(rec.label) + '</h2>' +
       '<div class="muted">' + esc(F.label) + ' · ' + esc(rec.municipality) + ', ' + esc(rec.province) + ' · ' + n(s.encoded) + ' ' + esc(s.encoded === 1 ? F.unit : F.units) + ' encoded in KCIS</div></div>' +
       '<div>' + vfStatusPill(s) + '</div></div>' +
-    '<p class="muted">Open ' + esc(F.paper) + '. For each name encoded in KCIS, mark whether it matches the form. Then count the names on the form.</p>' +
+    '<p class="muted">Open ' + esc(F.paper) + '. ' + esc(F.howTo || 'For each name encoded in KCIS, mark whether it matches the form. Then count the names on the form.') + '</p>' +
     '<div class="toolbar-row"><div class="filters" style="margin:0;width:100%"><label class="field"><span>Checked by</span><input id="vf-by" data-act="vf-by" placeholder="Name and position" value="' + attr(vfVerifier()) + '" style="min-width:220px"></label>' +
-      '<label class="field"><span>' + esc(F.countLabel) + '</span><input type="number" min="0" data-act="vf-count" data-rec="' + attr(rec.key) + '" value="' + (s.formCount === null ? '' : s.formCount) + '" style="width:110px"></label>' +
+      (F.noCount ? '' : '<label class="field"><span>' + esc(F.countLabel) + '</span><input type="number" min="0" data-act="vf-count" data-rec="' + attr(rec.key) + '" value="' + (s.formCount === null ? '' : s.formCount) + '" style="width:110px"></label>') +
       '<label class="field" style="flex:1"><span>Note</span><input data-act="vf-note" data-rec="' + attr(rec.key) + '" maxlength="500" placeholder="e.g. page 2 of the attn sheet missing" value="' + attr(t.note || '') + '"></label></div></div>' +
     '<div class="vf-sum">' +
       '<span><strong>' + n(s.checked) + '</strong> of ' + n(s.encoded) + ' checked</span>' +
