@@ -163,7 +163,37 @@ p:last-child { margin-bottom: 0; }
   background: var(--bg-card);
   border-bottom: 1px solid var(--border-subtle);
 }
-.brand { display: flex; align-items: center; gap: 12px; }
+.brand { display: flex; align-items: center; gap: 14px; }
+.gv-logos, .brand-logos {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: #ffffff;
+  padding: 3px 8px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  flex-shrink: 0;
+  box-shadow: 0 1px 2px rgba(17, 21, 28, 0.04);
+}
+.gv-logo-dswd {
+  height: 32px;
+  width: auto;
+  object-fit: contain;
+  display: block;
+}
+.gv-logo-kalahi {
+  height: 26px;
+  width: auto;
+  object-fit: contain;
+  display: block;
+}
+.gv-meta-sep {
+  color: #94a3b8;
+  font-weight: 300;
+  font-size: 15px;
+  line-height: 1;
+  user-select: none;
+}
 .brand-mark {
   width: 36px;
   height: 36px;

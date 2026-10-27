@@ -156,6 +156,7 @@ const builtIn = {
 const safe = (js) => js.replace(/<\/(script)/gi, '<\\/$1');
 const tpl = fs.readFileSync(path.join(HERE, 'src', 'app.html'), 'utf8');
 const html = tpl
+  .replace('/*@@EDITORIAL_CSS@@*/', () => fs.readFileSync(path.join(HERE, 'src', 'bettergov-editorial.css'), 'utf8'))
   .replace('/*@@APP_CSS@@*/', () => fs.readFileSync(path.join(HERE, 'src', 'app.css'), 'utf8'))
   .replace('/*@@DH_CSS@@*/', () => dhCss)
   .replace('/*@@BUILT_IN@@*/', () => 'var BUILT_IN = ' + safe(JSON.stringify(builtIn)) + ';')
@@ -184,5 +185,6 @@ if (leaked.length) throw new Error('Build stopped: a web app secret is still in 
 fs.mkdirSync(path.dirname(OUT), { recursive: true });
 fs.writeFileSync(OUT, html);
 fs.writeFileSync(OUT_LEGACY, html);
+fs.writeFileSync(path.join(HERE, 'dist', 'bettergov-editorial.css'), fs.readFileSync(path.join(HERE, 'src', 'bettergov-editorial.css'), 'utf8'));
 console.log('Built', OUT, '(' + Math.round(html.length / 1024) + ' KB) · monitor v' + version +
   ' · baseline ' + ref.Baseline.rows.length + ' rows · activities ' + ref.Activities.rows.length + ' · secrets removed');

@@ -2443,6 +2443,68 @@ async function runAll() {
   }
 
   // -----------------------------------------------------------------
+  // 24. Stage 1 vs Stage 2 Overview Cards & 2nd BA Household Quorum
+  // -----------------------------------------------------------------
+  console.log('\n🏛️ Testing Stage 1 vs Stage 2 Overview Cards & 2nd BA Quorum (src/app.js)...');
+  {
+    const appJs = fs.readFileSync(path.join(ROOT, 'src', 'app.js'), 'utf8');
+
+    test('scopedK2: dynamically switches between BA1 (Stage 1) and BA2 (Stage 2)', () => {
+      const sandbox = {
+        STATE: { stage: 1 },
+        overviewRows: () => [
+          {
+            province: 'Agusan del Norte', municipality: 'Buenavista',
+            households: { listed: 100, present: 75, reporting: 1, quorumMet: 1 },
+            households_ba2: { listed: 120, present: 96, reporting: 1, quorumMet: 1 }
+          },
+          {
+            province: 'Agusan del Norte', municipality: 'Carmen',
+            households: { listed: 80, present: 40, reporting: 1, quorumMet: 0 },
+            households_ba2: { listed: 90, present: 72, reporting: 1, quorumMet: 1 }
+          }
+        ],
+        SNAP: { barangayRows: [] },
+        inOverviewScope: () => true
+      };
+
+      vm.createContext(sandbox);
+      vm.runInContext(extractFn(appJs, 'scopedK2'), sandbox);
+
+      // In Stage 1:
+      sandbox.STATE.stage = 1;
+      const k2Stage1 = sandbox.scopedK2();
+      assert.strictEqual(k2Stage1.asm, 'BA1');
+      assert.strictEqual(k2Stage1.listed, 180);
+      assert.strictEqual(k2Stage1.present, 115);
+      assert.strictEqual(k2Stage1.met, 1);
+      assert.strictEqual(k2Stage1.rate, 115 / 180);
+
+      // In Stage 2:
+      sandbox.STATE.stage = 2;
+      const k2Stage2 = sandbox.scopedK2();
+      assert.strictEqual(k2Stage2.asm, 'BA2');
+      assert.strictEqual(k2Stage2.listed, 210);
+      assert.strictEqual(k2Stage2.present, 168);
+      assert.strictEqual(k2Stage2.met, 2);
+      assert.strictEqual(k2Stage2.rate, 168 / 210);
+
+      // Explicit override:
+      const k2ExplicitBa1 = sandbox.scopedK2('BA1');
+      assert.strictEqual(k2ExplicitBa1.asm, 'BA1');
+      assert.strictEqual(k2ExplicitBa1.listed, 180);
+    });
+
+    test('Overview Card: dynamically renders 1st BA Quorum in Stage 1 and both 2nd BA & 3rd BA Quorum in Stage 2', () => {
+      assert.ok(appJs.includes("var isStage2 = STATE.stage === 2;"), 'isStage2 check exists');
+      assert.ok(appJs.includes("label: 'BA HH Rate · 1st BA Quorum'"), 'Stage 1 renders 1st BA Quorum card');
+      assert.ok(appJs.includes("label: 'BA HH Rate · 2nd BA Quorum'"), 'Stage 2 renders 2nd BA Quorum card');
+      assert.ok(appJs.includes("label: 'BA HH Rate · 3rd BA Quorum'"), 'Stage 2 renders 3rd BA Quorum card');
+      assert.ok(appJs.includes("isStage2 ? '2nd BA community volunteers' : '1st BA community volunteers'"), 'Volunteer card title switches dynamically');
+    });
+  }
+
+  // -----------------------------------------------------------------
   // Summary
   // -----------------------------------------------------------------
   console.log('\n======================================================');

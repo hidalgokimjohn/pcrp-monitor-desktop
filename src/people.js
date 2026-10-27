@@ -705,7 +705,7 @@ function renderAttendees() {
   '</div>';
 
   var scopeBanner = isMuni
-    ? '<div class="static-val">' + icon('map-pin') + ' <span>Municipality: <strong>' + esc(home().municipality) + '</strong> (' + esc(home().province) + ')</span> <span class="role-badge field">PEA / MDM Scope</span></div>'
+    ? '<div class="static-val">' + icon('map-pin') + ' <span>Municipality: <strong>' + esc(home().municipality) + '</strong> (' + esc(home().province) + ')</span></div>'
     : '<label class="field"><span>Municipality</span><select data-act="att-muni">' + mOpts + '</select></label>';
 
   var subNav = '<div class="sub-nav-tabs">' +
@@ -720,7 +720,7 @@ function renderAttendees() {
       '<div class="card-head">' +
         '<div>' +
           '<h2>Activity Attendees Directory</h2>' +
-          '<div class="muted">' + (isMuni ? 'Strict PEA / MDM municipal records for <strong>' + esc(home().municipality) + '</strong>.' : 'Region-wide activity attendance records.') + ' Click any name to view their profile across all exports.</div>' +
+          '<div class="muted">' + (isMuni ? 'Municipal records for <strong>' + esc(home().municipality) + '</strong>.' : 'Region-wide activity attendance records.') + ' Click any name to view their profile across all exports.</div>' +
         '</div>' +
         '<div class="row-actions" style="margin:0"><button class="btn ghost btn-sm" data-act="att-export">' + icon('download') + ' <span>Export Attendees CSV</span></button></div>' +
       '</div>' +
@@ -879,7 +879,7 @@ function renderHouseholdTriageTray(summary) {
           '<span>' + esc(asmLabel) + ' Household Quorum Triage</span> ' +
           badgeHtml +
         '</div>' +
-        '<span class="tiny muted">Click any card to isolate barangays by K2 quorum status</span>' +
+        '<span class="tiny muted">Click any card to isolate barangays by assembly quorum status</span>' +
       '</div>' +
       '<div class="triage-grid">' + items.join('') + '</div>' +
     '</div>'
@@ -919,7 +919,7 @@ function renderHouseholds() {
   });
 
   var scopeBanner = isMuni
-    ? '<div class="static-val">' + icon('map-pin') + ' <span>Municipality: <strong>' + esc(home().municipality) + '</strong> (' + esc(home().province) + ')</span> <span class="role-badge field">PEA / MDM Scope</span></div>'
+    ? '<div class="static-val">' + icon('map-pin') + ' <span>Municipality: <strong>' + esc(home().municipality) + '</strong> (' + esc(home().province) + ')</span></div>'
     : '<label class="field"><span>Municipality</span><select data-act="hh-muni">' + mOpts + '</select></label>';
 
   var summary = getHouseholdTriageSummary(brgys, HH_STATE.asm);
@@ -1019,7 +1019,7 @@ function renderHouseholds() {
     '<div class="table-wrap"><table class="grid"><thead><tr>' +
       th('brgy', 'Barangay', false, { tooltip: 'Barangay covered by PCRP' }) +
       (!isMuni ? th('muni', 'Municipality', false, { tooltip: 'Local Government Unit' }) : '') +
-      th('listed', 'Households in Barangay', true, { tooltip: '"Total Hh In Barangay" encoded in KCIS for this assembly (the K2 denominator)' }) +
+      th('listed', 'Households in Barangay', true, { tooltip: 'Total households in the barangay recorded in KCIS (the quorum denominator)' }) +
       th('present', 'Households Represented', true, { tooltip: '"Total Hh Represented" encoded in KCIS for this assembly' }) +
       th('rate', 'Participation Rate', false, { tooltip: 'Households Represented ÷ Households in Barangay (at least 70% meets the quorum)' }) +
       th('sectors', '4Ps · IP · SLP HH', false, { tooltip: 'Households represented that are 4Ps, IP or SLP (Total 4Ps / Ip / Slp Hh Represented in KCIS)' }) +
@@ -1042,7 +1042,7 @@ function renderHouseholds() {
     '<div class="card">' +
       '<div class="card-head">' +
         '<div>' +
-          '<h2>Household Participation (K2 Quorum)</h2>' +
+          '<h2>Household Participation &amp; Assembly Quorum</h2>' +
           '<div class="muted">' + (isMuni ? 'Scoped strictly to <strong>' + esc(home().municipality) + '</strong>.' : 'Regional household participation monitoring.') + ' Households in barangay and households represented per assembly, as counted in the KCIS Household Participation export (70% statutory threshold).</div>' +
         '</div>' +
         '<div class="row-actions" style="margin:0"><button class="btn ghost btn-sm" data-act="hh-export">' + icon('download') + ' <span>Export Scorecard CSV</span></button></div>' +
@@ -1050,7 +1050,7 @@ function renderHouseholds() {
       notLoaded +
       '<div class="grid-kpi">' +
         '<div class="kpi ' + (overallRate === null ? 'accent-idle' : (overallRate >= 0.7 ? 'accent-good' : 'accent-warn')) + '">' +
-          '<div class="kpi-label">K2 Overall Participation Rate</div>' +
+          '<div class="kpi-label">Overall Household Participation Rate</div>' +
           '<div class="kpi-value">' + pctText(overallRate) + '</div>' +
           '<div class="kpi-sub">' + (overallRate === null ? 'No household counts yet' : (overallRate >= 0.7 ? '✓ Met target quorum (≥70%)' : '⚠ Below target quorum (70%)')) + '</div>' +
         '</div>' +
@@ -1388,7 +1388,7 @@ function renderVolunteers() {
   '</div>';
 
   var scopeBanner = isMuni
-    ? '<div class="static-val">' + icon('map-pin') + ' <span>Municipality: <strong>' + esc(home().municipality) + '</strong> (' + esc(home().province) + ')</span> <span class="role-badge field">PEA / MDM Scope</span></div>'
+    ? '<div class="static-val">' + icon('map-pin') + ' <span>Municipality: <strong>' + esc(home().municipality) + '</strong> (' + esc(home().province) + ')</span></div>'
     : '<label class="field"><span>Municipality</span><select data-act="vol-muni">' + mOpts + '</select></label>';
 
   var subNav = '<div class="sub-nav-tabs">' +
@@ -2570,7 +2570,7 @@ function renderCspmc() {
   '</div>';
 
   var scopeBanner = isMuni
-    ? '<div class="static-val">' + icon('map-pin') + ' <span>Municipality: <strong>' + esc(home().municipality) + '</strong> (' + esc(home().province) + ')</span> <span class="role-badge field">PEA / MDM Scope</span></div>'
+    ? '<div class="static-val">' + icon('map-pin') + ' <span>Municipality: <strong>' + esc(home().municipality) + '</strong> (' + esc(home().province) + ')</span></div>'
     : '<label class="field"><span>Municipality</span><select data-act="cspmc-muni">' + mOpts + '</select></label>';
 
   // Build Organizational Chart visualization
@@ -3446,7 +3446,7 @@ function renderMrest() {
   });
 
   var scopeBanner = isMuni
-    ? '<div class="static-val">' + icon('map-pin') + ' <span>Municipality: <strong>' + esc(muniName) + '</strong> (' + esc(provName) + ') · <strong>' + n(totalBarangays) + ' Barangays</strong></span> <span class="role-badge field">PEA / MDM Scope</span></div>'
+    ? '<div class="static-val">' + icon('map-pin') + ' <span>Municipality: <strong>' + esc(muniName) + '</strong> (' + esc(provName) + ') · <strong>' + n(totalBarangays) + ' Barangays</strong></span></div>'
     : '<label class="field" style="margin:0"><span>Active Municipality</span><select data-act="mrt-muni">' + mOpts + '</select></label>';
 
   // Build Org Chart section if enabled
@@ -3604,7 +3604,7 @@ function renderPeople() {
     '<p class="muted">The People module has been separated into dedicated, specialized modules with comprehensive metrics and validation:</p>' +
     '<div class="grid-kpi" style="margin-top:16px">' +
       '<button type="button" class="kpi clickable" data-act="go" data-v="attendees"><div class="kpi-label">Attendees</div><div class="kpi-value">' + icon('calendar-check') + '</div><div class="kpi-sub">Open Attendees Module ›</div></button>' +
-      '<button type="button" class="kpi clickable" data-act="go" data-v="households"><div class="kpi-label">Household Participation</div><div class="kpi-value">' + icon('home') + '</div><div class="kpi-sub">Open K2 Quorum Scorecard ›</div></button>' +
+      '<button type="button" class="kpi clickable" data-act="go" data-v="households"><div class="kpi-label">Household Participation</div><div class="kpi-value">' + icon('home') + '</div><div class="kpi-sub">Open Assembly Quorum Scorecard ›</div></button>' +
       '<button type="button" class="kpi clickable" data-act="go" data-v="volunteers"><div class="kpi-label">Community Volunteers</div><div class="kpi-value">' + icon('users') + '</div><div class="kpi-sub">Open Volunteers Module ›</div></button>' +
       '<button type="button" class="kpi clickable" data-act="go" data-v="brest"><div class="kpi-label">BResT</div><div class="kpi-value">' + icon('shield') + '</div><div class="kpi-sub">Open BResT (Stage 1) ›</div></button>' +
       '<button type="button" class="kpi clickable" data-act="go" data-v="cspmc"><div class="kpi-label">CSPMC &amp; Sub-Committees</div><div class="kpi-value">' + icon('layers') + '</div><div class="kpi-sub">Open Stage 2 Committees ›</div></button>' +

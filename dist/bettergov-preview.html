@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>BetterGov Editorial Civic Design System — Component Showcase</title>
+  
+  <!-- Republic of the Philippines Brand Guidelines (Section 04) Typography -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Figtree:wght@600;700&family=Inter:ital,wght@0,400;0,500;0,600;0,700;1,400&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+  
+  <!-- Standalone Reusable Stylesheet -->
+  <link rel="stylesheet" href="bettergov-editorial.css">
+  
+  <style>
+    .showcase-container {
+      max-width: 1400px;
+      margin: 0 auto;
+      padding: 32px 24px 80px;
+    }
+    .demo-section {
+      margin-bottom: 48px;
+    }
+  </style>
+</head>
+<body class="bettergov-editorial">
+
+  <!-- 1. CAMPAIGN / ANNOUNCEMENT STRIP -->
+  <a href="#rules" class="campaign-strip">
+    Republic of the Philippines Brand Guidelines · Section 04 Compliant <span>Learn More →</span>
+  </a>
+
+  <!-- 1. CIVIC MASTHEAD -->
+  <header class="gov-masthead">
+    <!-- Branding & Title Row -->
+    <div class="gov-masthead-main">
+      <div class="gov-masthead-brand">
+        <div class="gv-logos brand-logos">
+          <img src="https://i.imgur.com/Bsoi1Em.png" alt="DSWD Logo" class="gv-logo-dswd">
+          <span class="gv-meta-sep">/</span>
+          <img src="https://i.imgur.com/tyxaJZk.png" alt="KALAHI-CIDSS Logo" class="gv-logo-kalahi">
+        </div>
+        <div class="gov-title-block">
+          <div class="kicker">Department of Social Welfare and Development · Caraga Region</div>
+          <h1 class="title">PCRP Encoding &amp; Data Quality Assessment Tool</h1>
+        </div>
+      </div>
+      <div style="display: flex; align-items: center; gap: 8px;">
+        <span class="pill good"><i data-lucide="shield-check"></i> 100% Client-Side Local</span>
+        <button id="theme-toggle" class="pill" type="button" style="cursor:pointer">Toggle Dark Mode</button>
+      </div>
+    </div>
+
+    <!-- Tier 3: Chrome Navigation Tabs -->
+    <nav class="gov-tabs" aria-label="Sections">
+      <button type="button" class="active">Overview</button>
+      <button type="button">KPI Summary</button>
+      <button type="button">Municipalities</button>
+      <button type="button">Barangays</button>
+      <button type="button">Household Quorum</button>
+      <button type="button">Community Volunteers</button>
+      <button type="button">DQA Audit Scorecard</button>
+    </nav>
+  </header>
+
+  <main class="showcase-container">
+
+    <!-- 3. JOURNALISTIC SECTION HEADER -->
+    <div class="section-head">
+      <div>
+        <span class="eyebrow">Executive Readiness Report</span>
+        <h2 class="headline xl">Caraga Regional Implementation &amp; Quorum Progress</h2>
+        <p class="dek">
+          Tracking community participation, barangay resilience assembly attendance, and verification audits across all 747 monitored barangays in Region XIII.
+        </p>
+      </div>
+      <div>
+        <span class="byline">UPDATED: OCTOBER 2026 · DSWD REGIONAL OVERSIGHT</span>
+      </div>
+    </div>
+
+    <!-- 4. CONNECTED 4-COLUMN KPI METRIC STRIP -->
+    <div class="kpi-strip">
+      <div class="kpi-cell">
+        <div class="kpi-label">Overall Readiness Index</div>
+        <div class="kpi-value">94.8%</div>
+        <div class="kpi-sub up">+3.2% vs. baseline</div>
+      </div>
+      <div class="kpi-cell">
+        <div class="kpi-label">Barangays Monitored</div>
+        <div class="kpi-value">747</div>
+        <div class="kpi-sub">712 active assemblies</div>
+      </div>
+      <div class="kpi-cell">
+        <div class="kpi-label">BA HH Quorum (≥70%)</div>
+        <div class="kpi-value">88.4%</div>
+        <div class="kpi-sub warn">28 barangays near threshold</div>
+      </div>
+      <div class="kpi-cell">
+        <div class="kpi-label">Data Quality Score</div>
+        <div class="kpi-value delta-pos">98.2%</div>
+        <div class="kpi-sub">0 critical SM7 anomalies</div>
+      </div>
+    </div>
+
+    <!-- 5. CHUNKY STAGE SELECTOR STRIP -->
+    <div class="demo-section">
+      <div class="section-head">
+        <div>
+          <span class="eyebrow">Progression Cycle</span>
+          <h3 class="headline sm">Community Driven Development Stages</h3>
+          <p class="dek">Switch stages to review activity attendance, sub-project selection, and volunteer election audits.</p>
+        </div>
+      </div>
+
+      <div class="stage-strip">
+        <div class="stage-cell active">
+          <div class="year-cell-num">Stage 1</div>
+          <div class="year-cell-meta">Community Profiling &amp; BResT</div>
+          <div class="year-cell-bar"><span style="width: 100%;"></span></div>
+        </div>
+        <div class="stage-cell">
+          <div class="year-cell-num">Stage 2</div>
+          <div class="year-cell-meta">Sub-Project Development</div>
+          <div class="year-cell-bar"><span style="width: 65%;"></span></div>
+        </div>
+        <div class="stage-cell">
+          <div class="year-cell-num">Stage 3</div>
+          <div class="year-cell-meta">Accountability &amp; O&amp;M</div>
+          <div class="year-cell-bar"><span style="width: 20%;"></span></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 6. EDITORIAL & HIERARCHICAL TABLE WITH IN-CELL MICRO GAUGES -->
+    <div class="demo-section">
+      <div class="section-head">
+        <div>
+          <span class="eyebrow">Municipal Breakdown</span>
+          <h3 class="headline sm">LGU Target Accomplishment &amp; Verification Health</h3>
+        </div>
+      </div>
+
+      <table class="hier-table">
+        <thead>
+          <tr>
+            <th style="width: 80px;">Code</th>
+            <th>Municipality / Province</th>
+            <th style="width: 240px;">Encoding Progress</th>
+            <th style="width: 120px;" class="right">Barangays</th>
+            <th style="width: 130px;" class="right">BA HH Rate</th>
+            <th style="width: 140px;" class="right">Status</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td class="num">160201</td>
+            <td class="name">
+              Buenavista
+              <span class="desc">Agusan del Norte · 25 Barangays</span>
+            </td>
+            <td class="bar-cell">
+              <div class="bar-h accent">
+                <span style="width: 96%;"></span>
+              </div>
+              <span class="bar-val">96.0% encoded</span>
+            </td>
+            <td class="num">25 / 25</td>
+            <td class="num delta-pos">94.2%</td>
+            <td class="right"><span class="pill pos">Verified</span></td>
+          </tr>
+          <tr>
+            <td class="num">160203</td>
+            <td class="name">
+              Carmen
+              <span class="desc">Agusan del Norte · 8 Barangays</span>
+            </td>
+            <td class="bar-cell">
+              <div class="bar-h pos">
+                <span style="width: 100%;"></span>
+              </div>
+              <span class="bar-val">100.0% encoded</span>
+            </td>
+            <td class="num">8 / 8</td>
+            <td class="num delta-pos">98.5%</td>
+            <td class="right"><span class="pill pos">100% Target</span></td>
+          </tr>
+          <tr>
+            <td class="num">160305</td>
+            <td class="name">
+              Esperanza
+              <span class="desc">Agusan del Sur · 47 Barangays</span>
+            </td>
+            <td class="bar-cell">
+              <div class="bar-h warn">
+                <span style="width: 78%;"></span>
+              </div>
+              <span class="bar-val">78.4% encoded</span>
+            </td>
+            <td class="num">37 / 47</td>
+            <td class="num delta-warn">81.0%</td>
+            <td class="right"><span class="pill warn">In Progress</span></td>
+          </tr>
+          <tr>
+            <td class="num">166708</td>
+            <td class="name">
+              San Benito
+              <span class="desc">Surigao del Norte · 6 Barangays</span>
+            </td>
+            <td class="bar-cell">
+              <div class="bar-h neg">
+                <span style="width: 52%;"></span>
+              </div>
+              <span class="bar-val">52.1% encoded</span>
+            </td>
+            <td class="num">3 / 6</td>
+            <td class="num delta-neg">68.4%</td>
+            <td class="right"><span class="pill neg">Lacking Data</span></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- 7. JOURNALISTIC NOTE BLOCK -->
+    <div class="note-block" id="rules">
+      <strong>Data Compliance Caveat.</strong> Figures presented reflect uploaded KCIS participant registries and Barangay Assembly attendance sheets evaluated against SM7 verification protocols. Personal identifiable information (PII) is encrypted locally and excluded from public oversight exports in compliance with Republic Act 10173 (Data Privacy Act of 2012).
+    </div>
+
+  </main>
+
+  <script>
+    // Dark mode toggle demonstration
+    document.getElementById('theme-toggle').addEventListener('click', function () {
+      document.documentElement.classList.toggle('dark');
+    });
+  </script>
+</body>
+</html>
