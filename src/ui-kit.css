@@ -201,12 +201,14 @@ html.dark #btn-import-top.on,
   border-bottom: 2px solid transparent;
   margin-bottom: 0;
 }
+/* Group triggers sit inside .nav-tab-group, so they need .tabs in front to
+   outweigh app.css's .tabs button.on / .tabs button:hover (dark text on paper). */
 .tabs > button:hover:not(:disabled),
-.tab-group-trigger:hover:not(:disabled) { color: #fff; background: rgba(255, 255, 255, 0.08); }
+.tabs .tab-group-trigger:hover:not(:disabled) { color: #fff; background: rgba(255, 255, 255, 0.08); }
 .tabs > button.on,
-.tab-group-trigger.on { color: #fff; font-weight: 500; background: transparent; border-bottom-color: var(--paper); }
+.tabs .tab-group-trigger.on { color: #fff; font-weight: 500; background: transparent; border-bottom-color: var(--paper); }
 html.dark .tabs > button.on,
-html.dark .tab-group-trigger.on { border-bottom-color: #fff; }
+html.dark .tabs .tab-group-trigger.on { border-bottom-color: #fff; }
 .tabs button:disabled,
 .tab-group-trigger:disabled { opacity: 0.45; }
 .tabs button:focus-visible { outline: 2px solid #fff; outline-offset: -3px; }
