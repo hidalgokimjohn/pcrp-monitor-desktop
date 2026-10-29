@@ -644,6 +644,14 @@ var ACTIVITY_ALIASES = {
     'third ba',
     'ba3'
   ],
+  'BA4': [                                // Stage 4, read only when BA4 is in the activity model
+    '4th ba',
+    '4th barangay assembly',
+    'fourth barangay assembly',
+    'fourth ba',
+    'barangay accountability reporting',
+    'ba4'
+  ],
   'TDR': [
     'mrest technical desk review',
     'technical desk review',
@@ -747,6 +755,8 @@ function classify(index, seqVal, nameVal, titleVal) {
       if (cand.indexOf('2nd ba') !== -1 || cand.indexOf('second ba') !== -1 || cand.indexOf('second barangay assembly') !== -1 || cand.indexOf('2nd barangay assembly') !== -1) return 'BA2';
       // Seq 9: 3rd BA (Check before BA1 / generic barangay assembly!)
       if (cand.indexOf('3rd ba') !== -1 || cand.indexOf('third ba') !== -1 || cand.indexOf('third barangay assembly') !== -1 || cand.indexOf('3rd barangay assembly') !== -1) return 'BA3';
+      // Stage 4: 4th BA (BAR). Never the 1st BA; tracked only once BA4 is in the activity model.
+      if (cand.indexOf('4th ba') !== -1 || cand.indexOf('fourth ba') !== -1 || cand.indexOf('fourth barangay assembly') !== -1 || cand.indexOf('4th barangay assembly') !== -1) return index.byCode.BA4 ? 'BA4' : '';
       // Seq 7: Training for CSPMC
       if (cand.indexOf('training') !== -1 && cand.indexOf('cspmc') !== -1) return 'TR_CSPMC';
       // Seq 8: Sub-Project Development Workshop
@@ -1554,7 +1564,10 @@ function computeSnapshot(participants, households, baselineRows, monitored,
   // ---- household participation counts ------------------------------
   // Households attach to Assemblies: BA1 (Seq 2), BA2 (Seq 6), BA3 (Seq 9).
   // KCIS counts them per activity record; resolveHhCounts settles an assembly
-  // that has several records.
+  // that has several records. The export is a summary (one row per activity
+  // record, not per household head), and the assembly is read from Name
+  // (column E: "1st BA", "2nd BA", ...) alone: a row is never placed by its
+  // Activity Title, so a PRVA record titled "... Barangay Assembly" stays out.
   var hhRecs = {};              // "prov|muni|brgy|CODE" -> [{total, represented}]
   var hhUnmapped = 0, hhNotInBaseline = 0;
   var hhActsMap = {};
@@ -1564,7 +1577,7 @@ function computeSnapshot(participants, households, baselineRows, monitored,
     if (!hasValue(row[0])) return;
     var rawActIdH = colH.activityId !== undefined ? row[colH.activityId] : (row.length > 22 ? row[22] : null);
     if (isZeroActivityId(rawActIdH)) return;
-    var code = classify(index, null, row[colH.name], colH.title !== undefined ? row[colH.title] : null);
+    var code = classify(index, null, row[colH.name], null);
     if (!code) { hhUnmapped++; return; }
     if (!hhActsMap[code]) return;                 // only assemblies carry household rosters
     var provRaw = colH.province !== undefined ? normKey(row[colH.province]) : '';

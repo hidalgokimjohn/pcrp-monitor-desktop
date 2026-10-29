@@ -2384,6 +2384,7 @@ async function runAll() {
       const LN = ['Region XIII (Caraga)', 'Agusan del Norte', 'Las Nieves'];
       const att = (brgy, k) => LN.concat([brgy, '2', '1st BA', '1st Barangay Assembly', '1', 'First' + k, '', 'Last' + k, 'Female']);
       const hh = (brgy, total, repr, f4ps) => LN.concat([brgy, '1st BA', '1st Barangay Assembly', '1', total, repr, f4ps === undefined ? '' : f4ps, '']);
+      const hhNamed = (brgy, name, title, total, repr) => LN.concat([brgy, name, title, '1', total, repr, '', '']);
       sandbox.TABS.Baseline = ref.Baseline;
       sandbox.TABS.Activities = ref.Activities;
       sandbox.TABS.Raw_Participants = { headers: sandbox.PARTICIPANT_HEADERS.slice(), rows: [
@@ -2395,7 +2396,11 @@ async function runAll() {
       sandbox.TABS.Raw_HH_Participation = { headers: sandbox.HH_COUNT_HEADERS.concat(['Total 4Ps Hh Represented', 'Individual Total']), rows: [
         hh('Ambacon', 4, 3), hh('Ambacon', '4', '3', 2),                       // identical records: 75%, met
         hh('Balungagan', 10, 5), hh('Balungagan', 3, ''),                   // conflicting records: 10 / 5 is used, 50%
-        hh('Bonifacio', 8, '')                                              // one count only
+        hh('Bonifacio', 8, ''),                                             // one count only
+        // Placed by Name (column E) alone: none of these is a 1st BA record
+        hhNamed('Casiklan', 'PRVA - Community Walk-through', '1st Barangay Assembly', 9, 9),
+        hhNamed('Casiklan', '', '1st Barangay Assembly', 9, 9),
+        hhNamed('Ambacon', '4th Barangay Assembly', '4th Barangay Assembly', 100, 100)
       ] };
       const snap = sandbox.computeAll('2026-10-26');
       const ba1 = (b) => snap.barangayRows.filter(r => r.municipality === 'Las Nieves' && r.barangay === b)[0].activities.BA1;
