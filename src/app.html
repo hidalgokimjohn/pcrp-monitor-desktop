@@ -15,30 +15,46 @@
 /*@@EDITORIAL_CSS@@*/
 /*@@APP_CSS@@*/
 /*@@DH_CSS@@*/
+/*@@KIT_CSS@@*/
 </style>
 </head>
 <body class="bettergov-editorial">
 <header class="top">
-  <div class="brand">
-    <div class="gv-logos brand-logos">
-      <img src="https://i.imgur.com/Bsoi1Em.png" alt="DSWD Logo" class="gv-logo-dswd">
-      <span class="gv-meta-sep">/</span>
-      <img src="https://i.imgur.com/tyxaJZk.png" alt="KALAHI-CIDSS Logo" class="gv-logo-kalahi">
-    </div>
-    <div>
-      <div class="brand-title">PCRP Encoding &amp; Data Quality Assessment Tool</div>
-      <div class="brand-sub">
-        <span class="brand-tag">KALAHI-CIDSS PCRP</span>
-        <span class="brand-tag region">Caraga Region</span>
+  <!-- Masthead, after the Apps Script UI kit: utility row, then logo row. -->
+  <div class="masthead-top">
+    <span class="masthead-meta-l">
+      <span class="masthead-date" id="masthead-date"></span>
+      <span class="masthead-sep">·</span>
+      <span>Offline field console</span>
+    </span>
+    <span class="masthead-meta-r">
+      <span>Files stay on this PC</span>
+      <span class="masthead-sep">·</span>
+      <button class="btn ghost icon-btn" id="btn-theme" type="button" aria-label="Toggle light or dark theme">
+        <i data-lucide="sun"></i>
+      </button>
+    </span>
+  </div>
+  <div class="logo-row">
+    <div class="brand">
+      <div class="gv-logos brand-logos">
+        <img src="https://i.imgur.com/Bsoi1Em.png" alt="DSWD Logo" class="gv-logo-dswd">
+        <span class="gv-meta-sep">/</span>
+        <img src="https://i.imgur.com/tyxaJZk.png" alt="KALAHI-CIDSS Logo" class="gv-logo-kalahi">
+      </div>
+      <span class="logo-tag-divider" aria-hidden="true"></span>
+      <div class="brand-text">
+        <div class="brand-title">PCRP Encoding &amp; Data Quality Assessment Tool</div>
+        <div class="brand-sub">
+          <span class="brand-tag">KALAHI-CIDSS PCRP</span>
+          <span class="brand-tag region">Caraga Region</span>
+        </div>
       </div>
     </div>
-  </div>
-  <div class="top-actions">
-    <button class="btn ghost icon-btn" id="btn-theme" type="button" aria-label="Toggle light or dark theme">
-      <i data-lucide="sun"></i>
-    </button>
-    <button class="btn ghost on" id="btn-import-top" type="button"><i data-lucide="settings"></i> <span>Settings &amp; Setup</span> <span class="tab-badge" id="badge-settings" hidden></span></button>
-    <button class="btn primary" id="btn-export" type="button" disabled><i data-lucide="download"></i> <span>Export to Excel</span></button>
+    <div class="top-actions">
+      <button class="btn ghost on" id="btn-import-top" type="button"><i data-lucide="settings"></i> <span>Settings &amp; Setup</span> <span class="tab-badge" id="badge-settings" hidden></span></button>
+      <button class="btn primary" id="btn-export" type="button" disabled><i data-lucide="download"></i> <span>Export to Excel</span></button>
+    </div>
   </div>
 </header>
 

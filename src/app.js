@@ -4432,6 +4432,8 @@ document.addEventListener('change', function (ev) {
 });
 
 if ($('btn-theme')) $('btn-theme').addEventListener('click', toggleTheme);
+// Masthead utility row: today's date, as in the Apps Script UI kit.
+if ($('masthead-date')) $('masthead-date').textContent = new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
 $('tabs').addEventListener('click', function (ev) {
   var trigger = ev.target.closest('.tab-group-trigger');
   if (trigger && !trigger.disabled) {

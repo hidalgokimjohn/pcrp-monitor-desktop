@@ -159,6 +159,7 @@ const html = tpl
   .replace('/*@@EDITORIAL_CSS@@*/', () => fs.readFileSync(path.join(HERE, 'src', 'bettergov-editorial.css'), 'utf8'))
   .replace('/*@@APP_CSS@@*/', () => fs.readFileSync(path.join(HERE, 'src', 'app.css'), 'utf8'))
   .replace('/*@@DH_CSS@@*/', () => dhCss)
+  .replace('/*@@KIT_CSS@@*/', () => fs.readFileSync(path.join(HERE, 'src', 'ui-kit.css'), 'utf8'))
   .replace('/*@@BUILT_IN@@*/', () => 'var BUILT_IN = ' + safe(JSON.stringify(builtIn)) + ';')
   .replace('/*@@STORE@@*/', () => safe(fs.readFileSync(path.join(HERE, 'src', 'store.js'), 'utf8')))
   .replace('/*@@CRYPTO@@*/', () => safe(fs.readFileSync(path.join(HERE, 'src', 'crypto.js'), 'utf8')))
