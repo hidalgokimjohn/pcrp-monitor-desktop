@@ -345,7 +345,7 @@ function savedLoadCurrent(cur) {
   } catch (e) {}
 
   if (LOADED.activityTracker && TABS.Raw_Activity_Tracker) {
-    computeAndShow(savedPage || 'overview');
+    computeAndShow(savedPage || 'profile');
   } else {
     // Only partial exports (e.g., Volunteers or Household Participation)
     setTabsEnabled(true);

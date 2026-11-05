@@ -1125,23 +1125,8 @@ async function runAll() {
     const appJs = fs.readFileSync(path.join(ROOT, 'src', 'app.js'), 'utf8');
     const appCss = fs.readFileSync(path.join(ROOT, 'src', 'app.css'), 'utf8');
 
-    test('Dashboard Helpers: getScopedCompositeMetrics, getScopedTriageSummary, and Stepper defined', () => {
-      assert.strictEqual(appJs.includes('function getScopedCompositeMetrics('), true, 'Missing getScopedCompositeMetrics in app.js');
-      assert.strictEqual(appJs.includes('function getScopedTriageSummary('), true, 'Missing getScopedTriageSummary in app.js');
-      assert.strictEqual(appJs.includes('function renderOverviewTriageTray('), true, 'Missing renderOverviewTriageTray in app.js');
-      assert.strictEqual(appJs.includes('function renderMilestoneStepper('), true, 'Missing renderMilestoneStepper in app.js');
-    });
 
-    test('Overview UI: Action Center Triage and Milestone Stepper invoked in renderOverview', () => {
-      assert.strictEqual(appJs.includes('renderOverviewTriageTray(triage)'), true, 'Missing triage tray invocation in renderOverview');
-      assert.strictEqual(appJs.includes('renderMilestoneStepper(pipe)'), true, 'Missing milestone stepper invocation in renderOverview');
-      assert.strictEqual(appJs.includes('quickChipsHtml'), true, 'Missing quickChipsHtml in renderOverview');
-    });
 
-    test('Overview Actions: ov-filter and ov-filter-seq click handlers exist', () => {
-      assert.strictEqual(appJs.includes("act === 'ov-filter'"), true, 'Missing ov-filter action handler');
-      assert.strictEqual(appJs.includes("act === 'ov-filter-seq'"), true, 'Missing ov-filter-seq action handler');
-    });
 
     test('Dashboard Styles: CSS classes defined in app.css', () => {
       assert.strictEqual(appCss.includes('.triage-tray'), true, 'Missing .triage-tray in app.css');
@@ -1160,23 +1145,8 @@ async function runAll() {
   {
     const appJs = fs.readFileSync(path.join(ROOT, 'src', 'app.js'), 'utf8');
 
-    test('Municipal Definitions: muniProgress, getMuniTriageSummary, and renderMuniTriageTray defined', () => {
-      assert.strictEqual(appJs.includes('function muniProgress('), true, 'Missing muniProgress in app.js');
-      assert.strictEqual(appJs.includes('function getMuniTriageSummary('), true, 'Missing getMuniTriageSummary in app.js');
-      assert.strictEqual(appJs.includes('function renderMuniTriageTray('), true, 'Missing renderMuniTriageTray in app.js');
-    });
 
-    test('Municipal UI: renderMunis invokes renderMuniTriageTray and renders quickChipsHtml', () => {
-      assert.strictEqual(appJs.includes('renderMuniTriageTray(summary, cvOn)'), true, 'Missing renderMuniTriageTray call in renderMunis');
-      assert.strictEqual(appJs.includes('quickChipsHtml +'), true, 'Missing quickChipsHtml in renderMunis markup');
-      assert.strictEqual(appJs.includes("refreshIcons($('mu-body'))"), true, 'Missing refreshIcons call at end of renderMunis');
-    });
 
-    test('Municipal Actions: mu-filter and muni-reset handlers in place', () => {
-      assert.strictEqual(appJs.includes("act === 'mu-filter'"), true, 'Missing mu-filter event handler');
-      assert.strictEqual(appJs.includes("STATE.muniFilter = 'all'"), true, 'muni-reset should reset muniFilter to all');
-      assert.strictEqual(appJs.includes("muniFilter: 'all'"), true, 'STATE should declare muniFilter: all');
-    });
 
     test('Municipal Calculations: muniProgress calculates pipeline completion rate correctly', () => {
       function muniProgress(r, acts) {
@@ -1277,18 +1247,7 @@ async function runAll() {
   {
     const appJs = fs.readFileSync(path.join(ROOT, 'src', 'app.js'), 'utf8');
 
-    test('Barangay Definitions: brgyProgress, getBrgyTriageSummary, and renderBrgyTriageTray defined', () => {
-      assert.strictEqual(appJs.includes('function brgyProgress('), true, 'Missing brgyProgress in app.js');
-      assert.strictEqual(appJs.includes('function getBrgyTriageSummary('), true, 'Missing getBrgyTriageSummary in app.js');
-      assert.strictEqual(appJs.includes('function renderBrgyTriageTray('), true, 'Missing renderBrgyTriageTray in app.js');
-    });
 
-    test('Barangay UI: renderBrgys invokes renderBrgyTriageTray and renders quickChipsHtml', () => {
-      assert.strictEqual(appJs.includes('renderBrgyTriageTray(summary, cvOn)'), true, 'Missing renderBrgyTriageTray call in renderBrgys');
-      assert.strictEqual(appJs.includes('quickChipsHtml +'), true, 'Missing quickChipsHtml in renderBrgys markup');
-      assert.strictEqual(appJs.includes("refreshIcons($('bg-body'))"), true, 'Missing refreshIcons call at end of renderBrgys');
-      assert.strictEqual(appJs.includes("id: 'compliant'"), true, 'BRGY_FILTERS should include compliant preset');
-    });
 
     test('Barangay Calculations: brgyProgress calculates stage completion rate correctly', () => {
       function brgyProgress(b, acts) {
@@ -1427,18 +1386,6 @@ async function runAll() {
       });
     });
 
-    test('People Definitions: Attendees & Household Helpers Exist in src/people.js', () => {
-      assert.ok(peopleCode.includes('function filteredAttendanceRows('), 'summary filtering must be defined');
-      assert.ok(peopleCode.includes('function renderAttendees('), 'Attendance Summary must be defined');
-      assert.ok(peopleCode.includes('function quorumProgressBar('), 'quorumProgressBar must be defined');
-      assert.ok(peopleCode.includes('function getHouseholdTriageSummary('), 'getHouseholdTriageSummary must be defined');
-      assert.ok(peopleCode.includes('function renderHouseholdTriageTray('), 'renderHouseholdTriageTray must be defined');
-      assert.ok(peopleCode.includes("data-act=\"att-flag\""), 'attendance summary filters must exist');
-      assert.ok(peopleCode.includes("data-act=\"hh-triage\""), 'hh-triage handler must exist');
-      assert.ok(peopleCode.includes("data-act=\"hh-muni\""), 'hh-muni change handler must exist');
-      assert.ok(peopleCode.includes("refreshIcons($('hh-body'))"), 'refreshIcons must be called on hh-body');
-      assert.ok(peopleCode.includes('refreshIcons(body)'), 'summary icons must refresh');
-    });
 
     test('CSS Definitions: Quorum Progress Bar and Threshold Marker Exist in src/app.css', () => {
       assert.ok(cssCode.includes('.quorum-progress-cell'), '.quorum-progress-cell must be defined');
@@ -1491,37 +1438,6 @@ async function runAll() {
       assert.ok(unrepHtml.includes('—'), 'Must show dash for zero listed');
     });
 
-    test('Household Calculations: getHouseholdTriageSummary aggregates K2 quorum per assembly', () => {
-      // hhListed / hhPresent are set only when both counts are encoded (see computeSnapshot)
-      const act = (o) => ({ BA1: Object.assign({ hhListed: 0, hhPresent: 0, hhRate: null, hhConflict: false, hhIncomplete: false }, o) });
-      const sampleBrgys = [
-        { barangay: 'Brgy 1', activities: act({ hhListed: 100, hhPresent: 75, hhRate: 0.75, hhConflict: true }) }, // Met, conflicting records
-        { barangay: 'Brgy 2', activities: act({ hhListed: 100, hhPresent: 60, hhRate: 0.60 }) },                   // Below
-        { barangay: 'Brgy 3', activities: act({ hhIncomplete: true }) },                                          // One count only
-        { barangay: 'Brgy 4', activities: act({}) },                                                              // Not encoded
-        { barangay: 'Brgy 5', activities: { BA1: { notApplicable: true } } },                                     // Not in scope of the assembly
-        { barangay: 'Legacy', hhListed: 50, hhPresent: 40, hhRate: 0.8 }                                          // BA1 fields on the row itself
-      ];
-      const sandbox = { console };
-      vm.createContext(sandbox);
-      vm.runInContext(['hhOf', 'hhStatus', 'getHouseholdTriageSummary'].map(f => extractFn(peopleCode, f)).join('\n'), sandbox);
-      const res = sandbox.getHouseholdTriageSummary(sampleBrgys, 'BA1');
-
-      assert.strictEqual(res.totalBrgys, 5);
-      assert.strictEqual(res.reportingBrgys, 3);
-      assert.strictEqual(res.metQuorumBrgys, 2);
-      assert.strictEqual(res.belowQuorumBrgys, 1);
-      assert.strictEqual(res.incompleteBrgys, 1);
-      assert.strictEqual(res.noReportBrgys, 1);
-      assert.strictEqual(res.conflictBrgys, 1);
-      assert.strictEqual(res.totListed, 250);
-      assert.strictEqual(res.totPresent, 175);
-      assert.strictEqual(res.overallRate, 175 / 250);
-
-      const ba2 = sandbox.getHouseholdTriageSummary(sampleBrgys, 'BA2');
-      assert.strictEqual(ba2.reportingBrgys, 0, 'no BA2 counts: nothing reports');
-      assert.strictEqual(ba2.overallRate, null);
-    });
   }
 
   // -----------------------------------------------------------------
@@ -1890,10 +1806,11 @@ async function runAll() {
     const healthHtml = fs.readFileSync(path.join(ROOT, 'vendor', 'monitor', 'JS_Health.html'), 'utf8');
     const appJs = fs.readFileSync(path.join(ROOT, 'src', 'app.js'), 'utf8');
 
-    test('Verify Triage & Helpers: getVerifyTriageSummary & renderVerifyTriageTray exist in src/verify.js', () => {
+    test('Verify helpers remain available while aggregate cards move to the KPI page', () => {
       assert.strictEqual(verifyJs.includes('function getVerifyTriageSummary(recs)'), true);
       assert.strictEqual(verifyJs.includes('function renderVerifyTriageTray(summary, formKey)'), true);
-      assert.strictEqual(verifyJs.includes('renderVerifyTriageTray(summary, u.form)'), true);
+      assert.strictEqual(verifyJs.includes('renderVerifyTriageTray(summary, u.form)'), false);
+      assert.ok(verifyJs.includes("kpiPageLink('verification'"));
       assert.strictEqual(verifyJs.includes('quickChipsHtml'), true);
       assert.strictEqual(verifyJs.includes("data-act=\"vf-chip\""), true);
       assert.strictEqual(verifyJs.includes("data-act=\"vf-reset-filters\""), true);
@@ -2099,13 +2016,10 @@ async function runAll() {
       });
     });
 
-    test('Household Roster Removed: Data Health has no roster checks; the scorecard filters by assembly and status', () => {
+    test('Household Roster Removed: Data Health has no roster checks', () => {
       ["id: 'noname'", "id: 'dup'", "id: 'cross'", "id: 'bday'", 'apiHouseholdIssues', 'householdRoster'].forEach(s => {
         assert.strictEqual(jsHealth.includes(s), false, 'JS_Health.html must not keep the roster check ' + s);
       });
-      assert.ok(peopleJs.includes('function hhScorecardRows('), 'people.js must define hhScorecardRows');
-      assert.ok(peopleJs.includes('hhStatus(h) === HH_STATE.quorum'), 'scorecard must filter by quorum status');
-      assert.ok(peopleJs.includes('data-act="hh-asm"'), 'scorecard must switch assemblies');
       assert.strictEqual(peopleJs.includes('P.households'), false, 'people.js must not read a household roster');
     });
 
@@ -2118,7 +2032,7 @@ async function runAll() {
 
     test('Contextual Breadcrumbs: Modules render DQA return breadcrumbs', () => {
       assert.ok(peopleJs.includes("renderDqaBreadcrumb()"), 'people.js must invoke renderDqaBreadcrumb');
-      assert.ok(appJs.includes("renderDqaBreadcrumb()"), 'app.js renderBrgys must invoke renderDqaBreadcrumb');
+      assert.ok(appJs.includes("renderDqaBreadcrumb()"), 'app.js must invoke renderDqaBreadcrumb');
       assert.ok(appCss.includes(".dh-finding-link"), 'app.css must define .dh-finding-link styling');
       assert.ok(appCss.includes(".dqa-nav-breadcrumb"), 'app.css must define .dqa-nav-breadcrumb styling');
     });
@@ -2134,27 +2048,19 @@ async function runAll() {
     const appCss = fs.readFileSync(path.join(__dirname, '../src/app.css'), 'utf8');
 
     test('Attendance Summary replaces named attendance indexing', () => {
-      assert.ok(peopleJs.includes('function filteredAttendanceRows('));
       assert.ok(!peopleJs.includes('out.attendees.forEach'));
       assert.ok(peopleJs.includes('Named attendance cross-checks are unavailable'));
     });
 
-    test('Household Conflict Triage & Presets: the scorecard counts and filters conflicting KCIS records', () => {
-      assert.ok(peopleJs.includes("if (h.hhConflict) s.conflictBrgys++;"), 'getHouseholdTriageSummary must count conflicting records');
-      assert.ok(peopleJs.includes("card('conflict'"), 'renderHouseholdTriageTray must include a conflicting-records card');
-      assert.ok(peopleJs.includes("{ id: 'conflict', label: '⚠ Conflicting Records'"), 'scorecard must offer a conflicting-records preset');
-    });
 
-    test('Household Scorecard Highlighting: renderHouseholds marks conflicting records', () => {
-      assert.ok(peopleJs.includes("h.hhConflict ? ' class=\"row-duplicate\"'"), 'renderHouseholds must apply row-duplicate to conflicting records');
-      assert.ok(peopleJs.includes('⚠ Conflicting</span>'), 'renderHouseholds must render a Conflicting badge');
-    });
 
-    test('Profile & Cross-Module Action Router: openPerson hints and dqa-jump opens the household scorecard', () => {
+    test('Profile & Cross-Module Action Router: openPerson hints and dqa-jump opens the municipality profile', () => {
       assert.ok(peopleJs.includes("a.flags.indexOf('duplicate') !== -1"), 'openPerson must inspect duplicate attendance flags');
-      assert.ok(appJs.includes("if (checkId === 'attdup') { ATT_STATE.flag = 'duplicate'; }"), 'dqa-jump must activate duplicate filter for attdup');
       assert.ok(appJs.includes("if (checkId === 'quorum' || checkId === 'hhcounts' || checkId === 'hhattendance') {"), 'dqa-jump must route household count checks and discrepancies');
-      assert.ok(appJs.includes('if (actCode) HH_STATE.asm = actCode;'), 'dqa-jump must open the assembly of the finding');
+      assert.ok(appJs.includes("profileOpenLocation(bkey || muniKey, actCode || 'BA1', !!bkey);"), 'household findings must open the assembly in the profile');
+      assert.ok(appJs.includes("profileOpenLocation(bkey || muniKey, actCode, !!actCode);"), 'attendance findings must open the activity attendance panel in the profile');
+      assert.ok(appJs.includes("['overview', 'munis', 'brgys', 'attendees', 'households', 'people'].indexOf(page) !== -1) page = 'profile';"), 'retired monitoring pages must route to the profile');
+      assert.ok(appJs.includes("if (page === 'kpisummary') page = 'kpis';"), 'legacy KPI links must open the new KPI page');
     });
 
     test('CSS Definitions: app.css defines row-duplicate, row-cross-brgy, badge-dup and dark theme support', () => {
@@ -2319,59 +2225,7 @@ async function runAll() {
   {
     const appJs = fs.readFileSync(path.join(ROOT, 'src', 'app.js'), 'utf8');
 
-    test('scopedK2: dynamically switches between BA1 (Stage 1) and BA2 (Stage 2)', () => {
-      const sandbox = {
-        STATE: { stage: 1 },
-        overviewRows: () => [
-          {
-            province: 'Agusan del Norte', municipality: 'Buenavista',
-            households: { listed: 100, present: 75, reporting: 1, quorumMet: 1 },
-            households_ba2: { listed: 120, present: 96, reporting: 1, quorumMet: 1 }
-          },
-          {
-            province: 'Agusan del Norte', municipality: 'Carmen',
-            households: { listed: 80, present: 40, reporting: 1, quorumMet: 0 },
-            households_ba2: { listed: 90, present: 72, reporting: 1, quorumMet: 1 }
-          }
-        ],
-        SNAP: { barangayRows: [] },
-        inOverviewScope: () => true
-      };
 
-      vm.createContext(sandbox);
-      vm.runInContext(extractFn(appJs, 'scopedK2'), sandbox);
-
-      // In Stage 1:
-      sandbox.STATE.stage = 1;
-      const k2Stage1 = sandbox.scopedK2();
-      assert.strictEqual(k2Stage1.asm, 'BA1');
-      assert.strictEqual(k2Stage1.listed, 180);
-      assert.strictEqual(k2Stage1.present, 115);
-      assert.strictEqual(k2Stage1.met, 1);
-      assert.strictEqual(k2Stage1.rate, 115 / 180);
-
-      // In Stage 2:
-      sandbox.STATE.stage = 2;
-      const k2Stage2 = sandbox.scopedK2();
-      assert.strictEqual(k2Stage2.asm, 'BA2');
-      assert.strictEqual(k2Stage2.listed, 210);
-      assert.strictEqual(k2Stage2.present, 168);
-      assert.strictEqual(k2Stage2.met, 2);
-      assert.strictEqual(k2Stage2.rate, 168 / 210);
-
-      // Explicit override:
-      const k2ExplicitBa1 = sandbox.scopedK2('BA1');
-      assert.strictEqual(k2ExplicitBa1.asm, 'BA1');
-      assert.strictEqual(k2ExplicitBa1.listed, 180);
-    });
-
-    test('Overview Card: dynamically renders 1st BA Quorum in Stage 1 and both 2nd BA & 3rd BA Quorum in Stage 2', () => {
-      assert.ok(appJs.includes("var isStage2 = STATE.stage === 2;"), 'isStage2 check exists');
-      assert.ok(appJs.includes("label: 'BA HH Rate · 1st BA Quorum'"), 'Stage 1 renders 1st BA Quorum card');
-      assert.ok(appJs.includes("label: 'BA HH Rate · 2nd BA Quorum'"), 'Stage 2 renders 2nd BA Quorum card');
-      assert.ok(appJs.includes("label: 'BA HH Rate · 3rd BA Quorum'"), 'Stage 2 renders 3rd BA Quorum card');
-      assert.ok(appJs.includes("isStage2 ? '2nd BA community volunteers' : '1st BA community volunteers'"), 'Volunteer card title switches dynamically');
-    });
   }
 
   // -----------------------------------------------------------------

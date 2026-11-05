@@ -32,9 +32,14 @@ function movPill(status) { return '<span class="pill ' + (status === 'Submitted'
 function movOption(value, text, selected) { return '<option value="' + attr(value) + '"' + (selected ? ' selected' : '') + '>' + esc(text) + '</option>'; }
 function movRefresh() {
   MOV_CACHE = null;
-  if (LOADED.activityTracker) computeAndShow('movs');
-  else { renderMovs(); updateTabBadges(); }
+  var inProfile = typeof profileIsActiveReview === 'function' && profileIsActiveReview();
+  if (LOADED.activityTracker) computeAndShow(inProfile ? null : 'movs');
+  else { if (inProfile) renderMunicipalityProfile(); else renderMovs(); updateTabBadges(); }
   savedSaveCurrent();
+}
+function movRenderCurrent() {
+  if (typeof profileIsActiveReview === 'function' && profileIsActiveReview()) profileRefreshReview();
+  else renderMovs();
 }
 function movReviewActor() {
   var reviewer = ($('mov-reviewer') && $('mov-reviewer').value.trim()) || '', note = ($('mov-note') && $('mov-note').value.trim()) || '';
@@ -65,7 +70,7 @@ function movSetApplicability(requirementKey, state, actor) {
   else MOV_STATE.applicability[requirementKey] = Object.assign({}, actor, { state: state });
 }
 
-function movRenderGroup(data, group) {
+function movRenderGroup(data, group, presentation) {
   var r = group.requirements.filter(function (r) { return r.id === MOV_UI.requirement; })[0];
   var rows = group.requirements.map(function (req) {
     var links = req.attachmentKeys.map(function (key) {
@@ -99,12 +104,19 @@ function movRenderGroup(data, group) {
       }).join('') + '</div>';
   }
   var attachments = data.attachments.filter(function (a) { return a.groupKey === group.key; });
-  return '<div class="card"><button class="link" data-act="mov-back">← All Stage 1 MOVs</button><h2>' + esc(group.barangay || group.municipality) + ' · ' + esc(group.actLabel) + '</h2>' +
+  var checklist = '<div class="table-wrap"><table class="grid"><thead><tr><th>Required MOV</th><th>Submission status</th><th>Credited evidence</th><th>Review</th></tr></thead><tbody>' + rows + '</tbody></table></div>';
+  var sources = '<div class="card"><h3>Source attachments and supplementary files (' + attachments.length + ' distinct associations)</h3>' + movAttachmentTable(attachments.slice(0, MOV_UI.limit)) +
+    (attachments.length > MOV_UI.limit ? '<button class="btn ghost" data-act="mov-more">Show more attachments</button>' : '') + '</div>';
+  if (presentation && presentation.embedded && r) {
+    var evidence = r.attachmentKeys.map(function (key) { var a = data.byAttachmentKey[key]; return '<div class="mov-filename">' + esc(a.filename) + ' <button class="link" data-act="mov-copy" data-key="' + attr(key) + '">Copy path</button></div>'; }).join('');
+    return '<div class="card"><h3>' + esc(r.name) + '</h3>' + movPill(data.imported ? r.status : 'MOVs not assessed') + '<p class="tiny muted">Field Guide · Stage 1 row ' + r.sourceRow + (r.note ? ' · ' + esc(r.note) : '') + '</p><h4>Credited evidence</h4>' + (evidence || '<p class="muted">No credited attachment</p>') + '</div>' + editor +
+      '<details class="card"><summary>All ' + group.requirements.length + ' requirements for this activity</summary>' + checklist + '</details>' + sources;
+  }
+  return '<div class="card">' + (presentation && presentation.embedded ? '' : '<button class="link" data-act="mov-back">← All Stage 1 MOVs</button>') + '<h2>' + esc(group.barangay || group.municipality) + ' · ' + esc(group.actLabel) + '</h2>' +
+    (presentation && presentation.embedded ? '' : '<button type="button" class="btn ghost btn-sm" data-act="profile-from-mov" data-v="' + attr(group.key) + '">Open municipality profile →</button>') +
     '<p>' + esc(group.municipality + ', ' + group.province) + ' · ' + group.submitted + '/' + group.required + ' submitted · ' +
     (group.due ? (group.actCode === 'APPRAISAL' ? 'Appraisal follow-up due after MRP end: ' : 'Activity ended: ') + esc(group.dateEnd) : 'Activity end not yet recorded or after pull date') + '</p>' +
-    '<div class="table-wrap"><table class="grid"><thead><tr><th>Required MOV</th><th>Submission status</th><th>Credited evidence</th><th>Review</th></tr></thead><tbody>' + rows + '</tbody></table></div></div>' + editor +
-    '<div class="card"><h3>Source attachments and supplementary files (' + attachments.length + ' distinct associations)</h3>' + movAttachmentTable(attachments.slice(0, MOV_UI.limit)) +
-    (attachments.length > MOV_UI.limit ? '<button class="btn ghost" data-act="mov-more">Show more attachments</button>' : '') + '</div>';
+    checklist + '</div>' + editor + sources;
 }
 function movAttachmentTable(rows) {
   return '<div class="table-wrap"><table class="grid"><thead><tr><th>Location / filed activity</th><th>KCIS label / type</th><th>Actual filename</th><th>Source dates</th><th>Source rows</th><th>Path</th></tr></thead><tbody>' + rows.map(function (a) {
@@ -129,11 +141,9 @@ function renderMovs() {
       movPill(!data.imported ? 'MOVs not assessed' : g.ready ? 'Submitted' : g.requirements.some(function (r) { return r.status === 'Needs applicability'; }) ? 'Needs applicability' : g.requirements.some(function (r) { return r.status === 'Needs review'; }) ? 'Needs review' : g.lacking ? 'Lacking' : 'Pending activity') + '</td><td>' + esc(g.dateEnd || 'No actual end date') + (g.actCode === 'APPRAISAL' ? '<div class="tiny">MRP follow-up trigger</div>' : '') + '</td><td><button class="link" data-act="mov-open" data-key="' + attr(g.key) + '">Open checklist</button></td></tr>';
   }).join('');
   body.innerHTML = (typeof renderDqaBreadcrumb === 'function' ? renderDqaBreadcrumb() : '') + '<div class="card"><div class="card-head"><div><h2>Stage 1 MOVs</h2><p class="muted">Submission evidence from KCIS. Document contents and signatures are unverified. Later stages are outside this checklist.</p></div><button class="btn ghost" data-act="mov-export">Export CSV</button></div>' +
-    (!data.imported ? '<div class="msg warn">Import the KCIS MOV attachments export to assess Stage 1 completion.</div>' : '') +
+    (!data.imported ? '<div class="msg warn">Import the KCIS MOV attachments export to assess MOV readiness.</div>' : '') +
     (!data.trackerImported ? '<div class="msg warn">Activity Tracker is required for attendance completion and due-date evaluation. Imported attachments can be inspected and saved.</div>' : '') +
-    '<div class="grid-kpi"><div class="kpi"><div class="kpi-label">Submitted requirements</div><div class="kpi-value">' + n(scoped.reduce(function (s, g) { return s + g.submitted; }, 0)) + '</div></div>' +
-    '<div class="kpi"><div class="kpi-label">MOV backlog · due groups</div><div class="kpi-value">' + n(scoped.filter(function (g) { return g.lacking; }).length) + '</div></div>' +
-    '<div class="kpi"><div class="kpi-label">MOV-ready municipalities</div><div class="kpi-value">' + (data.imported ? ready.filter(function (m) { return m.movsReady; }).length + '/' + ready.length : 'Not assessed') + '</div><div class="tiny">Includes RPMO appraisal requirements</div></div></div>' +
+    kpiPageLink('movs', isMunicipalUser() ? homeKey() : MOV_UI.municipality) +
     activityProgressBars({ expected: scoped.filter(function (g) { return g.pipelineApplicable; }).length, encoded: scoped.filter(function (g) { return g.pipelineApplicable && g.trackerEncoded; }).length, complete: scoped.filter(function (g) { return g.pipelineApplicable && g.attendance > 0; }).length, movsReady: scoped.filter(function (g) { return g.pipelineApplicable && g.ready; }).length }, 1) +
     '<p class="tiny">Import: ' + n(data.stats.records) + ' rows · ' + n(data.stats.attachmentRows) + ' attachment rows · ' + n(data.stats.emptyRows) + ' empty attachment rows · ' + n(data.stats.distinctPaths) + ' distinct paths · ' + n(data.stats.repeatedPaths) + ' repeated paths (' + n(data.stats.repeatedOccurrences) + ' extra occurrences).</p>' +
     '<div class="filters">' + (isMunicipalUser() ? '<span>Municipality: ' + esc(homeLabel()) + '</span>' : '<label class="field"><span>Municipality</span><select data-act="mov-municipality">' + munis + '</select></label>') +
@@ -159,24 +169,14 @@ function movAttachmentExportRows(data, scope) {
     return [a.province, a.municipality, a.barangay, a.category, a.activityId, a.typeId, a.label, a.filename, a.mime, a.dateStart, a.dateEnd, a.path, a.sourceRows.join('; ')];
   }));
 }
-function movCompletionNotice() {
-  if (!SNAP || !SNAP.movs || STATE.stage !== 1) return '';
-  var data = SNAP.movs, groups = data.groups.filter(inOverviewScope);
-  var municipalities = Object.keys(data.byMuni).map(function (k) { return data.byMuni[k]; }).filter(inOverviewScope);
-  return '<div class="msg info"><div><strong>Attendance and MOV submission are assessed separately.</strong> ' +
-    (data.imported ? 'MOV-ready municipalities: ' + municipalities.filter(function (m) { return m.movsReady; }).length + '/' + municipalities.length +
-      ' (including appraisal). MOV backlog: ' + groups.filter(function (g) { return g.lacking; }).length + ' due checklist groups.' : 'MOVs not assessed. Attendance completion remains available.') +
-    ' <button class="link" data-act="go" data-v="movs">Open Stage 1 MOVs</button></div></div>';
-}
-
 document.addEventListener('click', function (event) {
   var el = event.target.closest('[data-act]'); if (!el || el.tagName === 'SELECT') return;
   var act = el.getAttribute('data-act'), key = el.getAttribute('data-key');
   try {
     if (act === 'mov-open') { MOV_UI.open = key; MOV_UI.requirement = ''; MOV_UI.candidateSearch = ''; renderMovs(); }
     else if (act === 'mov-back') { MOV_UI.open = ''; MOV_UI.requirement = ''; renderMovs(); }
-    else if (act === 'mov-requirement') { MOV_UI.requirement = el.getAttribute('data-v'); MOV_UI.candidateSearch = ''; MOV_UI.note = null; renderMovs(); }
-    else if (act === 'mov-more') { MOV_UI.limit += 60; renderMovs(); }
+    else if (act === 'mov-requirement') { MOV_UI.requirement = el.getAttribute('data-v'); MOV_UI.candidateSearch = ''; MOV_UI.note = null; movRenderCurrent(); }
+    else if (act === 'mov-more') { MOV_UI.limit += 60; movRenderCurrent(); }
     else if (act === 'mov-direction') { MOV_UI.direction = MOV_UI.direction === 'asc' ? 'desc' : 'asc'; renderMovs(); }
     else if (act === 'mov-copy') { var a = movGetData().byAttachmentKey[key]; if (a && movInScope(a)) { navigator.clipboard.writeText(a.path).then(function () { toast('KCIS path copied.'); }).catch(function () { toast(a.path); }); } }
     else if (act === 'mov-export') { var data = movGetData(); downloadCsv('PCRP_Stage1_MOVs_' + stamp() + '.csv', csvOf(MOV_UI.view === 'attachments' ? movAttachmentExportRows(data, movInScope) : movExportRows(data, movInScope))); }
@@ -196,20 +196,4 @@ document.addEventListener('change', function (event) {
 document.addEventListener('input', function (event) {
   if (event.target.id === 'mov-reviewer') MOV_UI.reviewer = event.target.value;
   if (event.target.id === 'mov-note') MOV_UI.note = event.target.value;
-});
-
-// Keep completion rules visible when existing filters render a page directly.
-['renderOverview', 'renderMunis', 'renderBrgys', 'renderKpiSummary'].forEach(function (name) {
-  var original = window[name]; if (typeof original !== 'function') return;
-  window[name] = function () {
-    var result = original.apply(this, arguments);
-    var pageIds = { renderOverview: 'ov-body', renderMunis: 'mu-body', renderBrgys: 'bg-body', renderKpiSummary: 'kpi-body' };
-    var body = $(pageIds[name]);
-    if (body) {
-      var old = body.querySelector('.mov-completion-notice'); if (old) old.remove();
-      var notice = movCompletionNotice();
-      if (notice) body.insertAdjacentHTML('afterbegin', '<div class="mov-completion-notice">' + notice + '</div>');
-    }
-    return result;
-  };
 });

@@ -59,37 +59,8 @@
 </header>
 
 <nav class="tabs" id="tabs" role="tablist" aria-label="Pages">
-  <button role="tab" data-page="overview" disabled><i data-lucide="layout-dashboard"></i> <span>Overview</span></button>
-  <button role="tab" data-page="kpisummary" id="tab-kpisummary" disabled><i data-lucide="gauge"></i> <span>KPI Summary</span> <span class="tab-badge" id="badge-kpisummary" hidden></span></button>
-  <button role="tab" data-page="munis" id="tab-munis" disabled><i data-lucide="building-2"></i> <span>Municipalities</span> <span class="tab-badge" id="badge-munis" hidden></span></button>
-  <button role="tab" data-page="brgys" id="tab-brgys" disabled><i data-lucide="map-pin"></i> <span>Barangays</span> <span class="tab-badge" id="badge-brgys" hidden></span></button>
-  <!-- Group 1: Attendance & Households -->
-  <div class="nav-tab-group" id="group-attendance-wrap">
-    <button role="tab" class="tab-group-trigger" id="tab-group-attendance" data-group="attendance" disabled>
-      <i data-lucide="users"></i> <span>Attendance &amp; Households</span>
-      <span class="tab-badge" id="badge-group-attendance" hidden></span>
-      <i data-lucide="chevron-down" class="group-arrow"></i>
-    </button>
-    <div class="nav-tab-dropdown" id="dropdown-attendance">
-      <button role="menuitem" data-page="attendees" id="tab-attendees">
-        <i data-lucide="calendar-check"></i>
-        <div class="nav-drop-info">
-          <span class="nav-drop-title">Attendees</span>
-          <span class="nav-drop-sub">Activity attendance records</span>
-        </div>
-        <span class="tab-badge" id="badge-attendees" hidden></span>
-      </button>
-      <button role="menuitem" data-page="households" id="tab-households">
-        <i data-lucide="home"></i>
-        <div class="nav-drop-info">
-          <span class="nav-drop-title">Household Participation</span>
-          <span class="nav-drop-sub">BA Quorum scorecard (≥70% target)</span>
-        </div>
-        <span class="tab-badge" id="badge-households" hidden></span>
-      </button>
-    </div>
-  </div>
-
+  <button role="tab" data-page="kpis" id="tab-kpis" disabled><i data-lucide="gauge"></i> <span>KPI</span></button>
+  <button role="tab" data-page="profile" id="tab-profile" disabled><i data-lucide="landmark"></i> <span id="profile-nav-label">Municipality Profile</span></button>
   <!-- Group 2: Volunteers & Committees -->
   <div class="nav-tab-group" id="group-volunteers-wrap">
     <button role="tab" class="tab-group-trigger" id="tab-group-volunteers" data-group="volunteers" disabled>
@@ -292,21 +263,17 @@
     </div>
   </section>
 
-  <section class="page" id="page-overview"><div id="ov-body"></div></section>
-  <section class="page" id="page-kpisummary"><div id="kpi-body"></div></section>
-  <section class="page" id="page-munis"><div id="mu-body"></div></section>
-  <section class="page" id="page-brgys"><div id="bg-body"></div></section>
-  <section class="page" id="page-attendees"><div id="att-body"></div></section>
-  <section class="page" id="page-households"><div id="hh-body"></div></section>
+  <section class="page" id="page-profile"><div id="profile-body"></div></section>
+  <section class="page" id="page-kpis"><div id="kpi-body"></div></section>
   <section class="page" id="page-volunteers"><div id="vol-body"></div></section>
   <section class="page" id="page-brest"><div id="brt-body"></div></section>
   <section class="page" id="page-cspmc"><div id="cspmc-body"></div></section>
   <section class="page" id="page-mrest"><div id="mrt-body"></div></section>
-  <section class="page" id="page-people"><div id="pp-body"></div></section>
   <section class="page" id="page-verify"><div id="vf-body"></div></section>
   <section class="page" id="page-movs"><div id="mov-body"></div></section>
   <section class="page" id="page-health"><div id="he-body" class="dh-page"></div></section>
 </main>
+<dialog id="profile-evidence-dialog" class="profile-drawer" aria-labelledby="profile-panel-title"><div id="profile-panel-body"></div></dialog>
 
 <footer class="app-footer" id="app-footer">
   <div class="footer-container">
@@ -456,6 +423,8 @@ function $(id) { return document.getElementById(id); }
 /*@@APP@@*/
 /*@@PEOPLE@@*/
 /*@@MOV_UI@@*/
+/*@@PROFILE@@*/
+/*@@KPIS@@*/
 </script>
 </body>
 </html>

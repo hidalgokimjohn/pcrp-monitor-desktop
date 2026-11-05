@@ -24,8 +24,8 @@ One offline file, `dist/PCRP Encoding and Data Quality Assessment Tool.html`, th
 2. **Select your Workspace Role & Scope** (Section 1 in Settings & Setup):
    - **PEA / MDM (Municipal Field Workspace):** For Project Evaluation Assistants and Municipal Data Monitors. Select your assigned municipality once. The app strictly scopes the entire tool to your municipality:
      - The **Municipalities** regional comparison tab is removed from navigation.
-     - **Overview:** Provincial filter chips are removed; municipal KPI matrix shows only your municipality.
-     - **Barangays:** Municipality selector is locked to your municipality; displays only your barangays.
+     - **Municipality Profile:** Opens directly on your municipality; the municipality table and other municipalities are hidden.
+     - **Barangay profiles:** Only your barangays are listed and printed.
      - **Verify & DQA:** Filters and precision samples are isolated strictly to your municipality.
      - **Excel Export:** Multi-municipality comparison sheets are excluded, producing a clean LGU-specific workbook.
      - No other municipality's data is displayed or leaked.
@@ -42,13 +42,15 @@ One offline file, `dist/PCRP Encoding and Data Quality Assessment Tool.html`, th
    MOV reimport also replaces the previous dataset after complete validation. MOV-only and volunteer-only sessions can be inspected and saved; Tracker is required for attendance completion and MOV due-date evaluation.
 
 4. **Read the findings across dedicated, sortable modules with live instant search:**
-   - **Overview:** Stage 1 / 2 pipeline activities, K2, volunteers, and Data Health summary; locked to municipal scope for PEA/MDM, or switchable across provinces for RPMO.
-   - **Municipalities (RPMO only):** Region-wide matrix comparing progress across every LGU.
-   - **Barangays:** Detailed status per activity, K2 quorum, and volunteer teams; live search and sorting across all columns.
-   - **Attendance Summary:** Reported Participants counts by sex, separate Person Volunteers counts, target/actual dates, location/activity filters, source rows, repeated-record indicators, and CSV export. These totals cannot identify unique people.
+   - **KPI:** Retains only manual-defined PCRP indicators from SM7: household participation in barangay assemblies and municipalities with institutionalized MResTs. Cards and CSV exports include manual references. Assembly rates require complete household denominators for the selected area; MResT institutionalization remains Not assessed until LDC membership evidence is available. Area controls preserve the assigned municipality restriction.
+   - **Retired modules:** Overview, Municipalities, Barangays, Attendees and Household Participation were folded into the Municipality Profile. Old links and DQA findings that pointed to them now open the matching profile, barangay or activity panel. Legacy KPI Summary links now open KPI.
+   - **Municipality Profile / My Municipality:** RPMO users start from a sortable table of municipalities (click any column to sort) with a segmented Stage progress bar, Encoded / With attendees / MOVs ready counts, and attendance and MOV backlogs. Opening a municipality shows its activities as a horizontal stepper. Each step has a segmented bar that places every target slot in its furthest state: Complete (green), With attendees (amber), Encoded only (red) or Not encoded (grey). The independent counts sit beneath it. The profile opens on the first activity with outstanding work. Clicking a step lists every barangay below it, with encoding, attendees by sex, per-requirement MOV dots and follow-up flags; municipal activities show municipal details. A search box and quick-filter chips (Not encoded, No attendees, Attendance due, MOVs incomplete, MOV due, To review, Outside target) show their counts. The compact header carries the overall bar and clickable backlog chips that open the first affected activity. PEA/MDM profiles are locked to their assigned municipality.
+   - **Barangay profile:** Click a barangay name in any list or checklist to open its own page. It shows the barangay's activities in sequence with progress state, encoding, attendees by sex, actual dates, a mark for each MOV document and follow-up flags. Previous/next buttons and a selector move between barangays.
+   - **Print report:** Prints an A4 landscape monitoring report for the municipality. It includes summary counts, the activity sequence table, the MOV checklist in the on-screen orientation (activities and MOV forms as rows, barangays as columns, in blocks of up to 30 barangays so large municipalities fit the page, plus municipal-level MOVs), barangays needing follow-up, and the data caveats.
+   - **Activity & MOV checklist:** One matrix shows Encoding and With attendees as status marks, followed by a divider and individual MOV forms, with barangays as columns. Every required MOV form stays visible below the activity checks, with its submission status per barangay. Click a status to open attendance or MOV evidence. A compact Show dropdown filters missing encoding, missing attendance, or MOV follow-up; Export stays at the top right. The export includes both activity checks and individual forms. Stage 2 keeps activity checks available when MOV requirements are not configured. Municipal activities and appraisal are separate; appraisal has no attendance target. MOV counts represent credited requirements, not attachment files. Outside-target obligations remain visible with dashed marks.
+   - **Municipal summaries:** Operational progress, household quorum, BResT composition and MResT formation remain available in municipality comparisons and printable reports. The custom composite readiness index has been removed. MOV, verification and data-quality counters are not presented as PCRP KPIs.
+   - **Attendance details:** Each activity's barangay list shows reported Participants by sex and actual dates; the attendance panel shows target/actual dates, Person Volunteers and every source row, with repeated records marked. These totals cannot identify unique people.
    - **Stage 1 MOVs (under DQA):** Location/activity checklists, source attachment details, copy-path actions, applicability decisions, reviewed document assignments, and CSV export. The reference is only Stage 1!D4:I38 of the Field Guide Submission File. Source rows and filing locations remain visible; spreadsheet submission establishes presence, not verified contents or signatures.
-   - **Household Participation:**
-     - *Barangay Quorum Scorecard:* Tracks household targets, registered households, attendees, participation rate, and 70% Quorum compliance status with visual threshold mini-bars.
    - **Community Volunteers:** Volunteer registry with inclusion metrics (women 50% quota, marginalized/IP/PWD %, chairpersons), committee breakdown, and flag filters.
    - **Stage 2 CSPMC & MResT:** Complete tracking of all 8 specialized sub-committees, Bookkeeper, and Mayor-led co-governance org charts with 50% women quota.
    - **BResT (Barangay Resilience Team):** Executive team formation scorecard (Compliant vs Needs Fixing vs Not Encoded), member directory, and 30% marginalized quota progress bars.
@@ -99,11 +101,15 @@ The codebase includes an extensive automated test suite covering state managemen
 node tests/test-suite.js
 node --test tests/activity-tracker.test.js
 node --test tests/movs.test.js
+node --test tests/profile.test.js
+node --test tests/kpis.test.js
 ```
 
 The Activity Tracker tests cover import mapping, repeats, ignored BA List columns, quorum selection, summary verification, session migration, and scope. Set `KCIS_ACTIVITY_TRACKER` to a local sample path to also check the 4 November 2026 export control totals. Source exports are never committed.
 
 MOV tests cover atomic detection/import, automatic and reviewed matches, bundled evidence, repeat handling, applicability, due dates, appraisal readiness, scope, and v2/v3 sessions. Set `KCIS_MOV_EXPORT` to the local KCIS attachment export to verify its 13,405 records, 11,072 attachment rows, 2,333 empty rows, 10,610 distinct paths, and 447 repeated-path groups with 462 extra occurrences.
+
+Profile tests reconcile activity progress with the existing scoped pipeline and cover priority-only activities, all barangay rows, independent filters, filtered CSV exports, partial imports, checklist statuses, review refreshes, scope restrictions and restored selections. Profile selections and filters stay in browser preferences; the version 3 session format and review persistence remain unchanged. On narrow screens, the stepper scrolls sideways and the evidence panel uses the full screen width.
 
 ---
 

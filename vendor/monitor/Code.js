@@ -1780,6 +1780,7 @@ function computeSnapshot(participants, households, baselineRows, monitored,
         row.furthest = a.seq;
       }
       var isOwed = isApplicable && isMilestoneLacking_(st, a.field, actSlot ? actSlot.dateEnd : null);
+      actObj.attendanceBacklog = isOwed;
       if (isOwed) {
         row.owed++;
         row.todo.push(a.label + ' (seq ' + a.seq + '): ' +
@@ -1838,6 +1839,7 @@ function computeSnapshot(participants, households, baselineRows, monitored,
         status: mSt,
         attendees: attOf(key),
         attendanceEncoded: attOf(key) > 0,
+        attendanceBacklog: isMilestoneLacking_(mSt, a.field, actSlot ? actSlot.dateEnd : null),
         mov: movs && movs.byKey[key] ? { ready: movs.byKey[key].ready, submitted: movs.byKey[key].submitted, required: movs.byKey[key].required, imported: movs.imported, lacking: movs.byKey[key].lacking } : null,
         dateStart: actSlot ? actSlot.dateStart : null,
         dateEnd: actSlot ? actSlot.dateEnd : null

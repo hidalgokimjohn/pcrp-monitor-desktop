@@ -754,41 +754,6 @@ function renderVerify(keepScroll) {
   var summary = getVerifyTriageSummary(recs);
   var totIssues = summary.totalIssues;
 
-  var kpi = function (label, val, sub, accent, showVal, progressHtml) {
-    return '<button type="button" class="kpi clickable ' + (accent || '') + '" data-act="vf-show-btn" data-v="' + (showVal || 'all') + '">' +
-      '<div class="kpi-label">' + label + '</div><div class="kpi-value">' + val + '</div>' +
-      (progressHtml ? '<div style="margin:6px 0 4px">' + progressHtml + '</div>' : '') +
-      (sub ? '<div class="kpi-sub">' + sub + '</div>' : '') + '</button>';
-  };
-  var kpis = '<div class="grid-kpi">' +
-    kpi('Records verified',
-      n(t.verified) + ' <span class="tiny">of ' + n(t.records) + '</span>',
-      n(t.complete) + ' fully checked' + (t.sample ? ' · ' + n(t.sample) + ' in the sample' : ''),
-      t.complete && t.complete === t.records ? 'accent-good' : (t.verified ? 'accent-idle' : ''),
-      'done',
-      (typeof quotaMiniProgressBar === 'function' && t.records > 0 ? quotaMiniProgressBar(t.complete, t.records, 1.0, 'Fully verified quota: 100% of records') : '')
-    ) +
-    kpi('Rows matching the form',
-      vfPct(t.agreement),
-      t.checked ? n(t.match) + ' of ' + n(t.checked) + ' rows checked' : 'nothing checked yet',
-      t.agreement !== null && t.agreement >= 0.95 ? 'accent-good' : (t.checked ? 'accent-warn' : 'accent-idle'),
-      'all',
-      (typeof quotaMiniProgressBar === 'function' && t.checked > 0 ? quotaMiniProgressBar(t.match, t.checked, 0.95, 'SM7 Precision Target: ≥95% agreement') : '')
-    ) +
-    kpi('On the form ÷ encoded',
-      t.factor === null ? '—' : t.factor.toFixed(2),
-      t.factor === null ? 'enter the count on the form' : n(t.form) + ' on the forms, ' + n(t.encodedWithForm) + ' encoded',
-      t.factor === 1 ? 'accent-good' : 'accent-idle',
-      'all'
-    ) +
-    kpi('Items to fix in KCIS',
-      n(totIssues),
-      [t.differs ? n(t.differs) + ' differ' : '', t.absent ? n(t.absent) + ' not on the form' : '', t.notEncoded ? n(t.notEncoded) + ' on form, un-encoded' : ''].filter(Boolean).join(' · ') || 'No discrepancies tagged',
-      totIssues ? 'accent-bad' : 'accent-good',
-      'issues'
-    ) +
-  '</div>';
-
   var q = normSearch(u.search || '');
   var baseList = recs.filter(function (r) {
     return !q || normSearch(r.municipality + ' ' + r.barangay + ' ' + r.label).indexOf(q) !== -1;
@@ -872,9 +837,8 @@ function renderVerify(keepScroll) {
       '</tr></thead><tbody>' + rows + '</tbody></table></div>'
     : '<div class="empty-state">No records match these filters.</div>';
   body.innerHTML = subNav +
-    renderVerifyTriageTray(summary, u.form) +
     head +
-    kpis +
+    kpiPageLink('verification', isMunicipalUser() ? homeKey() : u.muni || '') +
     '<div class="toolbar-row" style="margin-top:10px;margin-bottom:6px"><div class="filters" style="margin:0;flex:1"><label class="field" style="flex:1"><span>Search records</span><input data-act="vf-search" id="vf-search" placeholder="Barangay or activity…" value="' + attr(u.search) + '"></label>' +
     (u.search ? '<button type="button" class="btn ghost btn-sm" data-act="vf-search-reset">' + icon('rotate-ccw') + ' <span>Reset</span></button>' : '') +
     '</div><span class="tiny">Showing <strong>' + n(list.length) + '</strong> of <strong>' + n(recs.length) + '</strong></span></div>' +

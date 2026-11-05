@@ -54,7 +54,7 @@ var DH_SEV = {
 // ---- state changes --------------------------------------------------
 
 function setHealthScope(v) { S.healthScope = v || ''; S.healthPage = {}; renderHealth(); }
-function setHealthView(v) { S.healthView = v; renderHealth(); }
+function setHealthView(v) { if (v === 'score' && typeof openKpiPage === 'function') { openKpiPage('quality', undefined, S.healthScope); return; } S.healthView = v; renderHealth(); }
 function setHealthSeverity(v) { S.healthSeverity = v; renderHealth(); }
 function toggleHealthCheck(id) { S.healthOpen = S.healthOpen || {}; S.healthOpen[id] = !S.healthOpen[id]; renderHealth(); }
 function healthShowMore(id, all) { S.healthPage[id] = all ? 1e9 : (S.healthPage[id] || DH_PAGE) + DH_PAGE; renderHealth(); }
@@ -507,6 +507,7 @@ function dhEvaluateAll(o, q) {
 // ---- page ------------------------------------------------------------
 
 function renderHealth() {
+  if (S.healthView === 'score' && typeof openKpiPage === 'function') { S.healthView = 'check'; openKpiPage('quality', undefined, S.healthScope); return; }
   var o = S.overview;
   if (!o) return;
   var q = (S.healthSearch || '').trim();
@@ -627,7 +628,7 @@ function dhScopeBar(o, evs) {
       '<label class="dh-field"><span>Area</span><select onchange="setHealthScope(this.value)" aria-label="Province or municipality">' + opts.join('') + '</select></label>' +
       '<label class="dh-field dh-search"><span>Search</span><input type="search" id="he-search" placeholder="Barangay, municipality or name" value="' + esc(S.healthSearch) + '"></label>' +
       '<div class="dh-seg" role="group" aria-label="View">' + seg('check', 'list-checks', 'By check') + seg('muni', 'building-2', 'By municipality') +
-        seg('score', 'gauge', 'Scorecard') + seg('fix', 'list-todo', 'Fix list') + '</div>' +
+        seg('fix', 'list-todo', 'Fix list') + '</div>' +
     '</div>' +
     (S.healthView === 'check' ? '<div class="dh-chips">' + chips + '</div>' : '') +
     (S.healthScope ? '<div class="dh-crumb"><i data-lucide="map-pin" class="w-3.5 h-3.5"></i> Showing <strong>' + esc(dhScopeLabel()) + '</strong>' +

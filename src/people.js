@@ -11,7 +11,6 @@
 // ===================================================================
 
 var PEOPLE = null;      // the index, rebuilt after every computation
-var PSTATE = { view: 'attendees', scope: 'home', brgy: '', act: '', body: '', flag: 'all', search: '', limit: 100, sortCol: 0, sortDir: 'asc' };
 var PEOPLE_PAGE = 100;
 
 function personName(first, middle, last) {
@@ -374,108 +373,12 @@ function placeCell(r) {
 }
 function yesNo(v) { return v ? '<span class="pill good">Yes</span>' : '<span class="tiny">No</span>'; }
 
-// Module state trackers
-var ATT_STATE = { muni: '', brgy: '', act: '', sex: 'all', flag: 'all', search: '', limit: 100, sortCol: 'name', sortDir: 'asc' };
-var HH_STATE = { asm: 'BA1', muni: '', brgy: '', quorum: 'all', search: '', sortCol: 'brgy', sortDir: 'asc' };
 var VOL_STATE = { muni: '', brgy: '', body: 'all', position: 'all', sex: 'all', marg: 'all', flag: 'all', search: '', limit: 100, sortCol: 'name', sortDir: 'asc' };
 var BRT_STATE = { muni: '', brgy: '', status: 'all', search: '', sortCol: 'brgy', sortDir: 'asc', teamSortCol: 'brgy', teamSortDir: 'asc' };
 var MRT_STATE = { muni: '', search: '', clusterFilter: 'all', showOrgChart: true, viewMode: 'org', sortCol: 'name', sortDir: 'asc', matrixFilter: 'all' };
-var PSTATE = { view: 'attendees', scope: 'home', brgy: '', act: '', body: '', flag: 'all', search: '', limit: 100, sortCol: 0, sortDir: 'asc' };
-
 // ===================================================================
-// MODULE 1: ATTENDEES (Activity Attendance Tracking)
+// Household counts per assembly (used by the Municipality Profile and DQA)
 // ===================================================================
-
-function filteredAttendanceRows() {
-  var scope = isMunicipalUser() ? homeKey() : (ATT_STATE.muni || homeKey() || '');
-  var inScope = pScopeTest(scope), q = normSearch(ATT_STATE.search || '');
-  var list = ((SNAP && SNAP.attendanceRows) || []).filter(function (r) {
-    return inScope(r) && (!ATT_STATE.brgy || r.province + '|' + r.municipality + '|' + r.barangay === ATT_STATE.brgy) &&
-      (!ATT_STATE.act || r.act === ATT_STATE.act) && (!q || normSearch(r.q).indexOf(q) !== -1) &&
-      (ATT_STATE.flag !== 'duplicate' || r.repeated) && (ATT_STATE.flag !== 'issues' || r.hasIssues) &&
-      (ATT_STATE.sex === 'all' || (r.participants[ATT_STATE.sex] || 0) > 0);
-  });
-  var extractors = { muni: function (r) { return r.municipality; }, brgy: function (r) { return r.barangay; },
-    act: function (r) { return Number(r.seq); }, date: function (r) { return r.dateEnd || ''; },
-    male: function (r) { return r.participants.male; }, female: function (r) { return r.participants.female; },
-    unspecified: function (r) { return r.participants.unspecified; }, total: function (r) { return r.participants.total; },
-    pv: function (r) { return r.personVolunteers.total; } };
-  return tblSort(list, extractors[ATT_STATE.sortCol] ? ATT_STATE.sortCol : 'muni', ATT_STATE.sortDir || 'asc', extractors);
-}
-
-function renderAttendees() {
-  var body = $('att-body');
-  if (!body) return;
-  if (!STATE.computed) { body.innerHTML = '<div class="card"><p>Load Activity Tracker first.</p></div>'; return; }
-  var list = filteredAttendanceRows(), shown = list.slice(0, ATT_STATE.limit), isMuni = isMunicipalUser();
-  var activeMuni = isMuni ? homeKey() : (ATT_STATE.muni || homeKey() || '');
-  var option = function (v, label, selected) { return '<option value="' + attr(v) + '"' + (selected ? ' selected' : '') + '>' + esc(label) + '</option>'; };
-  var muniOpts = option('', 'All municipalities', !activeMuni) + baselineMunis().map(function (m) {
-    var v = m.province + '|' + m.municipality; return option(v, m.municipality + ' (' + m.province + ')', v === activeMuni);
-  }).join('');
-  var brgyOpts = option('', 'All barangays', !ATT_STATE.brgy) + (SNAP.barangayRows || []).filter(function (b) {
-    return !activeMuni || b.province + '|' + b.municipality === activeMuni;
-  }).map(function (b) { var v = b.province + '|' + b.municipality + '|' + b.barangay; return option(v, b.barangay + ' · ' + b.municipality, ATT_STATE.brgy === v); }).join('');
-  var actOpts = option('', 'All activities', !ATT_STATE.act) + S.overview.activities.map(function (a) { return option(a.code, a.label, ATT_STATE.act === a.code); }).join('');
-  var totals = { male: 0, female: 0, unspecified: 0, total: 0 }, pv = { male: 0, female: 0, unspecified: 0, total: 0 };
-  list.forEach(function (r) { Object.keys(totals).forEach(function (k) { totals[k] += r.participants[k]; pv[k] += r.personVolunteers[k]; }); });
-  var th = function (col, label, num) { return sortTh({ col: col, curCol: ATT_STATE.sortCol, dir: ATT_STATE.sortDir, label: label, num: num, act: 'att-sort' }); };
-  var fmt = function (v) { return esc(v || '—'); };
-  var breakdown = function (v) { return n(v.male) + ' M / ' + n(v.female) + ' F / ' + n(v.unspecified) + ' U'; };
-  var rows = shown.map(function (r) {
-    return '<tr' + (r.repeated ? ' class="row-duplicate"' : '') + '><td>' + esc(r.municipality) + '<div class="tiny">' + esc(r.province) + '</div></td><td>' + fmt(r.barangay || 'Municipal level') + '</td>' +
-      '<td>' + esc(r.actLabel) + (r.repeated ? ' <span class="badge-dup">Repeated · included</span>' : '') + '</td>' +
-      '<td>' + fmt(r.targetStart) + '<br>' + fmt(r.targetEnd) + '</td><td>' + fmt(r.dateStart) + '<br>' + fmt(r.dateEnd) + '</td>' +
-      '<td class="num">' + n(r.participants.male) + '</td><td class="num">' + n(r.participants.female) + '</td><td class="num">' + n(r.participants.unspecified) + '</td>' +
-      '<td class="num"><strong>' + n(r.participants.total) + '</strong></td><td class="num">' + n(r.personVolunteers.total) + '<div class="tiny">' + breakdown(r.personVolunteers) + '</div></td>' +
-      '<td>' + r.sourceRows.map(function (x) { return n(x.sourceRow); }).join(', ') + (r.hasIssues ? '<br><span class="pill warn">Review in DQA</span>' : '') + '</td></tr>';
-  }).join('');
-  body.innerHTML = (typeof renderDqaBreadcrumb === 'function' ? renderDqaBreadcrumb() : '') +
-    '<div class="card"><div class="card-head"><div><h2>Attendance Summary</h2><p class="muted">Reported attendance totals. Repeated records remain included. Person Volunteers are shown separately; unique people cannot be determined.</p></div>' +
-    '<button class="btn ghost" data-act="att-export">Export summary CSV</button></div>' +
-    (SNAP.importTotals.invalidFigures ? '<div class="msg warn">Some source counts are missing or invalid. Totals include valid reported figures only; review DQA before using them.</div>' : '') +
-    '<div class="grid-kpi"><div class="kpi"><div class="kpi-label">Reported participants</div><div class="kpi-value">' + n(totals.total) + '</div><div class="kpi-sub">' + breakdown(totals) + '</div></div>' +
-    '<div class="kpi"><div class="kpi-label">Female participation</div><div class="kpi-value">' + (totals.total ? pctText(totals.female / totals.total) : '—') + '</div><div class="kpi-sub">Female ÷ all reported participants</div></div>' +
-    '<div class="kpi"><div class="kpi-label">Person Volunteers</div><div class="kpi-value">' + n(pv.total) + '</div><div class="kpi-sub">' + breakdown(pv) + '</div></div>' +
-    '<div class="kpi"><div class="kpi-label">Activity summaries</div><div class="kpi-value">' + n(list.length) + '</div><div class="kpi-sub">' + n(list.filter(function (r) { return r.repeated; }).length) + ' repeated groups</div></div></div>' +
-    '<div class="filters">' + (isMuni ? '<span>Municipality: ' + esc(home().municipality) + '</span>' : '<label class="field"><span>Municipality</span><select data-act="att-muni">' + muniOpts + '</select></label>') +
-    '<label class="field"><span>Barangay</span><select data-act="att-brgy">' + brgyOpts + '</select></label><label class="field"><span>Activity</span><select data-act="att-act">' + actOpts + '</select></label>' +
-    '<label class="field"><span>Search</span><input id="att-search" type="search" placeholder="Location or activity" value="' + attr(ATT_STATE.search) + '"></label>' +
-    '<label class="field"><span>Counts</span><select data-act="att-sex">' + option('all', 'All counts', ATT_STATE.sex === 'all') + option('female', 'With female participants', ATT_STATE.sex === 'female') + option('male', 'With male participants', ATT_STATE.sex === 'male') + option('unspecified', 'With unspecified sex', ATT_STATE.sex === 'unspecified') + '</select></label>' +
-    '<label class="field"><span>Records</span><select data-act="att-flag">' + option('all', 'All summaries', ATT_STATE.flag === 'all') + option('duplicate', 'Repeated records', ATT_STATE.flag === 'duplicate') + option('issues', 'Data issues', ATT_STATE.flag === 'issues') + '</select></label>' +
-    '<button class="btn ghost" data-act="att-reset">Reset</button></div>' +
-    '<div class="table-wrap"><table class="grid"><thead><tr>' + th('muni', 'Municipality') + th('brgy', 'Barangay') + th('act', 'Activity') + '<th>Target start / end</th>' + th('date', 'Actual start / end') +
-    th('male', 'Male', true) + th('female', 'Female', true) + th('unspecified', 'Unspecified', true) + th('total', 'Participants total', true) + th('pv', 'Person Volunteers', true) + '<th>Source sheet rows</th></tr></thead><tbody>' +
-    (rows || '<tr><td colspan="11">No summaries match these filters.</td></tr>') + '</tbody></table></div>' +
-    (shown.length < list.length ? '<button class="btn ghost" data-act="att-more">Show more</button>' : '') + '</div>';
-  bindSearch('att-search', function (v) { ATT_STATE.search = v; ATT_STATE.limit = 100; renderAttendees(); });
-  refreshIcons(body);
-}
-
-
-function quorumProgressBar(present, listed) {
-  if (!listed || listed <= 0) {
-    return '<span class="tiny text-muted">—</span>';
-  }
-  var rate = present / listed;
-  var pct = Math.max(0, Math.min(100, Math.round(rate * 100)));
-  var isMet = rate >= 0.7;
-  var statusCls = isMet ? 'is-met' : 'is-below';
-  var colorVar = isMet ? 'var(--good-text)' : 'var(--warn-text)';
-
-  return (
-    '<div class="quorum-progress-cell" title="' + attr(n(present) + ' of ' + n(listed) + ' households (' + pct + '%). Minimum 70% required for statutory assembly quorum.') + '">' +
-      '<div class="quorum-label-row">' +
-        '<strong style="color:' + colorVar + '">' + pctText(rate) + '</strong>' +
-        '<span class="tiny muted" style="font-size:10px">target 70%</span>' +
-      '</div>' +
-      '<div class="quorum-progress-wrap">' +
-        '<div class="quorum-progress-bar ' + statusCls + '" style="width:' + pct + '%;' + (isMet ? 'background:var(--good);' : 'background:var(--warn);') + '"></div>' +
-        '<div class="quorum-threshold-marker" title="Mandatory 70% Statutory Quorum Threshold"></div>' +
-      '</div>' +
-    '</div>'
-  );
-}
 
 /** The household counts of one assembly in a barangay row (the BA1 copy on the row itself for older rows). */
 function hhOf(b, asm) {
@@ -508,256 +411,6 @@ function hhIndividualsCell(d) {
 function hhAssemblies() {
   var list = ((typeof SNAP !== 'undefined' && SNAP && SNAP.pipeline) || []).filter(function (p) { return p.households; });
   return list.length ? list.map(function (p) { return { code: p.code, label: p.label }; }) : [{ code: 'BA1', label: '1st Barangay Assembly' }];
-}
-
-function getHouseholdTriageSummary(brgys, asm) {
-  var s = { totalBrgys: 0, reportingBrgys: 0, metQuorumBrgys: 0, belowQuorumBrgys: 0, noReportBrgys: 0,
-            incompleteBrgys: 0, conflictBrgys: 0, totListed: 0, totPresent: 0 };
-  (brgys || []).forEach(function (b) {
-    var h = hhOf(b, asm);
-    if (h.notApplicable) return;
-    s.totalBrgys++;
-    var st = hhStatus(h);
-    if (st === 'met' || st === 'below') {
-      s.reportingBrgys++;
-      s.totListed += h.hhListed;
-      s.totPresent += h.hhPresent;
-      if (st === 'met') s.metQuorumBrgys++; else s.belowQuorumBrgys++;
-    } else if (st === 'incomplete') s.incompleteBrgys++;
-    else s.noReportBrgys++;
-    if (h.hhConflict) s.conflictBrgys++;
-  });
-  s.overallRate = s.totListed > 0 ? s.totPresent / s.totListed : null;
-  return s;
-}
-
-function renderHouseholdTriageTray(summary) {
-  var items = [];
-  var card = function (v, cls, count, label, title) {
-    return '<button type="button" class="triage-item' + (cls ? ' ' + cls : '') + (HH_STATE.quorum === v ? ' active-triage' : '') + '" data-act="hh-triage" data-v="' + v + '" title="' + attr(title) + '">' +
-      '<div class="triage-item-info">' +
-        '<span class="triage-item-count">' + count + '</span>' +
-        '<span class="triage-item-label">' + label + '</span>' +
-      '</div>' +
-      '<span class="triage-item-arrow">' + icon('arrow-right') + '</span>' +
-    '</button>';
-  };
-  items.push(card('all', '', n(summary.totalBrgys), 'Monitored Barangays', 'View all monitored barangays in scope'));
-  items.push(card('met', 'triage-good', n(summary.metQuorumBrgys), 'Met Quorum (≥70%)', 'Barangays where at least 70% of households were represented'));
-  if (summary.belowQuorumBrgys > 0) items.push(card('below', 'triage-warn', n(summary.belowQuorumBrgys), 'Below 70% Quorum', 'Barangays where fewer than 70% of households were represented'));
-  if (summary.incompleteBrgys > 0) items.push(card('incomplete', 'triage-warn', n(summary.incompleteBrgys), 'Counts Incomplete', 'Only one of Total Hh In Barangay / Total Hh Represented is encoded'));
-  if (summary.noReportBrgys > 0) items.push(card('noreport', 'triage-bad', n(summary.noReportBrgys), 'Counts Not Encoded', 'No household counts encoded in KCIS for this assembly'));
-  if (summary.conflictBrgys > 0) items.push(card('conflict', 'triage-warn', n(summary.conflictBrgys), 'Conflicting KCIS Records', 'The assembly has several KCIS records with different household counts'));
-  items.push(card('all', summary.overallRate !== null && summary.overallRate >= 0.7 ? 'triage-good' : 'triage-warn',
-    summary.overallRate !== null ? pctText(summary.overallRate) : '—',
-    'Participation Rate (' + n(summary.totPresent) + '/' + n(summary.totListed) + ')', 'Households represented ÷ households in the reporting barangays'));
-
-  var gaps = summary.belowQuorumBrgys + summary.noReportBrgys + summary.incompleteBrgys;
-  var isAllGood = gaps === 0 && summary.conflictBrgys === 0 && summary.reportingBrgys > 0;
-  var trayCls = isAllGood ? 'triage-tray all-good' : (gaps > 0 ? 'triage-tray has-critical' : 'triage-tray');
-  var badgeHtml = isAllGood
-    ? '<span class="triage-badge">100% Quorum Compliance</span>'
-    : '<span class="triage-badge">' + n(gaps) + ' Quorum Gaps</span>';
-  var asmLabel = (hhAssemblies().filter(function (a) { return a.code === HH_STATE.asm; })[0] || { label: HH_STATE.asm }).label;
-
-  return (
-    '<div class="' + trayCls + '">' +
-      '<div class="triage-head">' +
-        '<div class="triage-title">' +
-          icon(isAllGood ? 'check-circle-2' : 'alert-circle') +
-          '<span>' + esc(asmLabel) + ' Household Quorum Triage</span> ' +
-          badgeHtml +
-        '</div>' +
-        '<span class="tiny muted">Click any card to isolate barangays by assembly quorum status</span>' +
-      '</div>' +
-      '<div class="triage-grid">' + items.join('') + '</div>' +
-    '</div>'
-  );
-}
-
-/** The barangays of the scorecard: scope, assembly, quorum preset, barangay and search. */
-function hhScorecardRows(brgys) {
-  var q = normSearch((HH_STATE.search || '').trim());
-  return brgys.filter(function (b) {
-    var h = hhOf(b, HH_STATE.asm);
-    if (h.notApplicable) return false;
-    if (HH_STATE.brgy && b.province + '|' + b.municipality + '|' + b.barangay !== HH_STATE.brgy) return false;
-    if (q && normSearch(b.barangay + ' ' + b.municipality).indexOf(q) === -1) return false;
-    if (HH_STATE.quorum === 'conflict') return !!h.hhConflict;
-    return HH_STATE.quorum === 'all' || hhStatus(h) === HH_STATE.quorum;
-  });
-}
-
-function renderHouseholds() {
-  var body = $('hh-body');
-  if (!body) return;
-  if (!STATE.computed) { body.innerHTML = '<div class="card"><p class="muted">Load Activity Tracker to calculate household participation.</p></div>'; return; }
-  var isMuni = isMunicipalUser(), key = homeKey();
-  var activeMuni = isMuni ? key : (HH_STATE.muni || key || '');
-  var brgys = (SNAP.barangayRows || []).filter(function (b) { return !activeMuni || b.province + '|' + b.municipality === activeMuni; });
-  var asms = hhAssemblies();
-  if (!asms.some(function (a) { return a.code === HH_STATE.asm; })) HH_STATE.asm = asms[0].code;
-  var hc = (SNAP.health && SNAP.health.householdCounts) || {};
-
-  // Municipalities dropdown (for RPMO)
-  var munis = baselineMunis();
-  var mOpts = '<option value="">All Municipalities</option>';
-  munis.forEach(function (m) {
-    var v = m.province + '|' + m.municipality;
-    mOpts += '<option value="' + attr(v) + '"' + (activeMuni === v ? ' selected' : '') + '>' + esc(m.municipality) + ' (' + esc(m.province) + ')</option>';
-  });
-
-  var scopeBanner = isMuni
-    ? '<div class="static-val">' + icon('map-pin') + ' <span>Municipality: <strong>' + esc(home().municipality) + '</strong> (' + esc(home().province) + ')</span></div>'
-    : '<label class="field"><span>Municipality</span><select data-act="hh-muni">' + mOpts + '</select></label>';
-
-  var summary = getHouseholdTriageSummary(brgys, HH_STATE.asm);
-  var overallRate = summary.overallRate;
-
-  // Assembly toggle
-  var asmHtml = '<div class="seg-control" role="tablist">' + asms.map(function (a) {
-    var s = getHouseholdTriageSummary(brgys, a.code);
-    return '<button type="button" class="seg-btn' + (HH_STATE.asm === a.code ? ' active' : '') + '" data-act="hh-asm" data-v="' + attr(a.code) + '">' +
-      icon('home') + ' <span>' + esc(a.label) + '</span> <span class="chip-count">' + n(s.reportingBrgys) + '</span></button>';
-  }).join('') + '</div>';
-
-  var sortedBrgys = tblSort(hhScorecardRows(brgys), HH_STATE.sortCol || 'brgy', HH_STATE.sortDir || 'asc', {
-    brgy: function (b) { return b.barangay; },
-    muni: function (b) { return b.municipality; },
-    listed: function (b) { var h = hhOf(b, HH_STATE.asm); return h.hhTotal || h.hhListed || 0; },
-    present: function (b) { var h = hhOf(b, HH_STATE.asm); return h.hhRepresented === null || h.hhRepresented === undefined ? (h.hhPresent || 0) : h.hhRepresented; },
-    rate: function (b) { var h = hhOf(b, HH_STATE.asm); return h.hhListed ? h.hhRate : -1; },
-    status: function (b) { return { met: 3, below: 2, incomplete: 1, noreport: 0 }[hhStatus(hhOf(b, HH_STATE.asm))]; },
-    records: function (b) { return hhOf(b, HH_STATE.asm).hhRecords || 0; },
-    sectors: function (b) { var d = hhOf(b, HH_STATE.asm).hhDetail; return d ? (d.hh4Ps || 0) + (d.hhIp || 0) + (d.hhSlp || 0) : -1; },
-    indiv: function (b) { var d = hhOf(b, HH_STATE.asm).hhDetail; return d && d.indivTotal !== null ? d.indivTotal : -1; }
-  });
-
-  var STATUS_PILL = {
-    met: '<span class="pill good">✓ Met Quorum (≥70%)</span>',
-    below: '<span class="pill warn">⚠ Below 70%</span>',
-    incomplete: '<span class="pill warn">◐ Counts incomplete</span>',
-    noreport: '<span class="pill idle">Not encoded</span>'
-  };
-  var rows = sortedBrgys.map(function (b) {
-    var bkey = b.province + '|' + b.municipality + '|' + b.barangay;
-    var h = hhOf(b, HH_STATE.asm);
-    var total = h.hhTotal !== undefined ? h.hhTotal : (h.hhListed || null);
-    var repr = h.hhRepresented !== undefined ? h.hhRepresented : (h.hhListed ? h.hhPresent : null);
-    var conflict = h.hhConflict
-      ? ' <span class="badge-dup" title="The assembly has several KCIS records with different household counts; the most complete one is used">⚠ Conflicting</span>'
-      : '';
-    return '<tr' + (h.hhConflict ? ' class="row-duplicate"' : '') + '>' +
-      '<td><strong>' + esc(b.barangay) + '</strong></td>' +
-      (!isMuni ? '<td>' + esc(b.municipality) + '</td>' : '') +
-      '<td class="num">' + (total !== null && total !== undefined ? n(total) : '—') + '</td>' +
-      '<td class="num">' + (repr !== null && repr !== undefined ? n(repr) : '—') + '</td>' +
-      '<td class="num">' + quorumProgressBar(h.hhPresent, h.hhListed) + '</td>' +
-      '<td>' + hhSectorCell(h.hhDetail) + '</td>' +
-      '<td>' + hhIndividualsCell(h.hhDetail) + '</td>' +
-      '<td>' + STATUS_PILL[hhStatus(h)] + '</td>' +
-      '<td class="num">' + (h.hhRecords ? n(h.hhRecords) : '—') + conflict + '</td>' +
-      '<td><button type="button" class="btn ghost btn-sm" data-act="p-open" data-v="' + attr('attendees#' + bkey + '#' + HH_STATE.asm) + '">' + icon('users') + ' <span>Attendees</span></button></td>' +
-    '</tr>';
-  }).join('');
-
-  var th = function (col, label, num, extra) {
-    var opts = { col: col, curCol: HH_STATE.sortCol || 'brgy', dir: HH_STATE.sortDir || 'asc', label: label, num: num, act: 'hh-sort' };
-    if (extra) {
-      if (extra.tooltip) opts.tooltip = extra.tooltip;
-      if (extra.term) opts.term = extra.term;
-    }
-    return sortTh(opts);
-  };
-
-  // Preset counts ignore the preset itself, so each chip says what it would show.
-  var keepQuorum = HH_STATE.quorum;
-  HH_STATE.quorum = 'all';
-  var base = hhScorecardRows(brgys);
-  HH_STATE.quorum = keepQuorum;
-  var cnt = function (st) { return base.filter(function (b) { return hhStatus(hhOf(b, HH_STATE.asm)) === st; }).length; };
-  var quickQuorumChips = '<div class="quick-filter-bar">' +
-    '<span class="tiny text-muted" style="font-weight:700;margin-right:4px;">Quorum Presets:</span>' +
-    [
-      { id: 'all', label: 'All Barangays', count: base.length, cls: '' },
-      { id: 'met', label: '✓ Met Quorum (≥70%)', count: cnt('met'), cls: 'chip-good' },
-      { id: 'below', label: '⚠ Below Quorum (<70%)', count: cnt('below'), cls: 'chip-warn' },
-      { id: 'incomplete', label: '◐ Counts Incomplete', count: cnt('incomplete'), cls: 'chip-warn' },
-      { id: 'noreport', label: '○ Not Encoded', count: cnt('noreport'), cls: '' },
-      { id: 'conflict', label: '⚠ Conflicting Records', count: base.filter(function (b) { return hhOf(b, HH_STATE.asm).hhConflict; }).length, cls: 'chip-warn' }
-    ].map(function (f) {
-      return '<button type="button" class="quick-filter-chip' + (f.cls ? ' ' + f.cls : '') + (HH_STATE.quorum === f.id ? ' active' : '') + '" data-act="hh-quorum" data-v="' + f.id + '">' +
-        '<span>' + f.label + '</span>' +
-        '<span class="tiny" style="opacity:0.85">(' + n(f.count) + ')</span>' +
-      '</button>';
-    }).join('') +
-  '</div>';
-
-  var brgyChip = HH_STATE.brgy
-    ? '<button type="button" class="quick-filter-chip active" data-act="hh-brgy-clear" title="Show every barangay">' +
-        '<span>' + icon('map-pin') + ' ' + esc(HH_STATE.brgy.split('|')[2]) + '</span> <span class="tiny">×</span></button>'
-    : '';
-
-  var contentHtml = '<div class="toolbar-row"><div class="filters" style="margin:0;flex:1">' +
-      scopeBanner +
-      '<label class="field" style="flex:1"><span>Search Barangay</span><input type="search" id="hh-search" value="' + attr(HH_STATE.search) + '" placeholder="Barangay name…"></label>' +
-      brgyChip +
-      (HH_STATE.muni || HH_STATE.brgy || HH_STATE.quorum !== 'all' || HH_STATE.search ? '<button type="button" class="btn ghost btn-sm" data-act="hh-reset">' + icon('rotate-ccw') + ' <span>Reset</span></button>' : '') +
-    '</div><span class="tiny">Showing <strong>' + n(sortedBrgys.length) + '</strong> of <strong>' + n(summary.totalBrgys) + '</strong></span></div>' +
-    quickQuorumChips +
-    '<div class="table-wrap"><table class="grid"><thead><tr>' +
-      th('brgy', 'Barangay', false, { tooltip: 'Barangay covered by PCRP' }) +
-      (!isMuni ? th('muni', 'Municipality', false, { tooltip: 'Local Government Unit' }) : '') +
-      th('listed', 'Households in Barangay', true, { tooltip: 'Total households in the barangay recorded in KCIS (the quorum denominator)' }) +
-      th('present', 'Households Represented', true, { tooltip: '"Total Hh Represented" encoded in KCIS for this assembly' }) +
-      th('rate', 'Participation Rate', false, { tooltip: 'Households Represented ÷ Households in Barangay (at least 70% meets the quorum)' }) +
-      th('sectors', '4Ps · IP · SLP HH', false, { tooltip: 'Households represented that are 4Ps, IP or SLP (Total 4Ps / Ip / Slp Hh Represented in KCIS)' }) +
-      th('indiv', 'Individuals', false, { tooltip: 'Individuals present by sex (Individual Female / Male / Total in KCIS)' }) +
-      th('status', 'Quorum Status', false, { term: 'k2', tooltip: 'Met (≥70%), Below (<70%), Counts incomplete (one count only), or Not encoded' }) +
-      th('records', 'KCIS Records', true, { tooltip: 'Activity records of this assembly in the Activity Tracker' }) +
-      '<th>Action</th>' +
-    '</tr></thead><tbody>' + (rows || '<tr><td colspan="10" class="empty-state">No barangays match these filters.</td></tr>') + '</tbody></table></div>';
-
-  var subNav = '<div class="sub-nav-tabs">' +
-    '<button type="button" class="sub-nav-btn" data-go="attendees">' + icon('calendar-check') + ' <span>Attendance Summary</span></button>' +
-    '<button type="button" class="sub-nav-btn active">' + icon('home') + ' <span>Household Participation</span></button>' +
-  '</div>';
-
-  var notLoaded = !hc.imported
-    ? '<div class="msg warn" style="margin:12px 0">' + icon('alert-triangle') + ' <span>The Activity Tracker is not loaded, so no household counts are shown. Load it in Settings &amp; Setup › Data Import.</span></div>'
-    : '';
-
-  body.innerHTML = subNav + (typeof renderDqaBreadcrumb === 'function' ? renderDqaBreadcrumb() : '') +
-    '<div class="card">' +
-      '<div class="card-head">' +
-        '<div>' +
-          '<h2>Household Participation &amp; Assembly Quorum</h2>' +
-          '<div class="muted">' + (isMuni ? 'Scoped strictly to <strong>' + esc(home().municipality) + '</strong>.' : 'Regional household participation monitoring.') + ' Households in barangay and households represented per assembly, as counted in the KCIS Activity Tracker (70% statutory threshold).</div>' +
-        '</div>' +
-        '<div class="row-actions" style="margin:0"><button class="btn ghost btn-sm" data-act="hh-export">' + icon('download') + ' <span>Export Scorecard CSV</span></button></div>' +
-      '</div>' +
-      notLoaded +
-      '<div class="grid-kpi">' +
-        '<div class="kpi ' + (overallRate === null ? 'accent-idle' : (overallRate >= 0.7 ? 'accent-good' : 'accent-warn')) + '">' +
-          '<div class="kpi-label">Overall Household Participation Rate</div>' +
-          '<div class="kpi-value">' + pctText(overallRate) + '</div>' +
-          '<div class="kpi-sub">' + (overallRate === null ? 'No household counts yet' : (overallRate >= 0.7 ? '✓ Met target quorum (≥70%)' : '⚠ Below target quorum (70%)')) + '</div>' +
-        '</div>' +
-        '<div class="kpi ' + (summary.metQuorumBrgys === summary.reportingBrgys && summary.reportingBrgys > 0 ? 'accent-good' : 'accent-warn') + '">' +
-          '<div class="kpi-label">Barangays Meeting 70% Quorum</div>' +
-          '<div class="kpi-value">' + n(summary.metQuorumBrgys) + ' <span class="tiny">of ' + n(summary.reportingBrgys) + '</span></div>' +
-          '<div class="kpi-sub">' + (summary.reportingBrgys ? Math.round(summary.metQuorumBrgys / summary.reportingBrgys * 100) + '% compliance rate' : 'No data yet') + '</div>' +
-        '</div>' +
-        '<div class="kpi"><div class="kpi-label">Households in Barangays</div><div class="kpi-value">' + n(summary.totListed) + '</div><div class="kpi-sub">across ' + n(summary.reportingBrgys) + ' reporting barangays</div></div>' +
-        '<div class="kpi"><div class="kpi-label">Households Represented</div><div class="kpi-value">' + n(summary.totPresent) + '</div><div class="kpi-sub">' + n(summary.noReportBrgys + summary.incompleteBrgys) + ' barangays without both counts</div></div>' +
-      '</div>' +
-      '<div class="filters" style="margin:14px 0">' + asmHtml + '</div>' +
-      renderHouseholdTriageTray(summary) +
-      contentHtml +
-    '</div>';
-
-  bindSearch('hh-search', function (v) { HH_STATE.search = v; renderHouseholds(); });
-  refreshIcons($('hh-body'));
 }
 
 // ===================================================================
@@ -1095,13 +748,7 @@ function renderVolunteers() {
         '</div>' +
         '<div class="row-actions" style="margin:0"><button class="btn ghost btn-sm" data-act="vol-export">' + icon('download') + ' <span>Export Volunteers CSV</span></button></div>' +
       '</div>' +
-      '<div class="grid-kpi">' +
-        '<div class="kpi"><div class="kpi-label">Total Volunteers Encoded</div><div class="kpi-value">' + n(totalVol) + '</div><div class="kpi-sub">in ' + Object.keys(brgysWithVol).length + ' barangays</div></div>' +
-        '<div class="kpi ' + (summary.womenRate >= 0.5 ? 'accent-good' : 'accent-warn') + '"><div class="kpi-label">Women Representation</div><div class="kpi-value">' + pctText(summary.womenRate) + '</div><div class="kpi-sub">' + n(womenCount) + ' female volunteers (≥50% target)</div></div>' +
-        '<div class="kpi accent-good"><div class="kpi-label">Marginalized Inclusion (Women, IP, PWD)</div><div class="kpi-value">' + pctText(summary.margRate) + '</div><div class="kpi-sub">' + n(margCount) + ' marginalized individuals</div></div>' +
-        '<div class="kpi"><div class="kpi-label">Committee Chairpersons</div><div class="kpi-value">' + n(chairCount) + '</div><div class="kpi-sub">designated committee leaders</div></div>' +
-      '</div>' +
-      renderVolunteersTriageTray(summary) +
+      kpiPageLink('volunteers', activeMuni) +
       '<div class="toolbar-row"><div class="filters" style="margin:0;flex:1">' +
         scopeBanner +
         '<label class="field"><span>Barangay</span><select data-act="vol-brgy">' + bOpts + '</select></label>' +
@@ -1523,17 +1170,7 @@ function renderBrest() {
           '<button class="btn ghost btn-sm" data-act="brt-export">' + icon('download') + ' <span>Export Members CSV</span></button>' +
         '</div>' +
       '</div>' +
-      '<div class="grid-kpi">' +
-        '<div class="kpi ' + (encodedBrgys === totalBrgys && totalBrgys > 0 ? 'accent-good' : 'accent-warn') + '">' +
-          '<div class="kpi-label">BResT Formation Rate</div>' +
-          '<div class="kpi-value">' + n(encodedBrgys + needsFixBrgys) + ' <span class="tiny">of ' + n(totalBrgys) + '</span></div>' +
-          '<div class="kpi-sub">' + (totalBrgys ? Math.round((encodedBrgys + needsFixBrgys) / totalBrgys * 100) + '% teams organized in KCIS' : '') + '</div>' +
-        '</div>' +
-        '<div class="kpi accent-good"><div class="kpi-label">Compliant Teams</div><div class="kpi-value">' + n(encodedBrgys) + '</div><div class="kpi-sub">active volunteer quorum &amp; inclusive representation</div></div>' +
-        '<div class="kpi ' + (needsFixBrgys > 0 ? 'accent-warn' : 'accent-good') + '"><div class="kpi-label">Teams Needing Attention</div><div class="kpi-value">' + n(needsFixBrgys) + '</div><div class="kpi-sub">insufficient volunteers or validation issues</div></div>' +
-        '<div class="kpi ' + (notEncodedBrgys > 0 ? 'accent-bad' : 'accent-good') + '"><div class="kpi-label">Not Yet Encoded</div><div class="kpi-value">' + n(notEncodedBrgys) + '</div><div class="kpi-sub">pending volunteer encoding in KCIS</div></div>' +
-      '</div>' +
-      renderBrestTriageTray(summary) +
+      kpiPageLink('brest', activeMuni) +
       '<div class="toolbar-row" style="margin-top:14px;margin-bottom:8px">' +
         quickBrestChips +
         '<label class="field" style="min-width:240px"><span>Search Barangay / Volunteer</span><input type="search" id="brt-search" value="' + attr(BRT_STATE.search) + '" placeholder="Search…"></label>' +
@@ -2287,34 +1924,7 @@ function renderCspmc() {
           '<button class="btn ghost btn-sm" data-act="cspmc-vols-export">' + icon('download') + ' <span>Export Volunteers CSV</span></button>' +
         '</div>' +
       '</div>' +
-      '<div class="grid-kpi">' +
-        '<div class="kpi ' + (compliantBrgys === totalBrgys && totalBrgys > 0 ? 'accent-good' : (formedBrgys > 0 ? 'accent-warn' : 'accent-bad')) + '">' +
-          '<div class="kpi-label">CSPMC Formation Rate</div>' +
-          '<div class="kpi-value">' + n(formedBrgys) + ' <span class="tiny">of ' + n(totalBrgys) + '</span></div>' +
-          '<div class="kpi-sub">' + (totalBrgys ? Math.round(formedBrgys / totalBrgys * 100) + '% teams organized in KCIS' : '') + '</div>' +
-        '</div>' +
-        '<div class="kpi ' + (cmscCompliant === totalBrgys && totalBrgys > 0 ? 'accent-good' : 'accent-warn') + '">' +
-          '<div class="kpi-label">CMSC Monitoring Quorum</div>' +
-          '<div class="kpi-value">' + n(cmscCompliant) + ' <span class="tiny">barangays</span></div>' +
-          '<div class="kpi-sub">&ge;3 CVs + elected Lead (SM7 p. 15)</div>' +
-        '</div>' +
-        '<div class="kpi accent-good">' +
-          '<div class="kpi-label">BResT to CMSC Transition</div>' +
-          '<div class="kpi-value">' + n(totalBrestAlums) + ' <span class="tiny">alums</span></div>' +
-          '<div class="kpi-sub">Encouraged selection from BResT</div>' +
-        '</div>' +
-        '<div class="kpi ' + (womenPct >= 50 ? 'accent-good' : 'accent-warn') + '">' +
-          '<div class="kpi-label">Women Representation</div>' +
-          '<div class="kpi-value">' + womenPct + '%</div>' +
-          '<div class="kpi-sub">' + n(totalWomen) + ' women (≥50% target)</div>' +
-        '</div>' +
-        '<div class="kpi">' +
-          '<div class="kpi-label">Active Sub-Committee Seats</div>' +
-          '<div class="kpi-value">' + n(s2Vols.length) + '</div>' +
-          '<div class="kpi-sub">Across 8 sub-committees + Bookkeeper</div>' +
-        '</div>' +
-      '</div>' +
-      renderCspmcTriageTray(summary) +
+      kpiPageLink('cspmc', activeMuni) +
       orgChartSectionHtml +
       '<div class="card-head" style="margin-top:14px;margin-bottom:6px">' +
         '<div><h3 style="margin:0;font-size:13px;text-transform:uppercase;letter-spacing:0.04em;color:var(--text-muted)">Filter by Sub-Committee</h3></div>' +
@@ -3209,7 +2819,7 @@ function renderMrest() {
           '<button class="btn ghost btn-sm" data-act="mrt-export">' + icon('download') + ' <span>Export MResT Roster CSV</span></button>' +
         '</div>' +
       '</div>' +
-      renderMrestTriageTray(summary) +
+      kpiPageLink('mrest', activeMuni) +
       '<div class="mrest-hero" style="margin-top:16px">' +
         '<div class="mrest-hero-info">' +
           '<h3>' + esc(muniName) + ' Municipal Resilience Team</h3>' +
@@ -3221,37 +2831,6 @@ function renderMrest() {
             : '<span class="pill bad" style="font-size:13px;padding:4px 10px">○ Not Encoded in KCIS</span>')) +
           (isQuorumMet ? '<span class="pill good" style="font-size:13px;padding:4px 10px">✓ ' + communityPct + '% Community Quota</span>' : '<span class="pill warn" style="font-size:13px;padding:4px 10px">⚠ ' + communityPct + '% Community Voice (&lt;50%)</span>') +
           (isVerified ? '<span class="pill good" style="font-size:13px;padding:4px 10px">✓ EO Verified (' + (eoCount !== null ? eoCount + ' on paper' : 'verified') + ')</span>' : '<span class="pill idle" style="font-size:13px;padding:4px 10px">Pending EO Verification</span>') +
-        '</div>' +
-      '</div>' +
-      '<div class="grid-kpi">' +
-        '<div class="kpi ' + (comp.status === 'complete' ? 'accent-good' : (comp.status === 'incomplete' ? 'accent-warn' : 'accent-bad')) + '">' +
-          '<div class="kpi-label">MResT Formation Status</div>' +
-          '<div class="kpi-value">' + (comp.status === 'complete' ? '✓ Formed' : (comp.status === 'incomplete' ? '⚠ Incomplete' : '○ Pending')) + '</div>' +
-          '<div class="kpi-sub">' + (comp.status === 'complete' ? n(muniVols.length) + ' members; composition complete (SM1 Section 3.1)'
-            : (comp.status === 'incomplete' ? n(muniVols.length) + ' in KCIS · Missing: ' + esc(comp.gaps.join('; '))
-            : 'No volunteer records with MResT committee')) + '</div>' +
-        '</div>' +
-        '<div class="kpi ' + (isQuorumMet ? 'accent-good' : 'accent-warn') + '">' +
-          '<div class="kpi-label">Community Representation Quota</div>' +
-          '<div class="kpi-value">' + communityPct + '%</div>' +
-          '<div style="margin:4px 0 2px">' + commQuotaBar + '</div>' +
-          '<div class="kpi-sub">&ge;50% quota per SM1 Para 13 (' + n(communityVols.length) + ' CVs)</div>' +
-        '</div>' +
-        '<div class="kpi ' + (captainsVols.length >= totalBarangays && totalBarangays > 0 ? 'accent-good' : (captainsVols.length > 0 ? 'accent-warn' : 'accent-bad')) + '">' +
-          '<div class="kpi-label">Barangay Captains Coverage</div>' +
-          '<div class="kpi-value">' + n(captainsVols.length) + ' <span class="tiny">of ' + n(totalBarangays) + '</span></div>' +
-          '<div style="margin:4px 0 2px">' + pbQuotaBar + '</div>' +
-          '<div class="kpi-sub">Punong Barangays encoded in KCIS</div>' +
-        '</div>' +
-        '<div class="kpi ' + (chair && leads.length ? 'accent-good' : 'accent-warn') + '">' +
-          '<div class="kpi-label">Executive Steering</div>' +
-          '<div class="kpi-value">' + (chair ? 'Mayor Tagged' : 'No Mayor') + '</div>' +
-          '<div class="kpi-sub">' + (leads.length ? n(leads.length) + ' Co-Chair / Lead(s)' : 'No MPDC/MDRRMO lead') + '</div>' +
-        '</div>' +
-        '<div class="kpi ' + (isVerified ? 'accent-good' : 'accent-idle') + '">' +
-          '<div class="kpi-label">Executive Order (EO) Precision</div>' +
-          '<div class="kpi-value">' + (isVerified ? 'Verified' : 'Unchecked') + '</div>' +
-          '<div class="kpi-sub">' + (isVerified ? 'Checked against signed Mayor\'s Executive Order' : 'Tag on the Verify page (MResT form)') + '</div>' +
         '</div>' +
       '</div>' +
       orgChartHtml +
@@ -3285,23 +2864,6 @@ function renderMrest() {
 // BACKWARD COMPATIBILITY & SHARED PEOPLE VIEW
 // ===================================================================
 
-function renderPeople() {
-  var body = $('pp-body');
-  if (!body) return;
-  body.innerHTML = '<div class="card">' +
-    '<h2>People &amp; Roster Hub</h2>' +
-    '<p class="muted">The People module has been separated into dedicated, specialized modules with comprehensive metrics and validation:</p>' +
-    '<div class="grid-kpi" style="margin-top:16px">' +
-      '<button type="button" class="kpi clickable" data-act="go" data-v="attendees"><div class="kpi-label">Attendees</div><div class="kpi-value">' + icon('calendar-check') + '</div><div class="kpi-sub">Open Attendees Module ›</div></button>' +
-      '<button type="button" class="kpi clickable" data-act="go" data-v="households"><div class="kpi-label">Household Participation</div><div class="kpi-value">' + icon('home') + '</div><div class="kpi-sub">Open Assembly Quorum Scorecard ›</div></button>' +
-      '<button type="button" class="kpi clickable" data-act="go" data-v="volunteers"><div class="kpi-label">Community Volunteers</div><div class="kpi-value">' + icon('users') + '</div><div class="kpi-sub">Open Volunteers Module ›</div></button>' +
-      '<button type="button" class="kpi clickable" data-act="go" data-v="brest"><div class="kpi-label">BResT</div><div class="kpi-value">' + icon('shield') + '</div><div class="kpi-sub">Open BResT (Stage 1) ›</div></button>' +
-      '<button type="button" class="kpi clickable" data-act="go" data-v="cspmc"><div class="kpi-label">CSPMC &amp; Sub-Committees</div><div class="kpi-value">' + icon('layers') + '</div><div class="kpi-sub">Open Stage 2 Committees ›</div></button>' +
-      '<button type="button" class="kpi clickable" data-act="go" data-v="mrest"><div class="kpi-label">MResT</div><div class="kpi-value">' + icon('award') + '</div><div class="kpi-sub">Open MResT Module ›</div></button>' +
-    '</div>' +
-  '</div>';
-}
-
 function committeeCards(bkey) {
   var parts = bkey.split('|'), P = people();
   var b = (SNAP.barangayRows || []).filter(function (x) { return x.province === parts[0] && x.municipality === parts[1] && x.barangay === parts[2]; })[0];
@@ -3312,7 +2874,7 @@ function committeeCards(bkey) {
     var cls = !st ? 'idle' : st.status === 'Encoded' ? 'good' : st.status === 'Needs fixing' ? 'warn' : 'bad';
     var accent = cls === 'good' ? 'accent-good' : (cls === 'warn' ? 'accent-warn' : (cls === 'bad' ? 'accent-bad' : 'accent-idle'));
     var women = m.filter(function (v) { return v.sex === 'female'; }).length, marg = m.filter(function (v) { return v.sex === 'female' || v.ip || v.pwd; }).length;
-    return '<div class="kpi ' + accent + '"><div class="card-head" style="margin:0 0 6px"><strong>' + esc(label) + '</strong><span class="pill ' + cls + '">' + esc(st ? st.status : '—') + '</span></div>' +
+    return '<div class="committee-detail ' + accent + '"><div class="card-head" style="margin:0 0 6px"><strong>' + esc(label) + '</strong><span class="pill ' + cls + '">' + esc(st ? st.status : '—') + '</span></div>' +
       (st && st.reasons && st.reasons.length ? '<div class="tiny" style="color:var(--warn-text);font-weight:700;margin-bottom:4px">⚠ ' + esc(st.reasons.join(' · ')) + '</div>' : '') +
       (m.length
         ? '<div class="tiny">' + n(m.length) + (m.length === 1 ? ' volunteer · ' : ' volunteers · ') + n(women) + (women === 1 ? ' woman' : ' women') + ' · marginalized (women, IP, PWD) <strong>' + Math.round(marg / m.length * 100) + '%</strong></div>' +
@@ -3332,7 +2894,7 @@ function committeeCards(bkey) {
     var s2Badges = s2Ev.activeBodies.map(function (body) {
       return '<span class="pill idle tiny" style="margin:2px">' + esc(body.short) + ' (' + s2Ev.bodies[body.id].length + ')</span>';
     }).join(' ');
-    s2Card = '<div class="kpi ' + s2Accent + '"><div class="card-head" style="margin:0 0 6px"><strong>Stage 2: CSPMC &amp; Sub-Committees</strong><span class="pill ' + s2Cls + '">' + esc(s2Ev.status) + '</span></div>' +
+    s2Card = '<div class="committee-detail ' + s2Accent + '"><div class="card-head" style="margin:0 0 6px"><strong>Stage 2: CSPMC &amp; Sub-Committees</strong><span class="pill ' + s2Cls + '">' + esc(s2Ev.status) + '</span></div>' +
       (s2Ev.reasons.length ? '<div class="tiny" style="color:var(--warn-text);font-weight:700;margin-bottom:4px">⚠ ' + esc(s2Ev.reasons.join(' · ')) + '</div>' : '') +
       '<div class="tiny">' + n(s2Vols.length) + ' volunteers in ' + s2Ev.activeBodies.length + ' sub-committees · women: <strong>' + s2Ev.womenPct + '%</strong>' +
       (s2Ev.cmscBrestAlum ? ' · <strong>' + s2Ev.cmscBrestAlum + ' from BResT</strong>' : '') + '</div>' +
@@ -3341,7 +2903,7 @@ function committeeCards(bkey) {
       '</div>';
   }
   var others = list.filter(function (v) { return v.kind !== 'BREST' && v.kind !== 'SFMSC' && !v.isStage2; });
-  return '<h3 style="margin-top:6px">Committees of ' + esc(parts[2]) + '</h3><div class="grid-kpi">' +
+  return '<h3 style="margin-top:6px">Committees of ' + esc(parts[2]) + '</h3><div class="committee-detail-grid">' +
     card('BREST', 'BResT', 'Barangay Resilience Team (BResT)') + card('SFMSC', 'SFMSC', 'Stakeholder and Feedback Mechanism Sub-Committee (SFMSC)') + s2Card + '</div>' +
     (others.length ? '<p class="tiny">' + n(others.length) + ' more volunteer row' + (others.length === 1 ? '' : 's') + ' in this barangay with no committee, or a committee of another activity (listed below).</p>' : '');
 }
@@ -3398,45 +2960,6 @@ function openPerson(key) {
     else dlg.showModal();
   }
   $('person-body').scrollTop = 0;
-}
-
-// Exports
-function exportAttendeesCsv() {
-  var list = filteredAttendanceRows();
-  var head = ['Province', 'Municipality', 'Barangay', 'Activity', 'Target Start', 'Target End', 'Actual Start', 'Actual End',
-    'Participants Male', 'Participants Female', 'Participants Unspecified', 'Participants Total',
-    'Person Volunteers Male', 'Person Volunteers Female', 'Person Volunteers Unspecified', 'Person Volunteers Total', 'Source Rows', 'Repeated'];
-  var rows = list.map(function (r) { return [r.province, r.municipality, r.barangay, r.actLabel, r.targetStart, r.targetEnd, r.dateStart, r.dateEnd,
-    r.participants.male, r.participants.female, r.participants.unspecified, r.participants.total,
-    r.personVolunteers.male, r.personVolunteers.female, r.personVolunteers.unspecified, r.personVolunteers.total,
-    r.sourceRows.map(function (x) { return x.sourceRow; }).join('; '), r.repeated ? 'Yes; counts included' : 'No']; });
-  downloadCsv('PCRP_attendance_summary_' + stamp() + '.csv', csvOf([head].concat(rows)));
-}
-
-/** The quorum scorecard of every assembly that carries household counts, for the scope in view. */
-function exportHouseholdsCsv() {
-  var isMuni = isMunicipalUser(), key = homeKey();
-  var activeMuni = isMuni ? key : (HH_STATE.muni || key || '');
-  var brgys = (SNAP.barangayRows || []).filter(function (b) { return !activeMuni || b.province + '|' + b.municipality === activeMuni; });
-  var STATUS = { met: 'Met (>=70%)', below: 'Below 70%', incomplete: 'Counts incomplete', noreport: 'Not encoded' };
-  var DETAIL = [['hh4Ps', '4Ps HH Represented'], ['fam4Ps', '4Ps Families Represented'], ['hhIp', 'IP HH Represented'],
-                ['hhSlp', 'SLP HH Represented'], ['famSlp', 'SLP Families Represented'],
-                ['indivFemale', 'Individuals Female'], ['indivMale', 'Individuals Male'], ['indivTotal', 'Individuals Total'],
-                ['kcisRate', 'KCIS Participation Rate %']];
-  var head = ['Province', 'Municipality', 'Barangay', 'Assembly', 'Households in Barangay', 'Households Represented', 'Participation Rate %', 'Quorum Status', 'KCIS Records', 'Conflicting Records']
-    .concat(DETAIL.map(function (d) { return d[1]; }));
-  var blank = function (v) { return v === null || v === undefined ? '' : v; };
-  var rows = [];
-  hhAssemblies().forEach(function (a) {
-    brgys.forEach(function (b) {
-      var h = hhOf(b, a.code);
-      if (h.notApplicable) return;
-      rows.push([b.province, b.municipality, b.barangay, a.label, blank(h.hhTotal), blank(h.hhRepresented),
-                 h.hhListed ? (h.hhRate * 100).toFixed(1) : '', STATUS[hhStatus(h)], h.hhRecords || 0, h.hhConflict ? 'Yes' : 'No']
-        .concat(DETAIL.map(function (d) { return h.hhDetail ? blank(h.hhDetail[d[0]]) : ''; })));
-    });
-  });
-  downloadCsv('PCRP_household_participation_' + (activeMuni ? activeMuni.replace(/[^A-Za-z0-9]+/g, '_') : 'region') + '_' + stamp() + '.csv', csvOf([head].concat(rows)));
 }
 
 function exportVolunteersCsv() {
@@ -3593,39 +3116,6 @@ document.addEventListener('click', function (ev) {
   // Person modal
   if (act === 'person') { ev.preventDefault(); openPerson(v); }
 
-  // Attendees
-  else if (act === 'att-triage') {
-    if (v === 'all') { ATT_STATE.sex = 'all'; ATT_STATE.flag = 'all'; }
-    else if (v === 'female' || v === 'male') { ATT_STATE.sex = v; ATT_STATE.flag = 'all'; }
-    else if (v === 'volunteer' || v === 'noname' || v === 'duplicate') { ATT_STATE.flag = v; ATT_STATE.sex = 'all'; }
-    ATT_STATE.limit = 100;
-    renderAttendees();
-  }
-  else if (act === 'att-sex') { ATT_STATE.sex = v; ATT_STATE.limit = 100; renderAttendees(); }
-  else if (act === 'att-flag') { ATT_STATE.flag = v; ATT_STATE.limit = 100; renderAttendees(); }
-  else if (act === 'att-sort') {
-    var col = t.getAttribute('data-col');
-    if (ATT_STATE.sortCol === col) ATT_STATE.sortDir = ATT_STATE.sortDir === 'asc' ? 'desc' : 'asc';
-    else { ATT_STATE.sortCol = col; ATT_STATE.sortDir = (col === 'act' || col === 'date') ? 'desc' : 'asc'; }
-    renderAttendees();
-  }
-  else if (act === 'att-reset') { ATT_STATE.brgy = ''; ATT_STATE.act = ''; ATT_STATE.sex = 'all'; ATT_STATE.flag = 'all'; ATT_STATE.search = ''; renderAttendees(); }
-  else if (act === 'att-more') { ATT_STATE.limit += 100; renderAttendees(); }
-  else if (act === 'att-export') exportAttendeesCsv();
-
-  // Households
-  else if (act === 'hh-triage' || act === 'hh-quorum') { HH_STATE.quorum = v; renderHouseholds(); }
-  else if (act === 'hh-asm') { HH_STATE.asm = v; renderHouseholds(); }
-  else if (act === 'hh-brgy-clear') { HH_STATE.brgy = ''; renderHouseholds(); }
-  else if (act === 'hh-sort') {
-    var hCol = t.getAttribute('data-col');
-    if (HH_STATE.sortCol === hCol) HH_STATE.sortDir = HH_STATE.sortDir === 'asc' ? 'desc' : 'asc';
-    else { HH_STATE.sortCol = hCol; HH_STATE.sortDir = 'asc'; }
-    renderHouseholds();
-  }
-  else if (act === 'hh-reset') { HH_STATE.muni = ''; HH_STATE.brgy = ''; HH_STATE.quorum = 'all'; HH_STATE.search = ''; renderHouseholds(); }
-  else if (act === 'hh-export') exportHouseholdsCsv();
-
   // Volunteers
   else if (act === 'vol-triage') {
     if (v === 'all') {
@@ -3779,13 +3269,7 @@ document.addEventListener('click', function (ev) {
 
 document.addEventListener('change', function (ev) {
   var t = ev.target, act = t.getAttribute && t.getAttribute('data-act');
-  if (act === 'att-muni') { ATT_STATE.muni = t.value; ATT_STATE.brgy = ''; renderAttendees(); }
-  else if (act === 'att-brgy') { ATT_STATE.brgy = t.value; renderAttendees(); }
-  else if (act === 'att-act') { ATT_STATE.act = t.value; renderAttendees(); }
-  else if (act === 'att-flag') { ATT_STATE.flag = t.value; ATT_STATE.limit = 100; renderAttendees(); }
-  else if (act === 'att-sex') { ATT_STATE.sex = t.value; ATT_STATE.limit = 100; renderAttendees(); }
-  else if (act === 'hh-muni') { HH_STATE.muni = t.value; HH_STATE.brgy = ''; renderHouseholds(); }
-  else if (act === 'vol-muni') { VOL_STATE.muni = t.value; VOL_STATE.brgy = ''; renderVolunteers(); }
+  if (act === 'vol-muni') { VOL_STATE.muni = t.value; VOL_STATE.brgy = ''; renderVolunteers(); }
   else if (act === 'vol-brgy') { VOL_STATE.brgy = t.value; renderVolunteers(); }
   else if (act === 'brt-brgy') { BRT_STATE.brgy = t.value; renderBrest(); }
   else if (act === 'cspmc-muni') { CSPMC_STATE.muni = t.value; CSPMC_STATE.brgy = ''; renderCspmc(); }
