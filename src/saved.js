@@ -15,7 +15,8 @@
 var SAVED = { current: null, ledger: {}, available: true, dataStamp: '' };   // dataStamp: which exports are on screen
 var SAVE_DB = 'pcrp-desktop', SAVE_STORE = 'kv', SAVE_KEEP_PULLS = 12;
 // Saves made before v2.15 carry 'Raw_Households' (the old household roster): it is not read back.
-var SAVE_TABLES = ['Raw_Participants', 'Raw_HH_Participation', 'Raw_Volunteers'];
+var SAVE_TABLES = ['Raw_Activity_Tracker', 'Raw_Volunteers', 'Raw_MOVs'];
+var SAVE_SOURCE = 'activity-tracker-v2';
 var SAVE_FORMAT = 'pcrp-desktop-save';
 var saveTimer = null;
 
@@ -197,7 +198,7 @@ function savedSaveCurrent() {
   var tables = {};
   var hasAny = false;
   SAVE_TABLES.forEach(function (t) {
-    if (TABS[t] && TABS[t].rows && TABS[t].rows.length > 0) {
+    if (TABS[t] && TABS[t].rows && (TABS[t].rows.length > 0 || t === 'Raw_MOVs')) {
       tables[t] = TABS[t];
       hasAny = true;
     }
@@ -218,6 +219,8 @@ function savedSaveCurrent() {
   }
 
   SAVED.current = {
+    sourceType: SAVE_SOURCE,
+    movState: typeof MOV_STATE !== 'undefined' ? MOV_STATE : null,
     pullDate: pd,
     savedAt: new Date().toISOString(),
     home: (typeof prefs === 'function' ? prefs().home : null) || null,
@@ -274,7 +277,7 @@ function savedRestore() {
 
     var tableKeys = Object.keys(cur.tables);
     var hasAny = tableKeys.some(function (k) {
-      return cur.tables[k] && cur.tables[k].rows && cur.tables[k].rows.length > 0;
+      return cur.tables[k] && cur.tables[k].rows && (cur.tables[k].rows.length > 0 || k === 'Raw_MOVs');
     });
 
     if (!hasAny) {
@@ -298,8 +301,34 @@ function savedLoadCurrent(cur) {
     delete TABS[t];
     if (cur.tables && cur.tables[t]) TABS[t] = cur.tables[t];
   });
-  LOADED = cur.loaded || {};
-  if (LOADED.households && !TABS.Raw_HH_Participation) delete LOADED.households;   // an old save's household roster
+  LOADED = Object.assign({}, cur.loaded || {});
+  delete TABS.Raw_Participants; delete TABS.Raw_HH_Participation;
+  delete LOADED.participants; delete LOADED.households;
+  if (TABS.Raw_Activity_Tracker) {
+    try { validateTrackerTable(TABS.Raw_Activity_Tracker); TABS.Raw_Activity_Tracker = trackerTable(TABS.Raw_Activity_Tracker); } catch (e) {
+      delete TABS.Raw_Activity_Tracker; delete LOADED.activityTracker;
+      IMPORT_ERRORS.push({ file: 'Saved Activity Tracker', error: e.message });
+    }
+  }
+  if (typeof MOV_STATE !== 'undefined') {
+    MOV_STATE = cur.movState || { referenceVersion: MOV_REFERENCE_VERSION, assignments: {}, applicability: {} };
+    try { validateMovState(MOV_STATE); } catch (error) {
+      MOV_STATE = { referenceVersion: MOV_REFERENCE_VERSION, assignments: {}, applicability: {} };
+      IMPORT_ERRORS.push({ file: 'Saved MOV decisions', error: error.message + ' Review decisions again.' });
+    }
+    if (TABS.Raw_MOVs) {
+      try { validateMovTable(TABS.Raw_MOVs); } catch (error) { delete TABS.Raw_MOVs; delete LOADED.movs; IMPORT_ERRORS.push({ file: 'Saved MOVs', error: error.message }); }
+    }
+    if (typeof MOV_CACHE !== 'undefined') MOV_CACHE = null;
+  }
+  if (!TABS.Raw_Activity_Tracker) {
+    delete LOADED.activityTracker;
+    STATE.computed = false; SNAP = null; PEOPLE = null; if (typeof S !== 'undefined') { S.overview = null; S.matrix = null; }
+    if (cur.tables && (cur.tables.Raw_Participants || cur.tables.Raw_HH_Participation)) IMPORT_ERRORS.push({ file: 'Earlier session', error: 'Import the new KCIS Activity Tracker. Legacy attendance and household tables are no longer supported.' });
+  }
+  if (cur.sourceType !== SAVE_SOURCE) { SAVED.ledger = {}; cur.findings = null; }
+  savedApplyLedger();
+  VERIFY.cache = null;
   SAVED.dataStamp = cur.dataStamp || cur.savedAt || 'restored';
   var p = prefs();
   if (cur.pullDate && (!p.evalDate || p.evalDate !== cur.pullDate)) {
@@ -315,7 +344,7 @@ function savedLoadCurrent(cur) {
     savedPage = sessionStorage.getItem('pcrp_active_page') || localStorage.getItem('pcrp_active_page');
   } catch (e) {}
 
-  if (LOADED.participants && TABS.Raw_Participants && TABS.Raw_Participants.rows && TABS.Raw_Participants.rows.length > 0) {
+  if (LOADED.activityTracker && TABS.Raw_Activity_Tracker) {
     computeAndShow(savedPage || 'overview');
   } else {
     // Only partial exports (e.g., Volunteers or Household Participation)
@@ -332,7 +361,8 @@ function savedLoadCurrent(cur) {
 
 /** A new participants export dropped in: a new pull, and a pull date taken from saved data no longer applies. */
 function savedNewExports(kind) {
-  if (kind !== 'participants') return;
+  if (kind !== 'activityTracker') return;
+  if (!SAVED.current || SAVED.current.sourceType !== SAVE_SOURCE) { SAVED.ledger = {}; SAVED.current = null; }
   SAVED.dataStamp = 'x' + Date.now();
   var p = prefs();
   if (p.evalDateFromSave) { delete p.evalDate; delete p.evalDateFromSave; savePrefs(p); }
@@ -365,13 +395,13 @@ function gunzipBuf(buf) {
 }
 
 function savedToFile() {
-  if (!STATE.computed) { toast('Load and compute the exports first.'); return; }
+  if (!SAVE_TABLES.some(function (key) { return TABS[key]; })) { toast('Load an export first.'); return; }
   var pd = pullDate();
   var tables = {};
   SAVE_TABLES.forEach(function (t) { if (TABS[t]) tables[t] = TABS[t]; });
   var p = prefs();
   var data = {
-    format: SAVE_FORMAT, version: 1, monitorVersion: BUILT_IN.monitorVersion, savedAt: new Date().toISOString(),
+    format: SAVE_FORMAT, version: 3, sourceType: SAVE_SOURCE, movState: typeof MOV_STATE !== 'undefined' ? MOV_STATE : null, monitorVersion: BUILT_IN.monitorVersion, savedAt: new Date().toISOString(),
     pullDate: pd, home: p.home || null, field: p.field || null,
     loaded: LOADED, tables: tables, ledger: SAVED.ledger, tags: VERIFY.tags
   };
@@ -398,7 +428,18 @@ function savedFromFile(file) {
   }
   return file.arrayBuffer().then(gunzipBuf).then(function (text) {
     var d = JSON.parse(text);
-    if (!d || d.format !== SAVE_FORMAT || !d.tables || !d.tables.Raw_Participants) throw new Error(file.name + ' is not a PCRP Encoding and Data Quality Assessment Tool save file.');
+    if (!d || d.format !== SAVE_FORMAT || !d.tables) throw new Error(file.name + ' is not a PCRP save file.');
+    if ([2, 3].indexOf(d.version) === -1 || d.sourceType !== SAVE_SOURCE || d.tables.Raw_Participants || d.tables.Raw_HH_Participation) throw new Error('This legacy session cannot be opened. Import the new KCIS Activity Tracker instead. Current data was not changed.');
+    if (!d.tables.Raw_Activity_Tracker && !d.tables.Raw_Volunteers && !d.tables.Raw_MOVs) throw new Error('This session has no supported data tables.');
+    if (d.tables.Raw_Activity_Tracker) { validateTrackerTable(d.tables.Raw_Activity_Tracker); d.tables.Raw_Activity_Tracker = trackerTable(d.tables.Raw_Activity_Tracker); }
+    if (d.tags && (!d.tags.records || typeof d.tags.records !== 'object' || Array.isArray(d.tags.records))) throw new Error('Invalid saved verification records.');
+    if (d.tables.Raw_Volunteers && (!Array.isArray(d.tables.Raw_Volunteers.rows) || d.tables.Raw_Volunteers.rows.some(function (r) { return !Array.isArray(r); }) || !Array.isArray(d.tables.Raw_Volunteers.headers) || checkHeaders(d.tables.Raw_Volunteers.headers, VOLUNTEER_HEADERS).length)) throw new Error('Invalid saved Community Volunteer List.');
+    if (d.tables.Raw_MOVs) validateMovTable(d.tables.Raw_MOVs);
+    if (d.movState) validateMovState(d.movState);
+    d.loaded = {};
+    if (d.tables.Raw_MOVs) d.loaded.movs = { file: file.name, sheet: 'Raw_MOVs', rows: d.tables.Raw_MOVs.rows.length };
+    if (d.tables.Raw_Activity_Tracker) d.loaded.activityTracker = { file: file.name, sheet: 'Raw_Activity_Tracker', rows: d.tables.Raw_Activity_Tracker.rows.length };
+    if (d.tables.Raw_Volunteers) d.loaded.volunteers = { file: file.name, sheet: 'Raw_Volunteers', rows: d.tables.Raw_Volunteers.rows.length };
     var p = prefs();
     if (d.home) p.home = d.home;
     if (d.field) p.field = d.field;
@@ -406,7 +447,7 @@ function savedFromFile(file) {
     loadReferenceTables();
     SAVED.ledger = d.ledger || {};
     if (d.tags) VERIFY.tags = d.tags;
-    var cur = { pullDate: d.pullDate, savedAt: d.savedAt, home: d.home, loaded: d.loaded, tables: d.tables, findings: null, dataStamp: 'file' + d.savedAt };
+    var cur = { movState: d.movState || null, sourceType: SAVE_SOURCE, pullDate: d.pullDate, savedAt: d.savedAt, home: d.home, loaded: d.loaded, tables: d.tables, findings: null, dataStamp: 'file' + d.savedAt };
     SAVED.current = null;              // the file is the data now; no ledger move for it
     savedApplyLedger();
     IMPORT_ERRORS = [];
@@ -423,7 +464,7 @@ function renderSavedBar() {
   if (!el) return;
   var icoFn = typeof icon === 'function' ? icon : function () { return '<span class="ico">⛁</span>'; };
   var cur = SAVED.current, pulls = Object.keys(SAVED.ledger).length;
-  var verified = VERIFY.tags ? Object.keys(VERIFY.tags.records || {}).length : 0;
+  var verified = VERIFY.tags ? Object.keys(VERIFY.tags.records || {}).filter(function (key) { return key.indexOf('att|') !== 0 || key.indexOf('att|summary-v2|') === 0; }).length : 0;
   if (!SAVED.available) {
     el.innerHTML = '<div class="msg warn">' + icoFn('alert-triangle') + ' <div>This browser does not keep data, so a refresh clears the exports. ' +
       'Use <button class="link" data-act="save-file">Save to a file</button>, and drop that file back in next time.</div></div>';

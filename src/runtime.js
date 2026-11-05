@@ -45,6 +45,19 @@ function computeAll(evalDate) {
   return SNAP;
 }
 
+// Desktop inputs have one authoritative summary table; legacy raw exports are never read.
+buildSnapshot = function (evalDateIso) {
+  var table = readRawTable('Raw_Activity_Tracker');
+  validateTrackerTable(table);
+  var stored = TABS.Raw_Activity_Tracker;
+  var rows = table.rows.map(function (r, i) { var copy = r.slice(); copy.sourceRow = stored.rowNumbers ? stored.rowNumbers[i] : i + 2; return copy; });
+  var base = readBaseline(), acts = readActivities(), volunteers = readRawTable(SHEETS.VOLUNTEERS);
+  var snap = computeSnapshot(rows, rows, base.rows, base.monitored, acts, table.headers, table.headers,
+    evalDateIso, volunteers.rows, volunteers.headers, typeof movBuild === 'function' ? { table: TABS.Raw_MOVs || null, review: MOV_STATE } : null);
+  snap.generatedAt = new Date().toISOString(); snap.activities = acts;
+  return snap;
+};
+
 // ---- reading files ---------------------------------------------------------
 
 /** The entries of a zip file, inflated on demand with the browser's own DecompressionStream. */
@@ -99,6 +112,8 @@ function parseSheetXml(xml, shared) {
       while (row.length < idx) row.push('');
       row[idx] = val;
     }
+    var rowNumber = /<row\b[^>]*\br="(\d+)"/.exec(r[0]);
+    if (rowNumber) row.sourceRow = Number(rowNumber[1]);
     rows.push(row);
   }
   return rows;
@@ -161,12 +176,14 @@ function toTable(rows) {
   var hi = 0;
   while (hi < rows.length && rows[hi].filter(function (v) { return v !== '' && v !== null && v !== undefined; }).length < 3) hi++;
   var headers = (rows[hi] || []).map(function (h) { return String(h === undefined || h === null ? '' : h).trim(); });
-  var body = rows.slice(hi + 1).filter(function (r) {
+  var rowNumbers = [];
+  var body = rows.slice(hi + 1).filter(function (r, index) {
+    if (r.some(function (v) { return v !== '' && v !== null && v !== undefined; })) rowNumbers.push(r.sourceRow || hi + index + 2);
     return r.some(function (v) { return v !== '' && v !== null && v !== undefined; });
   }).map(function (r) {
     var x = r.slice(); while (x.length < headers.length) x.push(''); return x;
   });
-  return { headers: headers, rows: body };
+  return { headers: headers, rows: body, rowNumbers: rowNumbers };
 }
 
 /**
@@ -179,6 +196,8 @@ function detectKind(headers, sheetName) {
   headers.forEach(function (h) { var k = normKey(h); keys[k] = true; if (k === 'name') names++; });
   var has = function (h) { return !!keys[normKey(h)]; };
   var sn = normKey(sheetName || '');
+  if (sn === 'raw_movs' || has('Attachment_Type_ID') || has('File Path')) return 'movs';
+  if (sn === 'raw_activity_tracker' || has('CRIP/MC09 Activity') || has('Participants - Total')) return 'activityTracker';
   if (sn === 'raw_participants') return 'participants';
   if (sn === 'raw_hh_participation') return 'households';
   if (sn === 'raw_households') return 'roster';
@@ -195,8 +214,8 @@ function detectKind(headers, sheetName) {
 }
 
 var KIND_INFO = {
-  participants: { sheet: 'Raw_Participants', label: 'Participants export', expected: function () { return PARTICIPANT_HEADERS; } },
-  households:   { sheet: 'Raw_HH_Participation', label: 'Household Participation export', expected: function () { return HH_COUNT_HEADERS; } },
+  movs: { sheet: 'Raw_MOVs', label: 'MOV attachments', expected: function () { return MOV_HEADERS; } },
+  activityTracker: { sheet: 'Raw_Activity_Tracker', label: 'Activity Tracker', expected: function () { return ACTIVITY_TRACKER_HEADERS; } },
   volunteers:   { sheet: 'Raw_Volunteers',   label: 'Community Volunteer List', expected: function () { return VOLUNTEER_HEADERS; } },
   baseline:     { sheet: 'Baseline',         label: 'Baseline (monitored barangays)', expected: function () { return ['Province', 'Municipality', 'Barangay']; } },
   activities:   { sheet: 'Activities',       label: 'Activities (field conduct)', expected: function () { return ['Seq', 'Code']; } }
@@ -219,7 +238,7 @@ function readDataFile(file, onProgress) {
       var t = toTable(sheets[nm]);
       if (!t.headers.length) return;
       var kind = detectKind(t.headers, multi ? nm : '');
-      if (kind === 'roster') { roster = true; return; }  // the old household roster: K2 now comes from the counts
+      if (kind === 'roster' || kind === 'participants' || kind === 'households') { roster = true; return; }
       if (!kind) return;
       if (kind === 'volunteers') t.headers = volunteerHeaders(t.headers);
       var expected = KIND_INFO[kind].expected();
@@ -227,14 +246,24 @@ function readDataFile(file, onProgress) {
       if (kind === 'baseline') missing = (has3(t.headers)) ? [] : missing;
       // The monitor reads Activities by position (row 1 skipped), whatever its headers.
       if (kind === 'activities') missing = [];
+      if (kind === 'movs' && !missing.length) validateMovTable(t);
+      if (kind === 'activityTracker' && !missing.length) { validateTrackerTable(t); t = trackerTable(t); }
       found.push({ file: file.name, sheet: nm, kind: kind, table: t, missing: missing });
     });
-    if (!found.length && roster) {
-      throw new Error(file.name + ': this is the household roster export, which is no longer used. ' +
-                      'Import the KCIS Household Participation export (Total Hh In Barangay, Total Hh Represented) instead.');
+    // A legacy or incomplete sheet only rejects the file when nothing else in it is usable;
+    // beside a complete table (an Activity Tracker, say) it is skipped and reported.
+    var complete = found.filter(function (item) { return !item.missing.length; });
+    if (!complete.length) {
+      if (roster) throw new Error(file.name + ': legacy attendance/household exports are no longer supported. Import the new KCIS Activity Tracker instead.');
+      if (!found.length) throw new Error(file.name + ': not an Activity Tracker, MOV attachment export, Community Volunteer List or reference file (column headers were not recognised).');
+      throw new Error(file.name + ': missing required columns: ' + found.map(function (item) { return item.missing.join(', '); }).join('; ') + '. Nothing was loaded.');
     }
-    if (!found.length) throw new Error(file.name + ': not a participants, household participation, volunteer or baseline file (the column headers were not recognised).');
-    return found;
+    var seenKinds = {};
+    complete.forEach(function (item) { if (seenKinds[item.kind]) throw new Error(file.name + ': multiple ' + KIND_INFO[item.kind].label + ' tables were found. Import one authoritative table. Nothing was loaded.'); seenKinds[item.kind] = true; });
+    var skipped = found.filter(function (item) { return item.missing.length; }).map(function (item) { return 'sheet ' + item.sheet + ' (missing ' + item.missing.join(', ') + ')'; });
+    if (roster) skipped.push('legacy attendance/household sheets');
+    if (skipped.length && typeof IMPORT_ERRORS !== 'undefined') IMPORT_ERRORS.push({ file: file.name, error: 'Skipped ' + skipped.join('; ') + '. The other tables were loaded.' });
+    return complete;
   });
   function has3(headers) {
     var k = headers.map(normKey);

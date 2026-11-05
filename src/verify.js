@@ -23,9 +23,9 @@ var VERIFY = {
 };
 
 var VF_FORMS = {
-  att:   { label: 'Attn Sheet', paper: 'the signed attendance sheet (attn sheet)', unit: 'attendee', units: 'attendees',
-           countLabel: 'Names on the signed attn sheet', absent: 'Not on the attn sheet',
-           what: ['Name spelling', 'Sex', 'Other'] },
+  att:   { label: 'Attendance figures', paper: 'the signed attendance sheet', unit: 'figure', units: 'figures',
+           noCount: true, absent: 'Not on the sheet', howTo: 'Compare each reported figure with the signed sheet. Repeated activity records remain included in these totals.',
+           what: ['Different figure', 'Other'] },
   hh:    { label: 'Household Participation Form', paper: 'the Household Participation Form', unit: 'count', units: 'counts',
            absent: 'Not on the form', noCount: true,
            howTo: 'For each household count encoded in KCIS, mark whether it matches the figure on the form.',
@@ -73,14 +73,11 @@ function vfMrestRows() {
 function vfRecords(form) {
   if (!VERIFY.cache || VERIFY.cacheFor !== S.overview) { VERIFY.cache = {}; VERIFY.cacheFor = S.overview; }
   if (VERIFY.cache[form]) return VERIFY.cache[form];
+  if (form === 'att') return (VERIFY.cache[form] = vfAttendanceRecords());
   if (form === 'hh') return (VERIFY.cache[form] = vfHouseholdRecords());
   var src, group, detail;
   var P = people();
-  if (form === 'att') {
-    src = P.attendees;
-    group = function (r) { return r.act; };
-    detail = function (r) { return [r.sex ? cap(r.sex) : 'sex not recorded', r.date].filter(Boolean).join(' · '); };
-  } else if (form === 'cv') {
+  if (form === 'cv') {
     src = LOADED.volunteers ? P.volunteers.filter(function (r) { return r.body; }) : null;
     group = function (r) { return r.body; };
     detail = function (r) { return [r.position || 'no position', r.sex ? cap(r.sex) : 'sex not recorded'].join(' · '); };
@@ -114,11 +111,34 @@ function vfRecords(form) {
   return (VERIFY.cache[form] = list);
 }
 
+function vfAttendanceRecords() {
+  if (!SNAP || SNAP.sourceType !== 'activity-tracker-v2') return null;
+  return (SNAP.attendanceRows || []).map(function (r) {
+    var record = { key: ['att', 'summary-v2', r.province, r.municipality, r.barangay || '', r.act].join('|'),
+      form: 'att', province: r.province, municipality: r.municipality, barangay: r.barangay, act: r.act, label: r.actLabel,
+      rows: ['male', 'female', 'unspecified', 'total'].map(function (k) {
+        var value = (r.invalidMetrics || []).indexOf(k) !== -1 ? null : r.participants[k];
+        return { rk: k, value: value, name: 'Participants ' + k + ': ' + (value === null ? 'Unavailable (invalid source counts)' : n(value)),
+          detail: 'Activity Tracker · ' + r.sourceCount + ' source record(s)' + (r.repeated ? ' · repeated records included' : '') };
+      }) };
+    var tags = VERIFY.tags.records[record.key];
+    if (tags && tags.rows) record.rows.forEach(function (row) {
+      var tag = tags.rows[row.rk];
+      if (tag && tag.value !== row.value) {
+        tags.staleRows = tags.staleRows || {};
+        tags.staleRows[row.rk] = tag;
+        delete tags.rows[row.rk];
+      }
+    });
+    return record;
+  });
+}
+
 /**
  * Household Participation Form records: one per barangay and assembly with a
  * household count encoded, its two counts as the rows to check. The row keys
  * ('total', 'represented') are fixed, so tags survive a re-import. null until
- * the Household Participation export is loaded.
+ * Activity Tracker is loaded.
  */
 function vfHouseholdRecords() {
   var hc = SNAP && SNAP.health && SNAP.health.householdCounts;
@@ -517,10 +537,11 @@ function vfSetRow(recKey, rk, status, what) {
   if (!vfVerifier()) { toast('Type your name in "Checked by" first.'); var i = $('vf-by'); if (i) i.focus(); return; }
   var rec = vfFind(recKey);
   if (!rec) return;
+  if (status && rec.form === 'att' && rec.rows.some(function (r) { return r.rk === rk && r.value === null; })) { toast('Correct the invalid source figure in KCIS and reimport before verifying it.'); return; }
   var t = vfEnsure(rec);
   var now = new Date().toISOString();
   if (!status) delete t.rows[rk];
-  else t.rows[rk] = { s: status, what: status === 'differs' ? (what || (t.rows[rk] && t.rows[rk].what) || VF_FORMS[rec.form].what[0]) : '', by: vfVerifier(), at: now };
+  else t.rows[rk] = { s: status, value: (rec.rows.filter(function (r) { return r.rk === rk; })[0] || {}).value, what: status === 'differs' ? (what || (t.rows[rk] && t.rows[rk].what) || VF_FORMS[rec.form].what[0]) : '', by: vfVerifier(), at: now };
   t.by = vfVerifier(); t.at = now;
   savedPutTags();
   if (typeof updateTabBadges === 'function') updateTabBadges();
@@ -535,11 +556,11 @@ function vfMarkRest(recKey) {
   if (!vfVerifier()) { toast('Type your name in "Checked by" first.'); return; }
   var rec = vfFind(recKey);
   if (!rec) return;
-  var left = rec.rows.filter(function (r) { return !((vfTag(recKey) || {}).rows || {})[r.rk]; });
+  var left = rec.rows.filter(function (r) { return !(rec.form === 'att' && r.value === null) && !((vfTag(recKey) || {}).rows || {})[r.rk]; });
   if (!left.length) return;
   if (!confirm('Mark the ' + left.length + ' rows not checked yet as matching ' + VF_FORMS[rec.form].paper + '? Only do this after reading each of them on the form.')) return;
   var t = vfEnsure(rec), now = new Date().toISOString();
-  left.forEach(function (r) { t.rows[r.rk] = { s: 'match', what: '', by: vfVerifier(), at: now }; });
+  left.forEach(function (r) { t.rows[r.rk] = { s: 'match', value: r.value, what: '', by: vfVerifier(), at: now }; });
   t.by = vfVerifier(); t.at = now;
   savedPutTags();
   if (typeof updateTabBadges === 'function') updateTabBadges();
@@ -659,7 +680,7 @@ function renderVerify(keepScroll) {
   var prevWrapScroll = prevWrap ? prevWrap.scrollTop : 0;
   var prevWinScroll = window.scrollY || document.documentElement.scrollTop || 0;
 
-  if (!STATE.computed) { body.innerHTML = subNav + '<div class="card"><p class="muted">Load the exports first.</p></div>'; return; }
+  if (!STATE.computed && !LOADED.volunteers) { body.innerHTML = subNav + '<div class="card"><p class="muted">Load Activity Tracker or the Community Volunteer List first.</p></div>'; return; }
   var u = VERIFY.ui, F = VF_FORMS[u.form];
   var recs = vfScoped();
 
@@ -703,7 +724,7 @@ function renderVerify(keepScroll) {
     var fTot = scoped ? vfTotals(scoped) : null;
     return '<button type="button" class="vf-form-card' + (u.form === k ? ' active' : '') + '" data-act="vf-form-btn" data-v="' + k + '">' +
       '<strong>' + esc(VF_FORMS[k].label) + '</strong>' +
-      '<span>' + (fTot ? n(fTot.verified) + ' of ' + n(fTot.records) + ' verified' : 'Volunteer export needed') + '</span>' +
+      '<span>' + (fTot ? n(fTot.verified) + ' of ' + n(fTot.records) + ' verified' : ((k === 'att' || k === 'hh') ? 'Activity Tracker needed' : 'Volunteer export needed')) + '</span>' +
     '</button>';
   }).join('') + '</div>';
 
@@ -726,7 +747,7 @@ function renderVerify(keepScroll) {
     '<div class="toolbar-row"><div class="filters" style="margin:0">' + formSel + muniSel + bySel + '</div></div>';
 
   if (!recs) {
-    body.innerHTML = subNav + head + '<div class="empty-state">Load the ' + (VERIFY.ui.form === 'hh' ? 'Household Participation export' : 'Community Volunteer List') + ' to verify ' + esc(F.units) + '.</div></div>';
+    body.innerHTML = subNav + head + '<div class="empty-state">Load the ' + ((VERIFY.ui.form === 'hh' || VERIFY.ui.form === 'att') ? 'Activity Tracker' : 'Community Volunteer List') + ' to verify ' + esc(F.units) + '.</div></div>';
     afterVerifyRender(); return;
   }
   var t = vfTotals(recs);
@@ -925,7 +946,7 @@ function vfRecordView(rec) {
   };
 
   var itemCardsHtml = '<div class="filter-cards" style="margin:0">' +
-    vfc('all', 'All Names', cAll) +
+    vfc('all', F.noCount ? 'All figures' : 'All names', cAll) +
     vfc('unchecked', 'Unchecked', cUnchecked) +
     vfc('match', 'Matches', cMatch, 'fc-good') +
     vfc('differs', 'Differs', cDiffers, 'fc-warn') +
@@ -974,8 +995,8 @@ function vfRecordView(rec) {
     '</div>' +
     '<div class="toolbar-row" style="margin-top:12px;margin-bottom:10px">' +
       '<div class="filters" style="margin:0;flex:1">' +
-        '<label class="field" style="flex:1"><span>Filter names in record</span>' +
-          '<input type="search" id="vf-item-search" placeholder="Name or detail in this record…" value="' + attr(VERIFY.ui.itemSearch || '') + '">' +
+        '<label class="field" style="flex:1"><span>' + (F.noCount ? 'Filter figures in record' : 'Filter names in record') + '</span>' +
+          '<input type="search" id="vf-item-search" placeholder="Name, figure or detail" value="' + attr(VERIFY.ui.itemSearch || '') + '">' +
         '</label>' +
         (VERIFY.ui.itemSearch ? '<button type="button" class="btn ghost btn-sm" data-act="vf-item-reset">' + icon('rotate-ccw') + ' <span>Reset</span></button>' : '') +
       '</div>' +
@@ -1003,7 +1024,7 @@ function afterVerifyRender() {
 
 /** Every tagged row and every record with a form count, for the DQA report. Holds names. */
 function vfCsv() {
-  var lines = [['Form', 'Province', 'Municipality', 'Barangay', 'Activity or body', 'Name', 'Against the form', 'What differs',
+  var lines = [['Form', 'Province', 'Municipality', 'Barangay', 'Activity or body', 'Name or figure', 'Against the form', 'What differs',
                 'Checked by', 'Checked on', 'Encoded in KCIS', 'On the form', 'In sample', 'Note']];
   Object.keys(VF_FORMS).forEach(function (f) {
     (vfRecords(f) || []).forEach(function (rec) {

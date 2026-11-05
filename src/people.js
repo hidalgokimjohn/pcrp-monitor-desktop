@@ -174,7 +174,7 @@ function evaluateCspmcBarangay(b, s2Vols) {
   };
 }
 
-/** Index every named row of the participants and volunteer exports, matched to a monitored barangay. */
+/** Index named volunteer and committee records, matched to a monitored location. */
 function buildPeopleIndex() {
   var acts = readActivities(), index = buildActivityIndex(acts), bl = readBaseline();
   var base = buildBaseline(bl.rows, bl.monitored);
@@ -212,28 +212,7 @@ function buildPeopleIndex() {
 
   var out = { attendees: [], volunteers: [], mrest: [], unmatched: { attendees: 0, volunteers: 0 } };
 
-  // ---- attendees (participants export) ----
-  var P = readRawTable(SHEETS.PARTICIPANTS), CP = buildColumnIndex(P.headers, P_DEFAULT);
-  P.rows.forEach(function (row) {
-    if (!hasValue(row[0])) return;
-    var rawAct = CP.activityId !== undefined ? row[CP.activityId] : null;
-    if (isZeroActivityId(rawAct)) return;
-    var code = classify(index, row[CP.seq], row[CP.name], CP.title !== undefined ? row[CP.title] : null);
-    if (!code) return;
-    var a = actByCode[code], municipal = a.level === 'Municipal';
-    var p = municipal ? muniOf(row, CP) : brgyOf(row, CP);
-    if (!p) { out.unmatched.attendees++; return; }
-    var first = row[CP.first], middle = row[CP.middle], last = row[CP.last];
-    var key = personKey(first, middle, last);
-    var r = place(p, municipal ? '' : p.barangay);
-    r.type = 'attendee'; r.act = code; r.seq = a.seq; r.actLabel = a.label; r.municipal = municipal;
-    r.name = personName(first, middle, last); r.key = key; r.loose = looseKey(first, last);
-    r.sex = normText(row[CP.sex]).toLowerCase();
-    r.date = CP.dateEnd !== undefined ? dateOf(row[CP.dateEnd]) || dateOf(row[CP.dateStart]) : '';
-    r.title = CP.title !== undefined ? normText(row[CP.title]) : '';
-    out.attendees.push(r);
-  });
-
+  // Attendance is summarized in SNAP.attendanceRows; named records come only from volunteers.
   // ---- volunteers ----
   var V = readRawTable(SHEETS.VOLUNTEERS);
   if (V.rows.length) {
@@ -276,21 +255,6 @@ function buildPeopleIndex() {
 
   // ---- cross-references ------------------------------------------------------------
   var bk = function (r) { return r.province + '|' + r.municipality + '|' + (r.barangay || ''); };
-  var ba1 = {};                       // barangay -> names among 1st BA attendees (full and first+last)
-  out.attendees.forEach(function (a) {
-    if (a.act !== 'BA1' || !a.key) return;
-    var s = ba1[bk(a)] = ba1[bk(a)] || {};
-    s[a.key] = true; if (a.loose) s['~' + a.loose] = true;
-  });
-  var inBa1 = function (r) { var s = ba1[bk(r)]; return !!s && (!!s[r.key] || (r.loose && !!s['~' + r.loose])); };
-  var vols = {}, sameAtt = {};
-  out.attendees.forEach(function (a) {
-    if (!a.key) return;
-    var ak = bk(a) + '|' + a.act + '|' + (a.date || '') + '|' + a.key;
-    sameAtt[ak] = (sameAtt[ak] || 0) + 1;
-  });
-  out.volunteers.forEach(function (v) { if (v.key) (vols[v.key] = vols[v.key] || []).push(v); });
-
   // Map BResT volunteers to check BResT provenance of Stage 2 volunteers (SM7 p. 15 recommendation)
   var brestKeys = {};
   out.volunteers.forEach(function (v) {
@@ -308,27 +272,14 @@ function buildPeopleIndex() {
     }
   });
 
-  out.attendees.forEach(function (a) {
-    a.flags = [];
-    if (!a.key) a.flags.push('noname');
-    var ak = bk(a) + '|' + a.act + '|' + (a.date || '') + '|' + a.key;
-    if (a.key && sameAtt[ak] > 1) {
-      a.flags.push('duplicate');
-      a.dupCount = sameAtt[ak];
-    }
-    if (a.key && vols[a.key] && vols[a.key].some(function (v) { return bk(v) === bk(a); })) a.flags.push('volunteer');
-  });
   out.volunteers.forEach(function (v) {
     v.flags = [];
     if (!v.key) { v.flags.push('noname'); return; }
     if (v.kind === 'NONE') v.flags.push('nocommittee');
     else if (v.kind !== 'BREST' && v.kind !== 'SFMSC' && !v.isStage2) v.flags.push('otherbody');
     if (v.wasBrest) v.flags.push('frombrest');
-    // Only a real check where the barangay's 1st BA attendance is encoded at all.
-    if (!v.isStage2) {
-      if (!ba1[bk(v)]) v.flags.push('noba1');
-      else if (!inBa1(v)) v.flags.push('notattendee');
-    }
+    // Summary counts cannot establish whether this named volunteer attended.
+    v.attendanceCheck = 'Unavailable: Activity Tracker contains totals, not attendee names';
     if (v.sex !== 'male' && v.sex !== 'female') v.flags.push('nosex');
   });
   out.mrest.forEach(function (m) {
@@ -338,7 +289,7 @@ function buildPeopleIndex() {
   });
 
   // search text, computed once
-  ['attendees', 'volunteers', 'mrest'].forEach(function (k) {
+  ['volunteers', 'mrest'].forEach(function (k) {
     (out[k] || []).forEach(function (r) {
       r.q = normSearch([r.name, r.barangay, r.municipality, r.actLabel, r.committee, r.position].filter(Boolean).join(' '));
     });
@@ -346,7 +297,7 @@ function buildPeopleIndex() {
 
   // name -> records, for profiles
   out.byKey = {}; out.byLoose = {};
-  ['attendees', 'volunteers', 'mrest'].forEach(function (k) {
+  ['volunteers', 'mrest'].forEach(function (k) {
     (out[k] || []).forEach(function (r) {
       if (r.key) (out.byKey[r.key] = out.byKey[r.key] || []).push(r);
       if (r.loose) (out.byLoose[r.loose] = out.byLoose[r.loose] || []).push(r);
@@ -369,12 +320,6 @@ function people() {
 // ---- views & flags ------------------------------------------------------------------
 
 var PEOPLE_FLAGS = {
-  attendees: [
-    { id: 'all', label: 'All Attendees' },
-    { id: 'duplicate', label: 'Duplicate Attendees', test: function (r) { return r.flags && r.flags.indexOf('duplicate') !== -1; } },
-    { id: 'volunteer', label: 'Also a Volunteer here' },
-    { id: 'noname', label: 'No name recorded' }
-  ],
   volunteers: [
     { id: 'all', label: 'All Volunteers' },
     { id: 'BREST', label: 'BResT (Stage 1)', test: function (r) { return r.kind === 'BREST'; } },
@@ -392,8 +337,6 @@ var PEOPLE_FLAGS = {
     { id: 'frombrest', label: 'From BResT (Alum)', test: function (r) { return r.wasBrest; } },
     { id: 'women', label: 'Women', test: function (r) { return r.sex === 'female'; } },
     { id: 'ippwd', label: 'IP or PWD', test: function (r) { return r.ip || r.pwd; } },
-    { id: 'notattendee', label: 'Not among 1st BA attendees' },
-    { id: 'noba1', label: '1st BA attendance not encoded' },
     { id: 'nocommittee', label: 'No committee' },
     { id: 'otherbody', label: 'Other activity committee' },
     { id: 'nosex', label: 'Sex not recorded' }
@@ -401,9 +344,7 @@ var PEOPLE_FLAGS = {
 };
 
 var FLAG_TEXT = {
-  noname: ['bad', 'No name'], duplicate: ['warn', 'Duplicate Attendee'], volunteer: ['good', 'Volunteer'],
-  notattendee: ['warn', 'Not among 1st BA attendees'],
-  noba1: ['idle', '1st BA attendance not encoded yet'],
+  noname: ['bad', 'No name'],
   nocommittee: ['warn', 'No committee'], otherbody: ['warn', 'Other activity\'s committee'],
   frombrest: ['good', '✓ From BResT'], nosex: ['idle', 'Sex not recorded']
 };
@@ -445,324 +386,72 @@ var PSTATE = { view: 'attendees', scope: 'home', brgy: '', act: '', body: '', fl
 // MODULE 1: ATTENDEES (Activity Attendance Tracking)
 // ===================================================================
 
-function getAttendeeTriageSummary(list) {
-  var l = list || [];
-  var total = l.length;
-  var women = l.filter(function (r) { return r.sex === 'female'; }).length;
-  var men = l.filter(function (r) { return r.sex === 'male'; }).length;
-  var uniqueNames = {};
-  l.forEach(function (r) { if (r.key) uniqueNames[r.key] = true; });
-  var uniqueCount = Object.keys(uniqueNames).length;
-  var volunteers = l.filter(function (r) { return r.flags && r.flags.indexOf('volunteer') !== -1; }).length;
-  var missingName = l.filter(function (r) { return r.flags && r.flags.indexOf('noname') !== -1; }).length;
-  var duplicates = l.filter(function (r) { return r.flags && r.flags.indexOf('duplicate') !== -1; }).length;
-  var womenRate = total > 0 ? (women / total) : 0;
-
-  return {
-    total: total,
-    uniqueCount: uniqueCount,
-    women: women,
-    womenRate: womenRate,
-    men: men,
-    volunteers: volunteers,
-    missingName: missingName,
-    duplicates: duplicates
-  };
-}
-
-function renderAttendeeTriageTray(summary) {
-  var items = [];
-  var isAllGood = summary.missingName === 0 && (!summary.duplicates || summary.duplicates === 0) && summary.womenRate >= 0.5;
-
-  // 1. All Attendees
-  items.push(
-    '<button type="button" class="triage-item' + (ATT_STATE.sex === 'all' && ATT_STATE.flag === 'all' ? ' active-triage' : '') + '" data-act="att-triage" data-v="all" title="View all recorded attendee records">' +
-      '<div class="triage-item-info">' +
-        '<span class="triage-item-count">' + n(summary.total) + '</span>' +
-        '<span class="triage-item-label">Total Attendees (' + n(summary.uniqueCount) + ' unique)</span>' +
-      '</div>' +
-      '<span class="triage-item-arrow">' + icon('arrow-right') + '</span>' +
-    '</button>'
-  );
-
-  // 2. Women Participation (GSI ≥50%)
-  var womenIsGood = summary.womenRate >= 0.5;
-  items.push(
-    '<button type="button" class="triage-item ' + (womenIsGood ? 'triage-good' : 'triage-warn') + (ATT_STATE.sex === 'female' ? ' active-triage' : '') + '" data-act="att-triage" data-v="female" title="Filter female attendee records (GSI Target ≥50%)">' +
-      '<div class="triage-item-info">' +
-        '<span class="triage-item-count">' + pctText(summary.womenRate) + '</span>' +
-        '<span class="triage-item-label">Women Participation (' + n(summary.women) + ')</span>' +
-      '</div>' +
-      '<span class="triage-item-arrow">' + icon('arrow-right') + '</span>' +
-    '</button>'
-  );
-
-  // 3. Men Participants
-  items.push(
-    '<button type="button" class="triage-item' + (ATT_STATE.sex === 'male' ? ' active-triage' : '') + '" data-act="att-triage" data-v="male" title="Filter male attendee records">' +
-      '<div class="triage-item-info">' +
-        '<span class="triage-item-count">' + n(summary.men) + '</span>' +
-        '<span class="triage-item-label">Men Participants</span>' +
-      '</div>' +
-      '<span class="triage-item-arrow">' + icon('arrow-right') + '</span>' +
-    '</button>'
-  );
-
-  // 4. Community Volunteers Attending
-  items.push(
-    '<button type="button" class="triage-item triage-good' + (ATT_STATE.flag === 'volunteer' ? ' active-triage' : '') + '" data-act="att-triage" data-v="volunteer" title="Filter attendees who are also cross-matched community volunteers">' +
-      '<div class="triage-item-info">' +
-        '<span class="triage-item-count">' + n(summary.volunteers) + '</span>' +
-        '<span class="triage-item-label">Volunteers Attending</span>' +
-      '</div>' +
-      '<span class="triage-item-arrow">' + icon('arrow-right') + '</span>' +
-    '</button>'
-  );
-
-  // 5. Data Integrity: Missing Names
-  if (summary.missingName > 0) {
-    items.push(
-      '<button type="button" class="triage-item triage-bad' + (ATT_STATE.flag === 'noname' ? ' active-triage' : '') + '" data-act="att-triage" data-v="noname" title="Filter attendee records missing valid participant names">' +
-        '<div class="triage-item-info">' +
-          '<span class="triage-item-count">' + n(summary.missingName) + '</span>' +
-          '<span class="triage-item-label">Missing Names (Alerts)</span>' +
-        '</div>' +
-        '<span class="triage-item-arrow">' + icon('arrow-right') + '</span>' +
-      '</button>'
-    );
-  }
-
-  // 6. Data Integrity: Duplicate Attendees
-  if (summary.duplicates > 0) {
-    items.push(
-      '<button type="button" class="triage-item triage-warn' + (ATT_STATE.flag === 'duplicate' ? ' active-triage' : '') + '" data-act="att-triage" data-v="duplicate" title="Filter duplicate attendee records encoded more than once in an activity sitting">' +
-        '<div class="triage-item-info">' +
-          '<span class="triage-item-count">' + n(summary.duplicates) + '</span>' +
-          '<span class="triage-item-label">Duplicate Attendees</span>' +
-        '</div>' +
-        '<span class="triage-item-arrow">' + icon('arrow-right') + '</span>' +
-      '</button>'
-    );
-  }
-
-  var totalAttAlerts = (summary.missingName || 0) + (summary.duplicates || 0);
-  var trayCls = totalAttAlerts > 0 ? 'triage-tray has-critical' : (isAllGood ? 'triage-tray all-good' : 'triage-tray');
-  var badgeHtml = isAllGood
-    ? '<span class="triage-badge">GSI Target Met &amp; Clean Data</span>'
-    : '<span class="triage-badge">' + (totalAttAlerts > 0 ? totalAttAlerts + ' Data Alerts' : 'GSI Attention Needed') + '</span>';
-
-  return (
-    '<div class="' + trayCls + '">' +
-      '<div class="triage-head">' +
-        '<div class="triage-title">' +
-          icon(isAllGood ? 'check-circle-2' : 'alert-circle') +
-          '<span>Activity Attendees Operations &amp; Gender Balance</span> ' +
-          badgeHtml +
-        '</div>' +
-        '<span class="tiny muted">Click any triage card to filter attendees by gender or data validation status</span>' +
-      '</div>' +
-      '<div class="triage-grid">' + items.join('') + '</div>' +
-    '</div>'
-  );
+function filteredAttendanceRows() {
+  var scope = isMunicipalUser() ? homeKey() : (ATT_STATE.muni || homeKey() || '');
+  var inScope = pScopeTest(scope), q = normSearch(ATT_STATE.search || '');
+  var list = ((SNAP && SNAP.attendanceRows) || []).filter(function (r) {
+    return inScope(r) && (!ATT_STATE.brgy || r.province + '|' + r.municipality + '|' + r.barangay === ATT_STATE.brgy) &&
+      (!ATT_STATE.act || r.act === ATT_STATE.act) && (!q || normSearch(r.q).indexOf(q) !== -1) &&
+      (ATT_STATE.flag !== 'duplicate' || r.repeated) && (ATT_STATE.flag !== 'issues' || r.hasIssues) &&
+      (ATT_STATE.sex === 'all' || (r.participants[ATT_STATE.sex] || 0) > 0);
+  });
+  var extractors = { muni: function (r) { return r.municipality; }, brgy: function (r) { return r.barangay; },
+    act: function (r) { return Number(r.seq); }, date: function (r) { return r.dateEnd || ''; },
+    male: function (r) { return r.participants.male; }, female: function (r) { return r.participants.female; },
+    unspecified: function (r) { return r.participants.unspecified; }, total: function (r) { return r.participants.total; },
+    pv: function (r) { return r.personVolunteers.total; } };
+  return tblSort(list, extractors[ATT_STATE.sortCol] ? ATT_STATE.sortCol : 'muni', ATT_STATE.sortDir || 'asc', extractors);
 }
 
 function renderAttendees() {
   var body = $('att-body');
   if (!body) return;
-  if (!STATE.computed) { body.innerHTML = '<div class="card"><p class="muted">Load the participants export first.</p></div>'; return; }
-  var P = people(), isMuni = isMunicipalUser(), key = homeKey();
-  var activeMuni = isMuni ? key : (ATT_STATE.muni || key || '');
-  var inScope = pScopeTest(activeMuni);
-  var list = P.attendees.filter(inScope);
-
-  // Municipalities dropdown (for RPMO)
-  var munis = baselineMunis();
-  var mOpts = '<option value="">All Municipalities</option>';
-  munis.forEach(function (m) {
-    var v = m.province + '|' + m.municipality;
-    mOpts += '<option value="' + attr(v) + '"' + (activeMuni === v ? ' selected' : '') + '>' + esc(m.municipality) + ' (' + esc(m.province) + ')</option>';
-  });
-
-  // Barangays in scope
-  var brgys = (SNAP.barangayRows || []).filter(function (b) { return !activeMuni || b.province + '|' + b.municipality === activeMuni; })
-    .sort(function (a, b) { return a.municipality.localeCompare(b.municipality) || a.barangay.localeCompare(b.barangay); });
-  var bOpts = '<option value="">All Barangays</option>' + brgys.map(function (b) {
-    var v = b.province + '|' + b.municipality + '|' + b.barangay;
-    return '<option value="' + attr(v) + '"' + (ATT_STATE.brgy === v ? ' selected' : '') + '>' + esc(b.barangay) + (!activeMuni ? ' (' + esc(b.municipality) + ')' : '') + '</option>';
+  if (!STATE.computed) { body.innerHTML = '<div class="card"><p>Load Activity Tracker first.</p></div>'; return; }
+  var list = filteredAttendanceRows(), shown = list.slice(0, ATT_STATE.limit), isMuni = isMunicipalUser();
+  var activeMuni = isMuni ? homeKey() : (ATT_STATE.muni || homeKey() || '');
+  var option = function (v, label, selected) { return '<option value="' + attr(v) + '"' + (selected ? ' selected' : '') + '>' + esc(label) + '</option>'; };
+  var muniOpts = option('', 'All municipalities', !activeMuni) + baselineMunis().map(function (m) {
+    var v = m.province + '|' + m.municipality; return option(v, m.municipality + ' (' + m.province + ')', v === activeMuni);
   }).join('');
-
-  // Activities in scope
-  var acts = (S.overview.activities || []).slice();
-  var actOpts = '<option value="">All Activities</option>' + acts.map(function (a) {
-    return '<option value="' + attr(a.code) + '"' + (ATT_STATE.act === a.code ? ' selected' : '') + '>Seq ' + esc(a.seq) + ' · ' + esc(a.label) + '</option>';
+  var brgyOpts = option('', 'All barangays', !ATT_STATE.brgy) + (SNAP.barangayRows || []).filter(function (b) {
+    return !activeMuni || b.province + '|' + b.municipality === activeMuni;
+  }).map(function (b) { var v = b.province + '|' + b.municipality + '|' + b.barangay; return option(v, b.barangay + ' · ' + b.municipality, ATT_STATE.brgy === v); }).join('');
+  var actOpts = option('', 'All activities', !ATT_STATE.act) + S.overview.activities.map(function (a) { return option(a.code, a.label, ATT_STATE.act === a.code); }).join('');
+  var totals = { male: 0, female: 0, unspecified: 0, total: 0 }, pv = { male: 0, female: 0, unspecified: 0, total: 0 };
+  list.forEach(function (r) { Object.keys(totals).forEach(function (k) { totals[k] += r.participants[k]; pv[k] += r.personVolunteers[k]; }); });
+  var th = function (col, label, num) { return sortTh({ col: col, curCol: ATT_STATE.sortCol, dir: ATT_STATE.sortDir, label: label, num: num, act: 'att-sort' }); };
+  var fmt = function (v) { return esc(v || '—'); };
+  var breakdown = function (v) { return n(v.male) + ' M / ' + n(v.female) + ' F / ' + n(v.unspecified) + ' U'; };
+  var rows = shown.map(function (r) {
+    return '<tr' + (r.repeated ? ' class="row-duplicate"' : '') + '><td>' + esc(r.municipality) + '<div class="tiny">' + esc(r.province) + '</div></td><td>' + fmt(r.barangay || 'Municipal level') + '</td>' +
+      '<td>' + esc(r.actLabel) + (r.repeated ? ' <span class="badge-dup">Repeated · included</span>' : '') + '</td>' +
+      '<td>' + fmt(r.targetStart) + '<br>' + fmt(r.targetEnd) + '</td><td>' + fmt(r.dateStart) + '<br>' + fmt(r.dateEnd) + '</td>' +
+      '<td class="num">' + n(r.participants.male) + '</td><td class="num">' + n(r.participants.female) + '</td><td class="num">' + n(r.participants.unspecified) + '</td>' +
+      '<td class="num"><strong>' + n(r.participants.total) + '</strong></td><td class="num">' + n(r.personVolunteers.total) + '<div class="tiny">' + breakdown(r.personVolunteers) + '</div></td>' +
+      '<td>' + r.sourceRows.map(function (x) { return n(x.sourceRow); }).join(', ') + (r.hasIssues ? '<br><span class="pill warn">Review in DQA</span>' : '') + '</td></tr>';
   }).join('');
-
-  // Filtering
-  var q = normSearch(ATT_STATE.search.trim());
-  var filtered = list.filter(function (r) {
-    if (ATT_STATE.brgy && (r.province + '|' + r.municipality + '|' + r.barangay !== ATT_STATE.brgy)) return false;
-    if (ATT_STATE.act && r.act !== ATT_STATE.act) return false;
-    if (ATT_STATE.sex !== 'all' && r.sex !== ATT_STATE.sex) return false;
-    if (ATT_STATE.flag === 'volunteer' && r.flags.indexOf('volunteer') === -1) return false;
-    if (ATT_STATE.flag === 'noname' && r.flags.indexOf('noname') === -1) return false;
-    if (ATT_STATE.flag === 'duplicate' && r.flags.indexOf('duplicate') === -1) return false;
-    if (q && r.q.indexOf(q) === -1) return false;
-    return true;
-  });
-
-  // KPIs & Triage
-  var triage = getAttendeeTriageSummary(list);
-  var totalEncoded = triage.total;
-  var womenCount = triage.women;
-  var womenRate = triage.womenRate;
-  var uniqueCount = triage.uniqueCount;
-  var volunteerCount = triage.volunteers;
-  var flaggedCount = triage.missingName;
-
-  // Sorting
-  var curCol = ATT_STATE.sortCol || 'name';
-  var curDir = ATT_STATE.sortDir || 'asc';
-  var extractors = {
-    name: function (r) { return r.name; },
-    sex: function (r) { return r.sex; },
-    brgy: function (r) { return r.barangay || 'Municipal level'; },
-    muni: function (r) { return r.municipality; },
-    act: function (r) { return r.seq || 0; },
-    date: function (r) { return r.date || ''; },
-    flags: function (r) { return (r.flags || []).join(' '); }
-  };
-  var sorted = tblSort(filtered, curCol, curDir, extractors);
-  var shown = sorted.slice(0, ATT_STATE.limit);
-
-  var rowsHtml = shown.map(function (r) {
-    var isDup = r.flags && r.flags.indexOf('duplicate') !== -1;
-    var rowCls = isDup ? ' class="row-duplicate"' : '';
-    var dupBadge = isDup ? ' <span class="badge-dup" title="Duplicate attendee: same name recorded multiple times in this activity sitting"><span class="badge-dup-icon">👥</span> Duplicate' + (r.dupCount > 1 ? ' (' + r.dupCount + '×)' : '') + '</span>' : '';
-    return '<tr' + rowCls + '>' +
-      '<td>' + nameCell(r) + dupBadge + '</td>' +
-      '<td>' + esc(r.sex || '—') + '</td>' +
-      '<td>' + placeCell(r) + '</td>' +
-      (!isMuni ? '<td>' + esc(r.municipality) + '</td>' : '') +
-      '<td><span class="tiny">Seq ' + esc(r.seq) + '</span> <strong>' + esc(r.actLabel) + '</strong></td>' +
-      '<td>' + esc(r.date || '—') + '</td>' +
-      '<td>' + flagPills(r) + '</td>' +
-    '</tr>';
-  }).join('');
-
-  var th = function (col, label, num, title) {
-    return sortTh({ col: col, curCol: curCol, dir: curDir, label: label, num: num, title: title, act: 'att-sort' });
-  };
-
-  var baseForSex = list.filter(function (r) {
-    if (ATT_STATE.brgy && (r.province + '|' + r.municipality + '|' + r.barangay !== ATT_STATE.brgy)) return false;
-    if (ATT_STATE.act && r.act !== ATT_STATE.act) return false;
-    if (ATT_STATE.flag === 'volunteer' && r.flags.indexOf('volunteer') === -1) return false;
-    if (ATT_STATE.flag === 'noname' && r.flags.indexOf('noname') === -1) return false;
-    if (ATT_STATE.flag === 'duplicate' && r.flags.indexOf('duplicate') === -1) return false;
-    if (q && r.q.indexOf(q) === -1) return false;
-    return true;
-  });
-
-  var baseForFlag = list.filter(function (r) {
-    if (ATT_STATE.brgy && (r.province + '|' + r.municipality + '|' + r.barangay !== ATT_STATE.brgy)) return false;
-    if (ATT_STATE.act && r.act !== ATT_STATE.act) return false;
-    if (ATT_STATE.sex !== 'all' && r.sex !== ATT_STATE.sex) return false;
-    if (q && r.q.indexOf(q) === -1) return false;
-    return true;
-  });
-
-  var sexFilters = [
-    { id: 'all', label: 'All Sexes', count: baseForSex.length, cls: '' },
-    { id: 'female', label: '👩 Women', count: baseForSex.filter(function (r) { return r.sex === 'female'; }).length, cls: 'chip-good' },
-    { id: 'male', label: '👨 Men', count: baseForSex.filter(function (r) { return r.sex === 'male'; }).length, cls: '' }
-  ];
-
-  var flagFilters = PEOPLE_FLAGS.attendees.map(function (f) {
-    var cnt = f.id === 'all' ? baseForFlag.length : baseForFlag.filter(function (r) { return f.test ? f.test(r) : r.flags.indexOf(f.id) !== -1; }).length;
-    var col = f.id === 'duplicate' ? 'chip-warn' : (f.id === 'volunteer' ? 'chip-good' : (f.id === 'noname' ? 'chip-warn' : ''));
-    var ico = f.id === 'duplicate' ? '👥 ' : (f.id === 'volunteer' ? '🎗️ ' : (f.id === 'noname' ? '⚠️ ' : ''));
-    return { id: f.id, label: ico + f.label, count: cnt, cls: col };
-  });
-
-  var quickChipsHtml = '<div class="quick-filter-bar">' +
-    '<span class="tiny text-muted" style="font-weight:700;margin-right:4px;">Gender / Sex:</span>' +
-    sexFilters.map(function (f) {
-      var isActive = ATT_STATE.sex === f.id;
-      return '<button type="button" class="quick-filter-chip' + (f.cls ? ' ' + f.cls : '') + (isActive ? ' active' : '') + '" data-act="att-sex" data-v="' + f.id + '">' +
-        '<span>' + f.label + '</span>' +
-        '<span class="tiny" style="opacity:0.85">(' + n(f.count) + ')</span>' +
-      '</button>';
-    }).join('') +
-    '<span class="sep" style="margin:0 6px;color:var(--border-strong)">|</span>' +
-    '<span class="tiny text-muted" style="font-weight:700;margin-right:4px;">Cross-checks:</span>' +
-    flagFilters.map(function (f) {
-      var isActive = ATT_STATE.flag === f.id;
-      return '<button type="button" class="quick-filter-chip' + (f.cls ? ' ' + f.cls : '') + (isActive ? ' active' : '') + '" data-act="att-flag" data-v="' + f.id + '">' +
-        '<span>' + f.label + '</span>' +
-        '<span class="tiny" style="opacity:0.85">(' + n(f.count) + ')</span>' +
-      '</button>';
-    }).join('') +
-  '</div>';
-
-  var scopeBanner = isMuni
-    ? '<div class="static-val">' + icon('map-pin') + ' <span>Municipality: <strong>' + esc(home().municipality) + '</strong> (' + esc(home().province) + ')</span></div>'
-    : '<label class="field"><span>Municipality</span><select data-act="att-muni">' + mOpts + '</select></label>';
-
-  var subNav = '<div class="sub-nav-tabs">' +
-    '<button type="button" class="sub-nav-btn active">' + icon('calendar-check') + ' <span>Attendees Directory</span></button>' +
-    '<button type="button" class="sub-nav-btn" data-go="households">' + icon('home') + ' <span>Household Participation</span></button>' +
-  '</div>';
-
-  var hasFilter = !!(ATT_STATE.brgy || ATT_STATE.act || ATT_STATE.sex !== 'all' || ATT_STATE.flag !== 'all' || ATT_STATE.search);
-
-  body.innerHTML = subNav + (typeof renderDqaBreadcrumb === 'function' ? renderDqaBreadcrumb() : '') +
-    '<div class="card">' +
-      '<div class="card-head">' +
-        '<div>' +
-          '<h2>Activity Attendees Directory</h2>' +
-          '<div class="muted">' + (isMuni ? 'Municipal records for <strong>' + esc(home().municipality) + '</strong>.' : 'Region-wide activity attendance records.') + ' Click any name to view their profile across all exports.</div>' +
-        '</div>' +
-        '<div class="row-actions" style="margin:0"><button class="btn ghost btn-sm" data-act="att-export">' + icon('download') + ' <span>Export Attendees CSV</span></button></div>' +
-      '</div>' +
-      '<div class="grid-kpi">' +
-        '<div class="kpi"><div class="kpi-label">Total Attendees Encoded</div><div class="kpi-value">' + n(totalEncoded) + '</div><div class="kpi-sub">' + n(uniqueCount) + ' unique individuals</div></div>' +
-        '<div class="kpi ' + (womenRate >= 0.5 ? 'accent-good' : 'accent-warn') + '"><div class="kpi-label">Women Participation</div><div class="kpi-value">' + pctText(womenRate) + '</div><div class="kpi-sub">' + n(womenCount) + ' female participants (' + (womenRate >= 0.5 ? '✓ Meets ≥50% target' : '⚠ Below 50% target') + ')</div></div>' +
-        '<div class="kpi"><div class="kpi-label">Volunteers Attending</div><div class="kpi-value">' + n(volunteerCount) + '</div><div class="kpi-sub">Cross-matched committee members</div></div>' +
-        '<div class="kpi ' + (flaggedCount > 0 ? 'accent-bad' : 'accent-good') + '"><div class="kpi-label">Data Integrity Alerts</div><div class="kpi-value">' + n(flaggedCount) + '</div><div class="kpi-sub">' + (flaggedCount > 0 ? 'Attendee records missing name' : 'All names recorded') + '</div></div>' +
-      '</div>' +
-      renderAttendeeTriageTray(triage) +
-      '<div class="toolbar-row"><div class="filters" style="margin:0">' +
-        scopeBanner +
-        '<label class="field"><span>Barangay</span><select data-act="att-brgy">' + bOpts + '</select></label>' +
-        '<label class="field"><span>Activity</span><select data-act="att-act">' + actOpts + '</select></label>' +
-        '<label class="field" style="flex:1"><span>Search</span><input type="search" id="att-search" value="' + attr(ATT_STATE.search) + '" placeholder="Search attendee name, barangay, activity…"></label>' +
-        (hasFilter ? '<button type="button" class="btn ghost btn-sm" data-act="att-reset">' + icon('rotate-ccw') + ' <span>Reset</span></button>' : '') +
-      '</div><span class="tiny">Showing <strong>' + n(shown.length) + '</strong> of <strong>' + n(sorted.length) + '</strong></span></div>' +
-      quickChipsHtml +
-      '<div class="table-wrap"><table class="grid"><thead><tr>' +
-        th('name', 'Attendee Name', false, 'Click to view individual attendance profile across activities') +
-        th('sex', 'Sex', false, 'Gender / Sex disaggregation (PCRP mandates ≥50% women)') +
-        th('brgy', 'Barangay', false, 'Barangay where activity occurred or attendee resides') +
-        (!isMuni ? th('muni', 'Municipality', false, 'Local Government Unit') : '') +
-        th('act', 'Activity', false, 'PCRP Activity milestone sequence and official name') +
-        th('date', 'Date Conducted', false, 'Conduct date recorded on physical attendance sheet') +
-        th('flags', 'Cross-check Flags', false, 'Data quality & volunteer cross-checks') +
-      '</tr></thead><tbody>' + (rowsHtml || '<tr><td colspan="10" class="empty-state">No attendee records match these filters.</td></tr>') + '</tbody></table></div>' +
-      (shown.length < sorted.length ? '<div class="row-actions" style="margin-top:12px"><button class="btn ghost btn-sm" data-act="att-more">Show ' + Math.min(100, sorted.length - shown.length) + ' more</button><span class="tiny">Showing ' + n(shown.length) + ' of ' + n(sorted.length) + '</span></div>' : '') +
-    '</div>';
-
+  body.innerHTML = (typeof renderDqaBreadcrumb === 'function' ? renderDqaBreadcrumb() : '') +
+    '<div class="card"><div class="card-head"><div><h2>Attendance Summary</h2><p class="muted">Reported attendance totals. Repeated records remain included. Person Volunteers are shown separately; unique people cannot be determined.</p></div>' +
+    '<button class="btn ghost" data-act="att-export">Export summary CSV</button></div>' +
+    (SNAP.importTotals.invalidFigures ? '<div class="msg warn">Some source counts are missing or invalid. Totals include valid reported figures only; review DQA before using them.</div>' : '') +
+    '<div class="grid-kpi"><div class="kpi"><div class="kpi-label">Reported participants</div><div class="kpi-value">' + n(totals.total) + '</div><div class="kpi-sub">' + breakdown(totals) + '</div></div>' +
+    '<div class="kpi"><div class="kpi-label">Female participation</div><div class="kpi-value">' + (totals.total ? pctText(totals.female / totals.total) : '—') + '</div><div class="kpi-sub">Female ÷ all reported participants</div></div>' +
+    '<div class="kpi"><div class="kpi-label">Person Volunteers</div><div class="kpi-value">' + n(pv.total) + '</div><div class="kpi-sub">' + breakdown(pv) + '</div></div>' +
+    '<div class="kpi"><div class="kpi-label">Activity summaries</div><div class="kpi-value">' + n(list.length) + '</div><div class="kpi-sub">' + n(list.filter(function (r) { return r.repeated; }).length) + ' repeated groups</div></div></div>' +
+    '<div class="filters">' + (isMuni ? '<span>Municipality: ' + esc(home().municipality) + '</span>' : '<label class="field"><span>Municipality</span><select data-act="att-muni">' + muniOpts + '</select></label>') +
+    '<label class="field"><span>Barangay</span><select data-act="att-brgy">' + brgyOpts + '</select></label><label class="field"><span>Activity</span><select data-act="att-act">' + actOpts + '</select></label>' +
+    '<label class="field"><span>Search</span><input id="att-search" type="search" placeholder="Location or activity" value="' + attr(ATT_STATE.search) + '"></label>' +
+    '<label class="field"><span>Counts</span><select data-act="att-sex">' + option('all', 'All counts', ATT_STATE.sex === 'all') + option('female', 'With female participants', ATT_STATE.sex === 'female') + option('male', 'With male participants', ATT_STATE.sex === 'male') + option('unspecified', 'With unspecified sex', ATT_STATE.sex === 'unspecified') + '</select></label>' +
+    '<label class="field"><span>Records</span><select data-act="att-flag">' + option('all', 'All summaries', ATT_STATE.flag === 'all') + option('duplicate', 'Repeated records', ATT_STATE.flag === 'duplicate') + option('issues', 'Data issues', ATT_STATE.flag === 'issues') + '</select></label>' +
+    '<button class="btn ghost" data-act="att-reset">Reset</button></div>' +
+    '<div class="table-wrap"><table class="grid"><thead><tr>' + th('muni', 'Municipality') + th('brgy', 'Barangay') + th('act', 'Activity') + '<th>Target start / end</th>' + th('date', 'Actual start / end') +
+    th('male', 'Male', true) + th('female', 'Female', true) + th('unspecified', 'Unspecified', true) + th('total', 'Participants total', true) + th('pv', 'Person Volunteers', true) + '<th>Source sheet rows</th></tr></thead><tbody>' +
+    (rows || '<tr><td colspan="11">No summaries match these filters.</td></tr>') + '</tbody></table></div>' +
+    (shown.length < list.length ? '<button class="btn ghost" data-act="att-more">Show more</button>' : '') + '</div>';
   bindSearch('att-search', function (v) { ATT_STATE.search = v; ATT_STATE.limit = 100; renderAttendees(); });
-  refreshIcons($('att-body'));
+  refreshIcons(body);
 }
 
-// ===================================================================
-// MODULE 2: HOUSEHOLD PARTICIPATION (K2 Quorum)
-//
-// Read from the snapshot: KCIS counts the households per assembly
-// (Household Participation export), so there is no roster to list.
-// hhListed = Total Hh In Barangay, hhPresent = Total Hh Represented,
-// both set only when both counts are encoded.
-// ===================================================================
 
 function quorumProgressBar(present, listed) {
   if (!listed || listed <= 0) {
@@ -902,7 +591,7 @@ function hhScorecardRows(brgys) {
 function renderHouseholds() {
   var body = $('hh-body');
   if (!body) return;
-  if (!STATE.computed) { body.innerHTML = '<div class="card"><p class="muted">Load the participants and Household Participation exports first.</p></div>'; return; }
+  if (!STATE.computed) { body.innerHTML = '<div class="card"><p class="muted">Load Activity Tracker to calculate household participation.</p></div>'; return; }
   var isMuni = isMunicipalUser(), key = homeKey();
   var activeMuni = isMuni ? key : (HH_STATE.muni || key || '');
   var brgys = (SNAP.barangayRows || []).filter(function (b) { return !activeMuni || b.province + '|' + b.municipality === activeMuni; });
@@ -1025,17 +714,17 @@ function renderHouseholds() {
       th('sectors', '4Ps · IP · SLP HH', false, { tooltip: 'Households represented that are 4Ps, IP or SLP (Total 4Ps / Ip / Slp Hh Represented in KCIS)' }) +
       th('indiv', 'Individuals', false, { tooltip: 'Individuals present by sex (Individual Female / Male / Total in KCIS)' }) +
       th('status', 'Quorum Status', false, { term: 'k2', tooltip: 'Met (≥70%), Below (<70%), Counts incomplete (one count only), or Not encoded' }) +
-      th('records', 'KCIS Records', true, { tooltip: 'Activity records of this assembly in the Household Participation export' }) +
+      th('records', 'KCIS Records', true, { tooltip: 'Activity records of this assembly in the Activity Tracker' }) +
       '<th>Action</th>' +
     '</tr></thead><tbody>' + (rows || '<tr><td colspan="10" class="empty-state">No barangays match these filters.</td></tr>') + '</tbody></table></div>';
 
   var subNav = '<div class="sub-nav-tabs">' +
-    '<button type="button" class="sub-nav-btn" data-go="attendees">' + icon('calendar-check') + ' <span>Attendees Directory</span></button>' +
+    '<button type="button" class="sub-nav-btn" data-go="attendees">' + icon('calendar-check') + ' <span>Attendance Summary</span></button>' +
     '<button type="button" class="sub-nav-btn active">' + icon('home') + ' <span>Household Participation</span></button>' +
   '</div>';
 
   var notLoaded = !hc.imported
-    ? '<div class="msg warn" style="margin:12px 0">' + icon('alert-triangle') + ' <span>The Household Participation export is not loaded, so no household counts are shown. Load it in Settings &amp; Setup › Data Import.</span></div>'
+    ? '<div class="msg warn" style="margin:12px 0">' + icon('alert-triangle') + ' <span>The Activity Tracker is not loaded, so no household counts are shown. Load it in Settings &amp; Setup › Data Import.</span></div>'
     : '';
 
   body.innerHTML = subNav + (typeof renderDqaBreadcrumb === 'function' ? renderDqaBreadcrumb() : '') +
@@ -1043,7 +732,7 @@ function renderHouseholds() {
       '<div class="card-head">' +
         '<div>' +
           '<h2>Household Participation &amp; Assembly Quorum</h2>' +
-          '<div class="muted">' + (isMuni ? 'Scoped strictly to <strong>' + esc(home().municipality) + '</strong>.' : 'Regional household participation monitoring.') + ' Households in barangay and households represented per assembly, as counted in the KCIS Household Participation export (70% statutory threshold).</div>' +
+          '<div class="muted">' + (isMuni ? 'Scoped strictly to <strong>' + esc(home().municipality) + '</strong>.' : 'Regional household participation monitoring.') + ' Households in barangay and households represented per assembly, as counted in the KCIS Activity Tracker (70% statutory threshold).</div>' +
         '</div>' +
         '<div class="row-actions" style="margin:0"><button class="btn ghost btn-sm" data-act="hh-export">' + icon('download') + ' <span>Export Scorecard CSV</span></button></div>' +
       '</div>' +
@@ -1191,7 +880,7 @@ function renderVolunteersTriageTray(summary) {
 function renderVolunteers() {
   var body = $('vol-body');
   if (!body) return;
-  if (!STATE.computed) { body.innerHTML = '<div class="card"><p class="muted">Load the volunteers export first.</p></div>'; return; }
+  if (!LOADED.volunteers) { body.innerHTML = '<div class="card"><p class="muted">Load the Community Volunteer List first.</p></div>'; return; }
   var P = people(), isMuni = isMunicipalUser(), key = homeKey();
   var activeMuni = isMuni ? key : (VOL_STATE.muni || key || '');
   var inScope = pScopeTest(activeMuni);
@@ -1206,7 +895,7 @@ function renderVolunteers() {
   });
 
   // Barangays in scope
-  var brgys = (SNAP.barangayRows || []).filter(function (b) { return !activeMuni || b.province + '|' + b.municipality === activeMuni; })
+  var brgys = ((SNAP && SNAP.barangayRows) || readBaseline().rows).filter(function (b) { return !activeMuni || b.province + '|' + b.municipality === activeMuni; })
     .sort(function (a, b) { return a.municipality.localeCompare(b.municipality) || a.barangay.localeCompare(b.barangay); });
   var bOpts = '<option value="">All Barangays</option>' + brgys.map(function (b) {
     var v = b.province + '|' + b.municipality + '|' + b.barangay;
@@ -1401,7 +1090,7 @@ function renderVolunteers() {
     '<div class="card">' +
       '<div class="card-head">' +
         '<div>' +
-          '<h2>Community Volunteers &amp; Committees</h2>' +
+          '<h2>Community Volunteers &amp; Committees</h2><p class="tiny">Individual attendance cross-checks are unavailable from Activity Tracker summaries.</p>' +
           '<div class="muted">' + (isMuni ? 'Dedicated volunteer directory for <strong>' + esc(home().municipality) + '</strong>.' : 'Region-wide community volunteer rosters.') + ' Tracks BResT, SFMSC, Stage 2 committees, GSI inclusion metrics (≥50% women), and committee chairpersons.</div>' +
         '</div>' +
         '<div class="row-actions" style="margin:0"><button class="btn ghost btn-sm" data-act="vol-export">' + icon('download') + ' <span>Export Volunteers CSV</span></button></div>' +
@@ -1430,7 +1119,7 @@ function renderVolunteers() {
         th('brgy', 'Barangay', false, null, 'Barangay of volunteer service') +
         (!isMuni ? th('muni', 'Municipality', false, null, 'Local Government Unit') : '') +
         th('start', 'Term Start', false, null, 'Start date or election date recorded') +
-        th('flags', 'Cross-check Flags', false, null, 'Automated validation against assembly attendance, residency, and committee quotas') +
+        th('flags', 'Cross-check Flags', false, null, 'Volunteer profile and committee checks; individual attendance is unavailable') +
       '</tr></thead><tbody>' + (rowsHtml || '<tr><td colspan="10" class="empty-state">No volunteers match these filters.</td></tr>') + '</tbody></table></div>' +
       (shown.length < sorted.length ? '<div class="row-actions" style="margin-top:12px"><button class="btn ghost btn-sm" data-act="vol-more">Show ' + Math.min(100, sorted.length - shown.length) + ' more</button><span class="tiny">Showing ' + n(shown.length) + ' of ' + n(sorted.length) + '</span></div>' : '') +
     '</div>';
@@ -3629,7 +3318,7 @@ function committeeCards(bkey) {
         ? '<div class="tiny">' + n(m.length) + (m.length === 1 ? ' volunteer · ' : ' volunteers · ') + n(women) + (women === 1 ? ' woman' : ' women') + ' · marginalized (women, IP, PWD) <strong>' + Math.round(marg / m.length * 100) + '%</strong></div>' +
           '<ol style="margin:8px 0 0;padding-left:18px">' + m.map(function (v) {
             return '<li style="margin:3px 0">' + nameCell(v) + (v.chair ? ' <span class="pill good">' + esc(v.position) + '</span>' : (v.position ? ' <span class="tiny">' + esc(v.position) + '</span>' : ' <span class="tiny">no position</span>')) +
-              (v.flags.indexOf('notattendee') !== -1 ? ' <span class="pill warn">Not among 1st BA attendees</span>' : '') + '</li>';
+              ' <span class="tiny">Individual attendance check unavailable</span></li>';
           }).join('') + '</ol>'
         : '<div class="tiny">No volunteer in KCIS for this body yet. This does not mean it was not organized.</div>') +
     '</div>';
@@ -3669,7 +3358,6 @@ function openPerson(key) {
   var places = {};
   recs.forEach(function (r) { if (r.barangay) places[r.barangay + ', ' + r.municipality] = true; });
   var hint = [];
-  vol.forEach(function (v) { if (v.flags.indexOf('notattendee') !== -1) hint.push('Volunteer in ' + (v.body || v.committee || 'no committee') + ' (' + v.barangay + ') but not among the 1st BA attendees encoded there.'); });
   var bodies = {}; vol.forEach(function (v) { if (v.body) bodies[v.body + ' · ' + v.barangay] = true; });
   if (Object.keys(bodies).length > 1) hint.push('Sits in ' + Object.keys(bodies).join(' and ') + ' (allowed).');
   att.forEach(function (a) { if (a.flags.indexOf('duplicate') !== -1) hint.push('Listed more than once on the ' + a.actLabel + ' attendance sheet of ' + a.barangay + ' for the same date (' + (a.date || 'unspecified date') + ').'); });
@@ -3690,13 +3378,13 @@ function openPerson(key) {
           '<div class="muted">' + (Object.keys(places).join(' · ') || 'Municipal level only') + '</div></div>' +
       '</div>' +
       '<div class="person-badges">' +
-        '<span class="pill ' + (att.length ? 'good' : 'idle') + '">' + n(att.length) + ' Attendance</span>' +
+        '<span class="pill idle">Individual attendance unavailable</span>' +
         '<span class="pill ' + (vol.length ? 'good' : 'idle') + '">' + n(vol.length) + ' Volunteer ' + (vol.length === 1 ? 'role' : 'roles') + '</span>' +
         '<button class="btn ghost icon-btn" value="close" aria-label="Close profile" title="Close (Esc)">' + icon('x') + '</button>' +
       '</div>' +
     '</div>' +
     (hint.length ? '<div class="msg warn" style="margin-top:10px">' + icon('alert-triangle') + ' <div><strong>Items to check</strong><ul style="margin:4px 0 0;padding-left:18px">' + hint.map(function (h) { return '<li>' + esc(h) + '</li>'; }).join('') + '</ul></div></div>' : '') +
-    table('Attendance', att, [['Activity', function (r) { return 'Seq ' + esc(r.seq) + ' · ' + esc(r.actLabel); }], ['Where', plc], ['Date', function (r) { return esc(r.date || '—') + (r.flags.indexOf('duplicate') !== -1 ? ' <span class="badge-dup">👥 Duplicate</span>' : ''); }], ['Sex', function (r) { return esc(r.sex || '—'); }]]) +
+    '<p class="tiny">Activity Tracker contains attendance totals. Named attendance cross-checks are unavailable.</p>' +
     table('Volunteer roles', vol, [['Committee', function (r) { return esc(r.committee || '(none)'); }], ['Position', function (r) { return esc(r.position || '—'); }], ['Where', plc], ['Term start', function (r) { return esc(r.start || '—'); }], ['IP / PWD', function (r) { return [r.ip ? 'IP' : '', r.pwd ? 'PWD' : ''].filter(Boolean).join(', ') || '—'; }]]) +
     (looseOnly.length ? '<h3 style="margin-top:16px">Same first and last name, different middle name <span class="pill warn">' + looseOnly.length + '</span></h3>' +
       '<p class="tiny">Possibly the same person encoded with a different or missing middle name.</p><ul style="margin:6px 0 0;padding-left:18px">' +
@@ -3714,14 +3402,15 @@ function openPerson(key) {
 
 // Exports
 function exportAttendeesCsv() {
-  var P = people(), isMuni = isMunicipalUser(), key = homeKey();
-  var activeMuni = isMuni ? key : (ATT_STATE.muni || key || '');
-  var list = P.attendees.filter(pScopeTest(activeMuni));
-  var head = ['Name', 'Sex', 'Barangay', 'Municipality', 'Province', 'Activity Seq', 'Activity Name', 'Date', 'Flags'];
-  var rows = list.map(function (r) {
-    return [r.name, r.sex, r.barangay, r.municipality, r.province, r.seq, r.actLabel, r.date, (r.flags || []).join('; ')];
-  });
-  downloadCsv('PCRP_attendees_' + (activeMuni ? activeMuni.replace(/[^A-Za-z0-9]+/g, '_') : 'region') + '_' + stamp() + '.csv', csvOf([head].concat(rows)));
+  var list = filteredAttendanceRows();
+  var head = ['Province', 'Municipality', 'Barangay', 'Activity', 'Target Start', 'Target End', 'Actual Start', 'Actual End',
+    'Participants Male', 'Participants Female', 'Participants Unspecified', 'Participants Total',
+    'Person Volunteers Male', 'Person Volunteers Female', 'Person Volunteers Unspecified', 'Person Volunteers Total', 'Source Rows', 'Repeated'];
+  var rows = list.map(function (r) { return [r.province, r.municipality, r.barangay, r.actLabel, r.targetStart, r.targetEnd, r.dateStart, r.dateEnd,
+    r.participants.male, r.participants.female, r.participants.unspecified, r.participants.total,
+    r.personVolunteers.male, r.personVolunteers.female, r.personVolunteers.unspecified, r.personVolunteers.total,
+    r.sourceRows.map(function (x) { return x.sourceRow; }).join('; '), r.repeated ? 'Yes; counts included' : 'No']; });
+  downloadCsv('PCRP_attendance_summary_' + stamp() + '.csv', csvOf([head].concat(rows)));
 }
 
 /** The quorum scorecard of every assembly that carries household counts, for the scope in view. */
@@ -4093,6 +3782,8 @@ document.addEventListener('change', function (ev) {
   if (act === 'att-muni') { ATT_STATE.muni = t.value; ATT_STATE.brgy = ''; renderAttendees(); }
   else if (act === 'att-brgy') { ATT_STATE.brgy = t.value; renderAttendees(); }
   else if (act === 'att-act') { ATT_STATE.act = t.value; renderAttendees(); }
+  else if (act === 'att-flag') { ATT_STATE.flag = t.value; ATT_STATE.limit = 100; renderAttendees(); }
+  else if (act === 'att-sex') { ATT_STATE.sex = t.value; ATT_STATE.limit = 100; renderAttendees(); }
   else if (act === 'hh-muni') { HH_STATE.muni = t.value; HH_STATE.brgy = ''; renderHouseholds(); }
   else if (act === 'vol-muni') { VOL_STATE.muni = t.value; VOL_STATE.brgy = ''; renderVolunteers(); }
   else if (act === 'vol-brgy') { VOL_STATE.brgy = t.value; renderVolunteers(); }

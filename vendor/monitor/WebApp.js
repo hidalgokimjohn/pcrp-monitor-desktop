@@ -116,6 +116,7 @@ function apiOverview(passkey) {
     baseline: snap.baseline,
     region: snap.region,
     pipeline: snap.pipeline,
+    movs: snap.movs ? { imported: snap.movs.imported, byMuni: snap.movs.byMuni, movsReady: snap.movs.movsReady } : null,
     k2: snap.k2,
     k2_ba2: snap.k2_ba2,
     k2_ba3: snap.k2_ba3,
@@ -217,7 +218,7 @@ function apiMatrix() {
         // reported as unencoded when they were sitting in the system.
         cells[p.code] = t ? { pct: t.expected ? t.complete / t.expected : null,
                               backlog: t.backlog, attendees: t.attendees,
-                              expected: t.expected, complete: t.complete,
+                              expected: t.expected, complete: t.complete, movsAssessed: !!t.movsAssessed, encoded: t.encoded || 0, movsReady: t.movsReady || 0, movBacklog: t.movBacklog || 0, attendanceEncoded: t.attendanceEncoded || 0,
                               noAttendees: t.noAttendees, notEncoded: t.notEncoded }
                           : null;
       });
@@ -287,13 +288,13 @@ function apiMunicipality(name, province) {
           seq: p.seq, code: p.code, label: p.label, level: p.level, field: p.field,
           stage: p.stage || 1, prioOnly: !!p.prioOnly, households: !!p.households,
           expected: p.expected, conducted: cond, complete: p.complete, noAttendees: p.noAttendees,
-          notEncoded: p.notEncoded, attendees: p.attendees, backlog: p.backlog,
+          notEncoded: p.notEncoded, attendees: p.attendees, backlog: p.backlog, movsAssessed: !!p.movsAssessed, encoded: p.encoded || 0, movsReady: p.movsReady || 0, movBacklog: p.movBacklog || 0, attendanceEncoded: p.attendanceEncoded || 0,
           pct: p.expected ? p.complete / p.expected : null,
           conductPct: p.expected ? cond / p.expected : null
         };
       } else {
         var pAlpha = normAlpha(targetProv);
-        var exp = 0, comp = 0, noAtt = 0, notEnc = 0, att = 0, bl = 0;
+        var exp = 0, comp = 0, noAtt = 0, notEnc = 0, att = 0, bl = 0, attendanceEncoded = 0, encoded = 0, movsReady = 0, movBacklog = 0;
         if (p.level === 'Barangay') {
           bRows.forEach(function (r) {
             // Same rule as the region pipeline: a prioritized-only step is owed
@@ -305,6 +306,10 @@ function apiMunicipality(name, province) {
               if (x.status === STATUS.COMPLETE) comp++;
               else if (x.status === STATUS.NO_ATTENDEES) noAtt++;
               else notEnc++;
+              if (x.attendees > 0) attendanceEncoded++;
+              if (x.status !== STATUS.NOT_ENCODED) encoded++;
+              if (x.mov && x.mov.ready) movsReady++;
+              if (x.mov && x.mov.lacking) movBacklog++;
               att += (x.attendees || 0);
             }
           });
@@ -318,7 +323,7 @@ function apiMunicipality(name, province) {
               var t = (snap.byMuniActivity[mKey] || snap.byMuniActivity[m.municipality] || {})[p.code];
               if (t) {
                 exp += t.expected; comp += t.complete; noAtt += t.noAttendees;
-                notEnc += t.notEncoded; att += t.attendees; bl += t.backlog;
+                notEnc += t.notEncoded; att += t.attendees; bl += t.backlog; attendanceEncoded += t.attendanceEncoded || 0; encoded += t.encoded || 0; movsReady += t.movsReady || 0; movBacklog += t.movBacklog || 0;
               }
             }
           });
@@ -328,7 +333,7 @@ function apiMunicipality(name, province) {
           seq: p.seq, code: p.code, label: p.label, level: p.level, field: p.field,
           stage: p.stage || 1, prioOnly: !!p.prioOnly, households: !!p.households,
           expected: exp, conducted: mCond, complete: comp, noAttendees: noAtt,
-          notEncoded: notEnc, attendees: att, backlog: bl,
+          notEncoded: notEnc, attendees: att, backlog: bl, movsAssessed: !!(p.stage === 1 && snap.movs && snap.movs.imported), encoded: encoded, movsReady: movsReady, movBacklog: movBacklog, attendanceEncoded: attendanceEncoded,
           pct: exp ? comp / exp : null,
           conductPct: exp ? mCond / exp : null
         };
@@ -348,13 +353,13 @@ function apiMunicipality(name, province) {
       var bgs = snap.barangayRows.filter(function (b) {
         return b.municipality === m.municipality && b.province === m.province;
       });
-      var mOwed = bgs.reduce(function (s, b) { return s + (b.owed || 0); }, 0);
-      var mExp = 0, mComp = 0, mNoAtt = 0, mAtt = 0;
+      var mOwed = 0;
+      var mExp = 0, mComp = 0, mNoAtt = 0, mAtt = 0, mAttendanceEncoded = 0, mEncoded = 0, mMovReady = 0, mMovBacklog = 0;
       var mActs = {};
       snap.pipeline.forEach(function (p) {
         var t = (snap.byMuniActivity[mKey] || snap.byMuniActivity[m.municipality] || {})[p.code];
         if (t) {
-          mExp += t.expected;
+          mExp += t.expected; mOwed += t.backlog || 0; mAttendanceEncoded += t.attendanceEncoded || 0; mEncoded += t.encoded || 0; mMovReady += t.movsReady || 0; mMovBacklog += t.movBacklog || 0;
           mComp += t.complete;
           mNoAtt += (t.noAttendees || 0);
           mAtt += t.attendees;
@@ -363,6 +368,7 @@ function apiMunicipality(name, province) {
             expected: t.expected,
             conducted: cond,
             complete: t.complete,
+            movsAssessed: !!t.movsAssessed, encoded: t.encoded || 0, movsReady: t.movsReady || 0, movBacklog: t.movBacklog || 0, attendanceEncoded: t.attendanceEncoded || 0,
             noAttendees: t.noAttendees,
             notEncoded: t.notEncoded,
             attendees: t.attendees,
@@ -411,6 +417,7 @@ function apiMunicipality(name, province) {
         owed: mOwed,
         expected: mExp,
         conducted: mComp + mNoAtt,
+        movsAssessed: !!(snap.movs && snap.movs.imported), encoded: mEncoded, movsReady: mMovReady, movBacklog: mMovBacklog, attendanceEncoded: mAttendanceEncoded,
         complete: mComp,
         noAttendees: mNoAtt,
         pct: mExp ? mComp / mExp : null,
@@ -530,6 +537,7 @@ function apiMunicipality(name, province) {
              field: p.field, expected: t.expected,
              conducted: cond,
              complete: t.complete,
+             movsAssessed: !!t.movsAssessed, encoded: t.encoded || 0, movsReady: t.movsReady || 0, movBacklog: t.movBacklog || 0, attendanceEncoded: t.attendanceEncoded || 0,
              noAttendees: t.noAttendees, notEncoded: t.notEncoded,
              attendees: t.attendees, backlog: t.backlog,
              pct: t.expected ? t.complete / t.expected : null,

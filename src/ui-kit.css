@@ -28,7 +28,8 @@
   --warning: #a86b00;
   --container: 1504px;
   --gutter: 32px;
-  --band-h: 46px;
+  --band-row: 46px;   /* one row of the tab band */
+  --band-h: 46px;     /* the band's real height, kept current by app.js when it wraps */
 
   --bg-app: var(--paper);
   --bg-card: var(--paper);
@@ -181,7 +182,7 @@ html.dark #btn-import-top.on,
   z-index: 40;
   flex-wrap: wrap;
   gap: 0;
-  min-height: var(--band-h);
+  min-height: var(--band-row);
   /* less the tab padding, so the first label lines up with the page content */
   padding: 0 calc(max(var(--gutter), (100% - var(--container)) / 2 + var(--gutter)) - 7px);
   background: var(--accent-deep);
@@ -190,7 +191,7 @@ html.dark #btn-import-top.on,
 .tabs button,
 .tab-group-trigger {
   align-self: stretch;
-  min-height: var(--band-h);
+  min-height: var(--band-row);
   gap: 5px;
   padding: 0 7px;
   font-family: var(--font-body);
@@ -246,7 +247,12 @@ html.dark .tabs .tab-group-trigger.on { border-bottom-color: #fff; }
 .nav-tab-dropdown button[data-page]:last-child { border-bottom: none !important; }
 .nav-tab-dropdown button[data-page]:hover:not(:disabled) { background: var(--paper-2) !important; color: var(--accent) !important; }
 .nav-tab-dropdown button[data-page].on { background: var(--paper-2) !important; color: var(--accent) !important; box-shadow: inset 4px 0 0 var(--accent); }
-.nav-tab-dropdown .tab-badge { background: var(--paper-3); color: var(--ink-2); }
+/* .tabs in front to outweigh the band's own .tabs button.on .tab-badge (white on white here);
+   tone badges keep their !important colours. */
+.tabs .nav-tab-dropdown .tab-badge,
+.tabs .nav-tab-dropdown button.on .tab-badge { background: var(--paper-3); color: var(--ink-2); }
+.tabs .nav-tab-dropdown button[data-page] { min-height: 0; }
+.tabs .nav-tab-dropdown button:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 .nav-drop-title { font-family: var(--font-hero); font-size: 14px; }
 .nav-drop-sub { font-family: var(--font-mono); font-size: 10px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--ink-3); margin-top: 2px; }
 
@@ -630,7 +636,7 @@ html.dark .footer-credit strong { color: var(--ink); border-bottom: 1px solid va
 @media (max-width: 900px) {
   .top { padding: 0 var(--gutter); }
   .tabs { position: relative; top: 0; flex-wrap: wrap; padding: 0 var(--gutter); }
-  .tabs button, .tab-group-trigger { min-height: var(--band-h); }
+  .tabs button, .tab-group-trigger { min-height: var(--band-row); }
   .settings-sidebar { position: static; max-height: none; }
 }
 @media (max-width: 720px) {

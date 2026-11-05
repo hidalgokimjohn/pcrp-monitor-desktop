@@ -132,7 +132,7 @@
       <span class="tab-badge" id="badge-group-dqa" hidden></span>
       <i data-lucide="chevron-down" class="group-arrow"></i>
     </button>
-    <div class="nav-tab-dropdown" id="dropdown-dqa">
+    <div class="nav-tab-dropdown" id="dropdown-dqa"><button role="menuitem" data-page="movs" id="tab-movs"><i data-lucide="files"></i><div class="nav-drop-info"><span class="nav-drop-title">Stage 1 MOVs</span><span class="nav-drop-sub">Submission checklist &amp; assignment review</span></div><span class="tab-badge" id="badge-movs" hidden></span></button>
       <button role="menuitem" data-page="health" id="tab-health">
         <i data-lucide="gauge"></i>
         <div class="nav-drop-info">
@@ -248,7 +248,7 @@
               <input type="file" id="file-input" multiple accept=".xlsx,.csv,.pcrp" hidden>
               <div class="drop-icon"><i data-lucide="upload-cloud"></i></div>
               <span class="drop-title">Drop .xlsx, .csv, or .pcrp files here, or click to browse</span>
-              <span class="drop-sub">Participants export · Household Participation export · Community Volunteer List · or a saved .pcrp session file</span>
+              <span class="drop-sub">Activity Tracker · MOV attachments · Community Volunteer List · or a saved .pcrp session file</span>
               <div class="drop-badges">
                 <span class="drop-badge">.xlsx Workbook</span>
                 <span class="drop-badge">.csv Export</span>
@@ -304,6 +304,7 @@
   <section class="page" id="page-mrest"><div id="mrt-body"></div></section>
   <section class="page" id="page-people"><div id="pp-body"></div></section>
   <section class="page" id="page-verify"><div id="vf-body"></div></section>
+  <section class="page" id="page-movs"><div id="mov-body"></div></section>
   <section class="page" id="page-health"><div id="he-body" class="dh-page"></div></section>
 </main>
 
@@ -440,6 +441,8 @@ function $(id) { return document.getElementById(id); }
 <script>
 /*@@CORE@@*/
 /*@@RUNTIME@@*/
+/*@@TRACKER@@*/
+/*@@MOV_CORE@@*/
 </script>
 <script>
 /*@@HEALTH@@*/
@@ -452,6 +455,7 @@ function $(id) { return document.getElementById(id); }
 /*@@VERIFY@@*/
 /*@@APP@@*/
 /*@@PEOPLE@@*/
+/*@@MOV_UI@@*/
 </script>
 </body>
 </html>

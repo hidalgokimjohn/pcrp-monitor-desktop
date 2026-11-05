@@ -306,6 +306,7 @@ var P = P_DEFAULT;
 var H = H_DEFAULT;
 
 function buildColumnIndex(headerRow, fallback) {
+  if (headerRow && headerRow.some(function (h) { return normKey(h) === normKey('CRIP/MC09 Activity'); })) return trackerColumnIndex(headerRow);
   var fb = fallback || P_DEFAULT;
   if (!headerRow || !headerRow.length) return fb;
   var map = {};
@@ -479,7 +480,7 @@ function normText(v) {
   if (v === null || v === undefined) return '';
   return String(v)
     .replace(/ /g, ' ')
-    .replace(/[ -]/g, '')
+    .replace(/[\x00-\x1f\x7f-\x9f]/g, '')
     .replace(/\s+/g, ' ')
     .trim();
 }
@@ -756,7 +757,7 @@ function classify(index, seqVal, nameVal, titleVal) {
       // Seq 9: 3rd BA (Check before BA1 / generic barangay assembly!)
       if (cand.indexOf('3rd ba') !== -1 || cand.indexOf('third ba') !== -1 || cand.indexOf('third barangay assembly') !== -1 || cand.indexOf('3rd barangay assembly') !== -1) return 'BA3';
       // Stage 4: 4th BA (BAR). Never the 1st BA; tracked only once BA4 is in the activity model.
-      if (cand.indexOf('4th ba') !== -1 || cand.indexOf('fourth ba') !== -1 || cand.indexOf('fourth barangay assembly') !== -1 || cand.indexOf('4th barangay assembly') !== -1) return index.byCode.BA4 ? 'BA4' : '';
+      if (cand.indexOf('4th ba') !== -1 || cand.indexOf('fourth ba') !== -1 || cand.indexOf('fourth barangay assembly') !== -1 || cand.indexOf('4th barangay assembly') !== -1) return 'BA4';
       // Seq 7: Training for CSPMC
       if (cand.indexOf('training') !== -1 && cand.indexOf('cspmc') !== -1) return 'TR_CSPMC';
       // Seq 8: Sub-Project Development Workshop
@@ -777,6 +778,9 @@ function classify(index, seqVal, nameVal, titleVal) {
   }
 
   var res = _calcClassify();
+  // A keyword can name an activity the Activities tab does not carry (no Stage 2
+  // rows, no BA4 yet): that row is unmapped, never a code callers cannot look up.
+  if (res && index && index.byCode && !index.byCode[res]) res = '';
   if (index) {
     if (!index._classifyCache) index._classifyCache = {};
     index._classifyCache[cacheKey] = res;
@@ -1328,11 +1332,20 @@ function dqaFindings(health) {
                act: act || '', part: part || '', count: count === undefined ? 1 : count });
   }
   (dq.lateAttendance || []).forEach(function (r) { add('late', r, r.actCode, '', 1); });
-  (h.householdFlags || []).forEach(function (r) { add('quorum', r, r.actCode, r.kind, 1); });
+  (h.householdFlags || []).forEach(function (r) { add(r.kind === 'HH / attendance discrepancy' ? 'hhattendance' : 'quorum', r, r.actCode, r.kind, 1); });
   (h.householdCountsMissing || []).forEach(function (r) { add('hhcounts', r, r.actCode, '', 1); });
   (h.outOfSequenceRows || []).forEach(function (r) { add('sequence', r, '', '', 1); });
   (dq.dateIssues || []).forEach(function (r) { add('dates', r, r.actCode, r.problems.join('; '), 1); });
   (dq.multiDate || []).forEach(function (r) { add('multidate', r, r.actCode, '', r.sittings.length); });
+  if (h.movs && h.movs.imported) (h.movs.findings || []).forEach(function (r) { add('mov_' + r.kind, r, r.actCode, (r.requirementId || '') + '|' + r.issue, Math.max(1, r.paths.length)); });
+  (h.repeatedActivities || []).forEach(function (r) { add('activityrepeat', r, r.actCode, '', r.records); });
+  var summaryIssues = {};
+  (h.trackerIssues || []).forEach(function (r) {
+    var key = [r.province, r.municipality, r.barangay, r.actCode, r.problem].join('|');
+    if (!summaryIssues[key]) summaryIssues[key] = { row: r, count: 0 };
+    summaryIssues[key].count++;
+  });
+  Object.keys(summaryIssues).forEach(function (k) { var x = summaryIssues[k]; add('summaryfigures', x.row, x.row.actCode, x.row.problem, x.count); });
   (dq.attendeeDuplicates || []).forEach(function (r) { add('attdup', r, r.actCode, '', r.rows); });
   (dq.nameIssues || []).forEach(function (r) { add('names', r, r.actCode, r.source, r.rows); });
   if (v) {
@@ -1398,7 +1411,7 @@ function dqaCompare(current, ledger) {
  * Returns a snapshot object; nothing else in the app recomputes anything.
  */
 function computeSnapshot(participants, households, baselineRows, monitored,
-                         activities, pHeaders, hHeaders, evalDateIso, vRows, vHeaders) {
+                         activities, pHeaders, hHeaders, evalDateIso, vRows, vHeaders, movInput) {
   var index = buildActivityIndex(activities);
   var base = buildBaseline(baselineRows, monitored);
   var colP = buildColumnIndex(pHeaders, P_DEFAULT);
@@ -1423,17 +1436,18 @@ function computeSnapshot(participants, households, baselineRows, monitored,
     return rec[key];
   }
 
-  participants.forEach(function (row) {
-    if (!hasValue(row[0])) return;                       // trailing blank row
+  participants.forEach(function (row, sourceIndex) {
+    if (!colP.summary && !hasValue(row[0])) return;       // legacy trailing blank row
 
     // Column W (Crip Mc09 Activity Id): exclude non-CRIP activity export rows (Activity Id = 0 is not part of CRIP)
-    var rawActId = colP.activityId !== undefined ? row[colP.activityId] : (row.length > 22 ? row[22] : null);
+    if (colP.summary && normKey(row[colP.modality]) !== 'pcrp') { nonCripExcluded++; return; }
+    var rawActId = colP.activityId !== undefined ? row[colP.activityId] : (!colP.summary && row.length > 22 ? row[22] : null);
     if (isZeroActivityId(rawActId)) {
       nonCripExcluded++;
       return;
     }
 
-    var code = classify(index, row[colP.seq], row[colP.name], colP.title !== undefined ? row[colP.title] : null);
+    var code = classify(index, row[colP.seq], row[colP.name], !colP.summary && colP.title !== undefined ? row[colP.title] : null);
     if (!code) {
       if (isZeroActivityId(rawActId)) return;
       unmapped++;
@@ -1448,7 +1462,7 @@ function computeSnapshot(participants, households, baselineRows, monitored,
       return;
     }
     var provRaw = colP.province !== undefined ? normKey(row[colP.province]) : '';
-    var mk = normKey(row[colP.muni]), bk = normKey(row[colP.brgy]);
+    var mk = normKey(row[colP.muni]), bk = normKey(colP.summary ? trackerBarangay(row[colP.brgy]) : row[colP.brgy]);
     var municipal = index.byCode[code].level === 'Municipal';
     var psgcRaw = colP.psgcBrgy !== undefined && hasValue(row[colP.psgcBrgy]) ? normKey(row[colP.psgcBrgy]) : '';
     var psgcCityRaw = colP.psgcCity !== undefined && hasValue(row[colP.psgcCity]) ? normKey(row[colP.psgcCity]) : '';
@@ -1517,6 +1531,16 @@ function computeSnapshot(participants, households, baselineRows, monitored,
     var slotKey = finalProv + '|' + finalMuni + '|' + (municipal ? '' : finalBrgy) + '|' + code;
     var s = slot(slotKey);
     s.rows++;
+    if (colP.summary) {
+      s.sourceRows = s.sourceRows || [];
+      s.sourceRows.push(trackerRecord(row, colP, sourceIndex + 2));
+      s.targetStart = trackerEarlier(s.targetStart, formatDateVal(row[colP.targetStart]));
+      s.targetEnd = trackerLater(s.targetEnd, formatDateVal(row[colP.targetEnd]));
+      s.pv = s.pv || { male: 0, female: 0, unspecified: 0, total: 0 };
+      var counts = trackerCounts(row, colP.participants), pv = trackerCounts(row, colP.personVolunteers);
+      s.att += counts.total; s.m += counts.male; s.f += counts.female; s.u += counts.unspecified;
+      Object.keys(s.pv).forEach(function (k) { s.pv[k] += pv[k]; });
+    }
     // Date Start / Date End of this row. One barangay activity can carry rows
     // with different dates (several sittings, or one encoded twice): a "sitting".
     var ds = null, de = null;
@@ -1535,7 +1559,7 @@ function computeSnapshot(participants, households, baselineRows, monitored,
     var sit = s.sittings[sitting] || (s.sittings[sitting] = { start: ds, end: de, rows: 0 });
     sit.rows++;
 
-    if (hasValue(row[colP.first]) || hasValue(row[colP.last])) {
+    if (!colP.summary && (hasValue(row[colP.first]) || hasValue(row[colP.last]))) {
       s.att++;
       var sex = normKey(row[colP.sex]);
       if (sex === 'male') s.m++;
@@ -1574,14 +1598,15 @@ function computeSnapshot(participants, households, baselineRows, monitored,
   activities.forEach(function (a) { if (a.households) hhActsMap[a.code] = true; });
 
   households.forEach(function (row) {
-    if (!hasValue(row[0])) return;
-    var rawActIdH = colH.activityId !== undefined ? row[colH.activityId] : (row.length > 22 ? row[22] : null);
+    if (!colH.summary && !hasValue(row[0])) return;
+    if (colH.summary && normKey(row[colH.modality]) !== 'pcrp') return;
+    var rawActIdH = colH.activityId !== undefined ? row[colH.activityId] : (!colH.summary && row.length > 22 ? row[22] : null);
     if (isZeroActivityId(rawActIdH)) return;
     var code = classify(index, null, row[colH.name], null);
     if (!code) { hhUnmapped++; return; }
     if (!hhActsMap[code]) return;                 // only assemblies carry household rosters
     var provRaw = colH.province !== undefined ? normKey(row[colH.province]) : '';
-    var mk = normKey(row[colH.muni]), bk = normKey(row[colH.brgy]);
+    var mk = normKey(row[colH.muni]), bk = normKey(colH.summary ? trackerBarangay(row[colH.brgy]) : row[colH.brgy]);
     if (!bk) return;                             // municipal placeholder row
     var psgcH = colH.psgcBrgy !== undefined && hasValue(row[colH.psgcBrgy]) ? normKey(row[colH.psgcBrgy]) : '';
 
@@ -1613,20 +1638,24 @@ function computeSnapshot(participants, households, baselineRows, monitored,
 
     var k = finalProv + '|' + finalMuni + '|' + finalBrgy + '|' + code;
     var detail = {};
-    Object.keys(colH.hhDetail || {}).forEach(function (dk) { detail[dk] = row[colH.hhDetail[dk]]; });
+    Object.keys(colH.hhDetail || {}).forEach(function (dk) {
+      detail[dk] = colH.summary && dk !== 'kcisRate' ? trackerNumber(row[colH.hhDetail[dk]]) : row[colH.hhDetail[dk]];
+    });
     (hhRecs[k] = hhRecs[k] || []).push({
-      total: colH.hhTotal !== undefined ? row[colH.hhTotal] : null,
-      represented: colH.hhRepresented !== undefined ? row[colH.hhRepresented] : null,
+      total: colH.summary ? trackerNumber(row[colH.hhTotal]) : (colH.hhTotal !== undefined ? row[colH.hhTotal] : null),
+      represented: colH.summary ? trackerNumber(row[colH.hhRepresented]) : (colH.hhRepresented !== undefined ? row[colH.hhRepresented] : null),
       detail: detail
     });
   });
   var hhImported = households.length > 0;
+  var movs = colP.summary && movInput && typeof movBuild === 'function'
+    ? movBuild(base, index, rec, movInput.table, movInput.review, evalDateIso || todayIso(), true) : null;
 
   // ---- status per record -----------------------------------------
   function statusOf(key) {
     var s = rec[key];
     if (!s || s.rows === 0) return STATUS.NOT_ENCODED;
-    if (s.att === 0) return STATUS.NO_ATTENDEES;
+    if (!(s.att > 0)) return STATUS.NO_ATTENDEES;
     return STATUS.COMPLETE;
   }
   function attOf(key) { return rec[key] ? rec[key].att : 0; }
@@ -1682,6 +1711,8 @@ function computeSnapshot(participants, households, baselineRows, monitored,
         status: isApplicable ? st : (st !== STATUS.NOT_ENCODED ? st : 'N/A'),
         notApplicable: !isApplicable,
         attendees: attOf(key),
+        attendanceEncoded: attOf(key) > 0,
+        mov: movs && movs.byKey[key] ? { ready: movs.byKey[key].ready, submitted: movs.byKey[key].submitted, required: movs.byKey[key].required, imported: movs.imported, lacking: movs.byKey[key].lacking } : null,
         dateStart: actSlot ? actSlot.dateStart : null,
         dateEnd: actSlot ? actSlot.dateEnd : null,
         activityIds: ids,
@@ -1720,7 +1751,7 @@ function computeSnapshot(participants, households, baselineRows, monitored,
           flag('Represented over total', 'Households represented (' + hc.represented + ') exceeds households in barangay (' + hc.total + ')');
         }
         if (both && actObj.attendees > 0 && hc.represented > actObj.attendees) {
-          flag('Represented over attendees', 'Households represented (' + hc.represented + ') exceeds attendees encoded (' + actObj.attendees + ')');
+          flag('HH / attendance discrepancy', 'Review: households represented (' + hc.represented + ') exceeds reported participants (' + actObj.attendees + '); these are separate measures');
         }
         if (hhImported && isApplicable && st !== STATUS.NOT_ENCODED && hc.total === null && hc.represented === null) {
           hhMissing.push(Object.assign({ records: hc.records }, place));
@@ -1752,8 +1783,8 @@ function computeSnapshot(participants, households, baselineRows, monitored,
       if (isOwed) {
         row.owed++;
         row.todo.push(a.label + ' (seq ' + a.seq + '): ' +
-          (st === STATUS.NO_ATTENDEES ? 'attendance sheet missing past 3-day window'
-                                      : 'nothing encoded'));
+          (st === STATUS.NO_ATTENDEES ? 'zero reported participants past 3-day window'
+            : 'nothing encoded'));
       }
     });
 
@@ -1806,6 +1837,8 @@ function computeSnapshot(participants, households, baselineRows, monitored,
       row.activities[a.code] = {
         status: mSt,
         attendees: attOf(key),
+        attendanceEncoded: attOf(key) > 0,
+        mov: movs && movs.byKey[key] ? { ready: movs.byKey[key].ready, submitted: movs.byKey[key].submitted, required: movs.byKey[key].required, imported: movs.imported, lacking: movs.byKey[key].lacking } : null,
         dateStart: actSlot ? actSlot.dateStart : null,
         dateEnd: actSlot ? actSlot.dateEnd : null
       };
@@ -1829,14 +1862,19 @@ function computeSnapshot(participants, households, baselineRows, monitored,
 
   // ---- the Pipeline ---------------------------------------
   function blankTally() {
-    return { expected: 0, complete: 0, noAttendees: 0, notEncoded: 0,
+    return { expected: 0, complete: 0, noAttendees: 0, notEncoded: 0, encoded: 0, movsReady: 0, movBacklog: 0, movsAssessed: false, attendanceEncoded: 0,
              attendees: 0, backlog: 0 };
   }
-  function addStatus(t, st, att, field, dateEnd) {
+  function addStatus(t, st, att, field, dateEnd, mov) {
     t.expected++;
     if (st === STATUS.COMPLETE) t.complete++;
     else if (st === STATUS.NO_ATTENDEES) t.noAttendees++;
     else t.notEncoded++;
+    if (st !== STATUS.NOT_ENCODED) t.encoded++;
+    if (mov && mov.ready) t.movsReady++;
+    if (mov && mov.lacking) t.movBacklog++;
+    if (mov && mov.imported) t.movsAssessed = true;
+    if (att > 0) t.attendanceEncoded++;
     t.attendees += att;
     if (isMilestoneLacking_(st, field, dateEnd)) t.backlog++;
   }
@@ -1875,21 +1913,21 @@ function computeSnapshot(participants, households, baselineRows, monitored,
       barangayRows.forEach(function (r) {
         if (a.prioOnly && !r.stage2Prio) return;
         var x = r.activities[a.code];
-        addStatus(t, x.status, x.attendees, a.field, x.dateEnd);
+        addStatus(t, x.status, x.attendees, a.field, x.dateEnd, x.mov);
         muniKeys(r.province, r.municipality).forEach(function (k) {
           if (!byMuniActivity[k]) byMuniActivity[k] = {};
           if (!byMuniActivity[k][a.code]) byMuniActivity[k][a.code] = blankTally();
-          addStatus(byMuniActivity[k][a.code], x.status, x.attendees, a.field, x.dateEnd);
+          addStatus(byMuniActivity[k][a.code], x.status, x.attendees, a.field, x.dateEnd, x.mov);
         });
       });
     } else {
       municipalRows.forEach(function (r) {
         var x = r.activities[a.code];
-        addStatus(t, x.status, x.attendees, a.field, x.dateEnd);
+        addStatus(t, x.status, x.attendees, a.field, x.dateEnd, x.mov);
         muniKeys(r.province, r.municipality).forEach(function (k) {
           if (!byMuniActivity[k]) byMuniActivity[k] = {};
           if (!byMuniActivity[k][a.code]) byMuniActivity[k][a.code] = blankTally();
-          addStatus(byMuniActivity[k][a.code], x.status, x.attendees, a.field, x.dateEnd);
+          addStatus(byMuniActivity[k][a.code], x.status, x.attendees, a.field, x.dateEnd, x.mov);
         });
       });
     }
@@ -1899,6 +1937,7 @@ function computeSnapshot(participants, households, baselineRows, monitored,
       households: !!a.households,
       expected: t.expected, complete: t.complete, noAttendees: t.noAttendees,
       notEncoded: t.notEncoded, attendees: t.attendees, backlog: t.backlog,
+      encoded: t.encoded, movsReady: t.movsReady, movBacklog: t.movBacklog, movsAssessed: !!(a.stage === 1 && movs && movs.imported), attendanceEncoded: t.attendanceEncoded,
       pct: t.expected ? t.complete / t.expected : null
     });
   });
@@ -1932,6 +1971,7 @@ function computeSnapshot(participants, households, baselineRows, monitored,
   pipeline.forEach(function (p) {
     totals.expected += p.expected;
     totals.complete += p.complete;
+    totals.encoded += p.encoded || 0; totals.movsReady += p.movsReady || 0; totals.movBacklog += p.movBacklog || 0; totals.attendanceEncoded += p.attendanceEncoded || 0;
     totals.noAttendees += p.noAttendees;
     totals.notEncoded += p.notEncoded;
     totals.attendees += p.attendees;
@@ -1940,6 +1980,7 @@ function computeSnapshot(participants, households, baselineRows, monitored,
     if (p.stage === 1) {
       totalsStage1.expected += p.expected;
       totalsStage1.complete += p.complete;
+    totalsStage1.encoded += p.encoded || 0; totalsStage1.movsReady += p.movsReady || 0; totalsStage1.movBacklog += p.movBacklog || 0; totalsStage1.attendanceEncoded += p.attendanceEncoded || 0;
       totalsStage1.noAttendees += p.noAttendees;
       totalsStage1.notEncoded += p.notEncoded;
       totalsStage1.attendees += p.attendees;
@@ -1947,6 +1988,7 @@ function computeSnapshot(participants, households, baselineRows, monitored,
     } else {
       totalsStage2.expected += p.expected;
       totalsStage2.complete += p.complete;
+    totalsStage2.encoded += p.encoded || 0; totalsStage2.movsReady += p.movsReady || 0; totalsStage2.movBacklog += p.movBacklog || 0; totalsStage2.attendanceEncoded += p.attendanceEncoded || 0;
       totalsStage2.noAttendees += p.noAttendees;
       totalsStage2.notEncoded += p.notEncoded;
       totalsStage2.attendees += p.attendees;
@@ -1996,6 +2038,7 @@ function computeSnapshot(participants, households, baselineRows, monitored,
   Object.keys(dqa).forEach(function (k) { dqa[k].sort(byPlaceDqa); });
   dqa.lateUndated = lateUndated;
   dqa.muniRows = muniRows;
+  dqa.summary = !!colP.summary;
 
   var sexTally = { male: 0, female: 0, unset: 0 };
   Object.keys(rec).forEach(function (k) {
@@ -2006,7 +2049,14 @@ function computeSnapshot(participants, households, baselineRows, monitored,
     }
   });
 
+  var tracker = colP.summary ? trackerSnapshot(rec, base, participants, colP, index) : null;
   return {
+    movs: movs,
+    sourceType: tracker ? 'activity-tracker-v2' : 'legacy',
+    attendanceRows: tracker ? tracker.rows : [],
+    trackerIssues: tracker ? tracker.issues : [],
+    repeatedActivities: tracker ? tracker.repeated : [],
+    importTotals: tracker ? tracker.totals : null,
     evalDate: evalDate,
     baseline: {
       barangays: base.totalBarangays,
@@ -2022,11 +2072,13 @@ function computeSnapshot(participants, households, baselineRows, monitored,
       notEncoded: totals.notEncoded,
       attendees: totals.attendees,
       backlog: totals.backlog,
-      overallPct: totals.expected ? totals.complete / totals.expected : 0,
+      overallPct: (totals.expected ? totals.complete / totals.expected : 0),
+      encoded: totals.encoded, movsReady: totals.movsReady, movBacklog: totals.movBacklog, attendanceEncoded: totals.attendanceEncoded,
       stage1Expected: totalsStage1.expected,
       stage1Complete: totalsStage1.complete,
       stage1Backlog: totalsStage1.backlog,
-      stage1Pct: totalsStage1.expected ? totalsStage1.complete / totalsStage1.expected : 0,
+      stage1Pct: (totalsStage1.expected ? totalsStage1.complete / totalsStage1.expected : 0),
+      stage1Encoded: totalsStage1.encoded, stage1MOVsReady: totalsStage1.movsReady, stage1MOVBacklog: totalsStage1.movBacklog,
       stage2Expected: totalsStage2.expected,
       stage2Complete: totalsStage2.complete,
       stage2Backlog: totalsStage2.backlog,
@@ -2050,6 +2102,7 @@ function computeSnapshot(participants, households, baselineRows, monitored,
     municipalRows: municipalRows,
     byMuniActivity: byMuniActivity,
     health: {
+      movs: movs ? { imported: movs.imported, findings: movs.findings, stats: movs.stats } : null,
       participantRows: participants ? participants.length : 0,
       householdRows: households ? households.length : 0,
       unmapped: unmapped,
@@ -2057,7 +2110,7 @@ function computeSnapshot(participants, households, baselineRows, monitored,
       unmappedBlank: unmappedBlank,
       unmappedSamples: unmappedSamples,
       excludedNonCrip: nonCripExcluded,
-      notInBaseline: notInBaseline + hhNotInBaseline,
+      notInBaseline: notInBaseline + (colP.summary ? 0 : hhNotInBaseline),
       notInBaselineSamples: notInBaseSamples,
       outOfSequence: outOfSequence,
       outOfSequenceSamples: outOfSequenceSamples,
@@ -2073,6 +2126,8 @@ function computeSnapshot(participants, households, baselineRows, monitored,
       },
       volunteerIssues: volunteers.issues,  // places and counts only; null until the volunteer list is imported
       sexNotRecorded: sexTally.unset,
+      trackerIssues: tracker ? tracker.issues : [],
+      repeatedActivities: tracker ? tracker.repeated : [],
       dqa: dqa,                            // date, record, name, birthdate and timeliness checks; places and counts only
       activitiesWithoutField: activities.filter(function (a) {
         return FIELD_CONDUCT.indexOf(a.field) === -1;

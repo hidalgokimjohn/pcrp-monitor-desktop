@@ -3830,3 +3830,26 @@ html.dark .app-footer {
 html.dark .footer-credit strong {
   color: var(--primary-500);
 }
+/* Source summaries in DQA remain readable inside the existing scrollable table. */
+.tracker-source-records {
+  min-width: 20rem;
+  max-width: 36rem;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  font-size: 12px;
+  line-height: 1.6;
+}
+.bar .mov-pending { background: #b45309; }
+.bar .mov-unknown { background: #94a3b8; }
+.mov-completion-notice { margin-bottom: 16px; }
+.mov-filename { max-width: 34rem; overflow-wrap: anywhere; white-space: normal; }
+.mov-note { flex: 1; min-width: 260px; }
+.mov-review select { max-width: 100%; }
+.mov-assignment { border-top: 1px solid var(--border-subtle); padding: 12px 0; overflow-wrap: anywhere; }
+/* Independent activity measures share a target, not a combined percentage. */
+.activity-progress-stack { display:flex; flex-direction:column; gap:7px; min-width:165px; width:100%; margin:5px 0; }
+.activity-progress-label { display:flex; justify-content:space-between; gap:8px; font-size:10px; line-height:1.4; white-space:normal; }
+.activity-progress-track { height:5px; background:var(--line,#d8dfe9); overflow:hidden; width:100%; }
+.activity-progress-track i { display:block; height:100%; background:#225cdf; }
+.activity-progress-row.attendance i { background:#22824b; }
+.activity-progress-row.movs i { background:#8851bd; }

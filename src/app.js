@@ -283,9 +283,9 @@ var PCRP_GLOSSARY = {
     ref: 'SM1 §5.4 · 3rd BA Quorum'
   },
   'lacking': {
-    title: 'Activity Backlog (Unencoded / Missing Sheets)',
+    title: 'Activity Backlog (Unencoded / Attendance Not Encoded)',
     badge: 'Field Compliance',
-    desc: 'Activities conducted in the field more than 3 days ago that are not yet encoded in KCIS, or activities encoded without an attached physical attendance sheet. Requires immediate municipal facilitator encoding.',
+    desc: 'Activities conducted in the field with missing KCIS records or zero reported participants after the existing encoding window. Review the source records.',
     ref: 'SM7 §4 · Encoding Timeliness'
   },
   'sfmsc': {
@@ -427,9 +427,9 @@ var PCRP_GLOSSARY = {
     ref: 'Encoding Pipeline Rules'
   },
   'nosheet': {
-    title: 'No Sheet Status',
-    badge: 'Missing Attendance MOV',
-    desc: 'Activity encoded in KCIS with zero registered attendees, indicating that the physical paper attendance sheet has not yet been scanned and encoded.',
+    title: 'Attendance Encoding Status',
+    badge: 'Zero Reported Participants',
+    desc: 'Activity Tracker reports zero participants. This does not establish whether a signed attendance sheet is attached.',
     ref: 'Data Health Validation'
   }
 };
@@ -785,7 +785,7 @@ function openLackingModal(bkey, customFindings, customTitle, customSub) {
       '<div class="empty-state" style="padding:28px 16px;text-align:center;">' +
         '<div style="font-size:32px;margin-bottom:8px">🎉</div>' +
         '<strong>No lacking findings!</strong>' +
-        '<div class="muted tiny" style="margin-top:4px">All monitored activities have encoded data or attendance sheets.</div>' +
+        '<div class="muted tiny" style="margin-top:4px">All monitored activities have reported attendance.</div>' +
       '</div>';
     if (copyBtn) copyBtn.style.display = 'none';
   } else {
@@ -1198,7 +1198,7 @@ function applyHomeScope() {
   S.healthPage = {};
 }
 
-/** How much of the chosen municipality the participants export covers. */
+/** How much of the chosen municipality the Activity Tracker covers. */
 function homeCoverage() {
   var key = homeKey();
   if (!key || !SNAP) return null;
@@ -1213,7 +1213,7 @@ function coverageBanner() {
   var c = homeCoverage();
   if (!c) return '';
   if (!c.encoded) {
-    return '<div class="msg warn">' + icon('alert-triangle') + ' <div>The participants export has <strong>no records for ' + esc(homeLabel()) + '</strong>. Check that it is the right export, or that your municipality is set correctly (<button class="link" data-act="home-edit">Import › Change</button>).</div></div>';
+    return '<div class="msg warn">' + icon('alert-triangle') + ' <div>The Activity Tracker has <strong>no records for ' + esc(homeLabel()) + '</strong>. Check that it is the right export, or that your municipality is set correctly (<button class="link" data-act="home-edit">Import › Change</button>).</div></div>';
   }
   return '';
 }
@@ -1229,7 +1229,7 @@ function updateTabBadges() {
     el.textContent = text;
     el.className = 'tab-badge' + (cls ? ' ' + cls : '');
   };
-  var loadedCount = ['participants', 'households', 'volunteers'].filter(function (k) { return !!LOADED[k]; }).length;
+  var loadedCount = ['activityTracker', 'volunteers', 'movs'].filter(function (k) { return !!LOADED[k]; }).length;
   setBadge('import', loadedCount ? loadedCount + '/3' : '', loadedCount === 3 ? 'good' : '');
   setBadge('sni-badge-import', loadedCount ? loadedCount + '/3' : '', loadedCount === 3 ? 'good' : '');
 
@@ -1237,7 +1237,7 @@ function updateTabBadges() {
   if (tabMunis) tabMunis.style.display = isMunicipalUser() ? 'none' : '';
 
   if (!STATE.computed || !S.overview || !SNAP) {
-    ['munis', 'brgys', 'attendees', 'households', 'volunteers', 'brest', 'mrest', 'people', 'verify', 'health', 'group-attendance', 'group-volunteers'].forEach(function (id) { setBadge(id, ''); });
+    ['munis', 'brgys', 'attendees', 'households', 'volunteers', 'brest', 'mrest', 'people', 'verify', 'movs', 'health', 'group-attendance', 'group-volunteers'].forEach(function (id) { setBadge(id, ''); });
     return;
   }
   var key = homeKey();
@@ -1247,10 +1247,14 @@ function updateTabBadges() {
   var brgysInScope = (SNAP.barangayRows || []).filter(function (b) { return !key || (b.province + '|' + b.municipality === key); });
   var lackingBrgys = brgysInScope.filter(function (b) { return (b.owed || 0) > 0; }).length;
   setBadge('brgys', lackingBrgys ? lackingBrgys + ' lacking' : n(brgysInScope.length), lackingBrgys ? 'bad' : 'good');
+  if (SNAP.movs) {
+    var movLacking = SNAP.movs.groups.filter(function (g) { return inOverviewScope(g) && g.lacking; }).length;
+    setBadge('movs', SNAP.movs.imported ? (movLacking ? n(movLacking) + ' lacking' : '✓') : 'Needed', SNAP.movs.imported ? (movLacking ? 'warn' : 'good') : 'warn');
+  }
 
   try {
     var P = people(), inScope = pScopeTest();
-    var attCount = P.attendees.filter(inScope).length;
+    var attCount = (SNAP.attendanceRows || []).filter(inScope).reduce(function (sum, r) { return sum + r.participants.total; }, 0);
     setBadge('attendees', attCount ? n(attCount) : '', 'good');
 
     var k2 = scopedK2();
@@ -1359,7 +1363,7 @@ function go(page) {
   // Highlight parent group triggers if active page is inside group
   var isAttendanceGroup = (page === 'attendees' || page === 'households');
   var isVolunteersGroup = (page === 'volunteers' || page === 'brest' || page === 'cspmc');
-  var isDqaGroup = (page === 'health' || page === 'verify');
+  var isDqaGroup = (page === 'health' || page === 'verify' || page === 'movs');
   var grpAtt = $('tab-group-attendance');
   if (grpAtt) grpAtt.classList.toggle('on', isAttendanceGroup);
   var grpVol = $('tab-group-volunteers');
@@ -1392,6 +1396,7 @@ function renderPage() {
   else if (STATE.page === 'kpisummary') renderKpiSummary();
   else if (STATE.page === 'people') renderPeople();
   else if (STATE.page === 'verify') renderVerify();
+  else if (STATE.page === 'movs') renderMovs();
   else if (STATE.page === 'health') renderHealth();
   else if (STATE.page === 'settings' || STATE.page === 'import') renderSettings();
   else renderSettings();
@@ -1408,7 +1413,7 @@ function setTabsEnabled(on) {
   if (grpVol) grpVol.disabled = !on;
   var grpDqa = $('tab-group-dqa');
   if (grpDqa) grpDqa.disabled = !on;
-  $('btn-export').disabled = !on;
+  $('btn-export').disabled = !on || !LOADED.activityTracker;
 }
 
 // Hooks the Data Health page calls.
@@ -1566,7 +1571,14 @@ function acceptTable(item) {
     if (item.kind === 'activities') TABS.Activities = item.table;
     if (item.kind === 'baseline') TABS.Baseline = item.table;
   } else {
+    if (item.kind === 'activityTracker') {
+      validateTrackerTable(item.table);
+      delete TABS.Raw_Participants; delete TABS.Raw_HH_Participation;
+      delete LOADED.participants; delete LOADED.households;
+    }
     TABS[info.sheet] = item.table;
+    PEOPLE = null; VERIFY.cache = null;
+    if (typeof MOV_CACHE !== 'undefined') MOV_CACHE = null;
     savedNewExports(item.kind);
   }
   LOADED[item.kind] = { file: item.file, sheet: item.sheet, rows: item.table.rows.length };
@@ -1594,7 +1606,7 @@ function handleFiles(fileList) {
     setProgress('');
     renderImport(); renderStatus(); updateTabBadges();
     if (typeof savedSaveCurrent === 'function') savedSaveCurrent();
-    if (LOADED.participants) {
+    if (LOADED.activityTracker) {
       computeAndShow(STATE.computed ? null : 'overview');
     } else {
       setTabsEnabled(true);
@@ -1603,7 +1615,7 @@ function handleFiles(fileList) {
 }
 
 function computeAndShow(thenPage) {
-  if (!LOADED.participants) { toast('Load the participants export first.'); return; }
+  if (!LOADED.activityTracker) { toast('Load the Activity Tracker first.'); return; }
   setProgress('Computing the findings… (a few seconds for a full regional export)');
   setTimeout(function () {
     try {
@@ -1639,8 +1651,8 @@ function renderImport() {
   renderHome();
   renderSavedBar();
   var kinds = [
-    { k: 'participants', ico: 'users', desc: 'Needed for every activity & attendance finding.' },
-    { k: 'households', ico: 'building-2', desc: 'Needed for K2 quorum: households in barangay and households represented, counted per assembly.' },
+    { k: 'activityTracker', ico: 'calendar-check', desc: 'Activity attendance summaries and household participation counts in one file.' },
+    { k: 'movs', ico: 'files', desc: 'Assessed separately from attendance: uploaded MOV attachment records from KCIS.' },
     { k: 'volunteers', ico: 'list-checks', desc: 'Needed for 1st BA BResT / SFMSC & MResT tracking.' }
   ];
   var p = prefs();
@@ -1649,7 +1661,7 @@ function renderImport() {
     return '<div class="slot-card' + (l ? ' loaded' : '') + '">' +
       '<div class="slot-head">' +
         '<div class="slot-title">' + icon(item.ico) + ' <span>' + esc(info.label) + '</span></div>' +
-        '<span class="status-chip ' + (l ? 'ok' : (k === 'participants' ? 'off' : '')) + '">' + (l ? '✓ Loaded' : (k === 'participants' ? 'Required' : 'Optional')) + '</span>' +
+        '<span class="status-chip ' + (l ? 'ok' : (k === 'activityTracker' ? 'off' : '')) + '">' + (l ? '✓ Loaded' : ((k === 'activityTracker' || k === 'movs') ? 'Required' : 'Optional')) + '</span>' +
       '</div>' +
       '<div class="slot-meta">' + (l
         ? esc(l.file) + (l.sheet && l.sheet !== 'Sheet1' ? ' · sheet ' + esc(l.sheet) : '') + ' · <strong>' + n(l.rows) + ' rows</strong>'
@@ -1668,7 +1680,7 @@ function renderImport() {
     icon(cov.encoded ? 'check-circle-2' : 'alert-triangle') + ' <div>' + (cov.encoded
     ? '<strong>' + esc(homeLabel()) + '</strong>: ' + n(cov.encoded) + ' of ' + n(cov.barangays) + ' monitored barangays have records in this export.'
     : 'This export has <strong>no records for ' + esc(homeLabel()) + '</strong>. Is it the right file, and is your municipality set correctly?') + '</div></div>' : '';
-  var pullLine = LOADED.participants ? '<div class="toolbar-row" style="margin-top:12px;margin-bottom:0">' +
+  var pullLine = LOADED.activityTracker ? '<div class="toolbar-row" style="margin-top:12px;margin-bottom:0">' +
     '<label class="field"><span>KCIS pull date of these exports</span><input type="date" data-act="im-evaldate" value="' + attr(p.evalDate || today()) + '"></label>' +
     '<span class="tiny" style="flex:1 1 240px">The day the exports were pulled from KCIS. Set it whenever you drop a newer pull: the 3-day attendance window and the Fix list (new, still open, resolved) go by this date.</span></div>' : '';
   var lockNotice = (!home() || STATE.editHome) ? (
@@ -1683,12 +1695,12 @@ function renderImport() {
   $('import-list').innerHTML = lockNotice + '<div class="import-grid">' + cards.join('') + '</div>' + refs + errs.join('') + covLine + pullLine;
   var btnCompute = $('btn-compute');
   if (btnCompute) {
-    btnCompute.disabled = !LOADED.participants;
+    btnCompute.disabled = !LOADED.activityTracker;
     btnCompute.innerHTML = icon('layout-dashboard') + ' <span>' + (STATE.computed ? 'Recompute findings' : 'Show findings') + '</span>';
   }
   var btnComputeSide = $('btn-compute-side');
   if (btnComputeSide) {
-    btnComputeSide.disabled = !LOADED.participants;
+    btnComputeSide.disabled = !LOADED.activityTracker;
     btnComputeSide.innerHTML = icon('layout-dashboard') + ' <span>' + (STATE.computed ? 'Recompute findings' : 'Show findings') + '</span>';
   }
 }
@@ -1745,11 +1757,12 @@ function inOverviewScope(p) {
 function scopedPipeline() {
   var rows = overviewRows();
   return stageActs().map(function (a) {
-    var t = { expected: 0, complete: 0, noAttendees: 0, notEncoded: 0, backlog: 0, attendees: 0 };
+    var t = { expected: 0, complete: 0, noAttendees: 0, notEncoded: 0, backlog: 0, attendees: 0, attendanceEncoded: 0 };
     rows.forEach(function (r) {
       var c = r.cells[a.code];
       if (!c) return;
       t.expected += c.expected || 0; t.complete += c.complete || 0; t.noAttendees += c.noAttendees || 0;
+      t.encoded = (t.encoded || 0) + (c.encoded || 0); t.movsReady = (t.movsReady || 0) + (c.movsReady || 0); t.movBacklog = (t.movBacklog || 0) + (c.movBacklog || 0); t.attendanceEncoded += c.attendanceEncoded || 0;
       t.notEncoded += c.notEncoded || 0; t.backlog += c.backlog || 0; t.attendees += c.attendees || 0;
     });
     return Object.assign({ a: a }, t);
@@ -1816,8 +1829,42 @@ function provChips() {
 }
 function progressBar(ok, warn, total) {
   var w = function (v) { return total ? Math.max(0, Math.min(100, v / total * 100)).toFixed(1) : 0; };
-  return '<span class="bar" role="img" aria-label="' + attr(ok + ' with attendance sheet, ' + warn + ' without, of ' + total) + '">' +
+  return '<span class="bar" role="img" aria-label="' + attr(ok + ' compliant, ' + warn + ' needing review, of ' + total) + '">' +
     (ok ? '<i class="ok" style="width:' + w(ok) + '%"></i>' : '') + (warn ? '<i class="warn" style="width:' + w(warn) + '%"></i>' : '') + '</span>';
+}
+
+function activityProgressSum(items) {
+  return items.reduce(function (t, x) {
+    ['expected', 'encoded', 'complete', 'movsReady', 'movBacklog'].forEach(function (k) { t[k] += x[k] || 0; });
+    return t;
+  }, { expected: 0, encoded: 0, complete: 0, movsReady: 0, movBacklog: 0 });
+}
+function activityProgressForMuni(r, acts) {
+  return activityProgressSum((acts || stageActs()).map(function (a) { return (r.cells || {})[a.code] || {}; }));
+}
+function activityProgressForBrgy(b, acts) {
+  return activityProgressSum((acts || stageActs()).filter(function (a) { return a.level !== 'Municipal'; }).map(function (a) {
+    var x = (b.activities || {})[a.code];
+    if (!x || x.notApplicable || x.status === 'N/A') return {};
+    return { expected: 1, encoded: x.status !== 'Not Encoded' ? 1 : 0, complete: x.attendees > 0 ? 1 : 0, movsReady: x.mov && x.mov.ready ? 1 : 0, movBacklog: x.mov && x.mov.lacking ? 1 : 0 };
+  }));
+}
+function activityProgressBars(t, stage) {
+  t = t || {}; stage = stage || STATE.stage;
+  var target = t.expected || 0, tracker = !!LOADED.activityTracker, mov = !!(SNAP && SNAP.movs && SNAP.movs.imported);
+  var rows = [{ label: 'Encoded', count: t.encoded || 0, assessed: tracker, css: 'encoding' },
+    { label: 'With attendees', count: t.complete || 0, assessed: tracker, css: 'attendance' },
+    { label: 'MOVs ready', count: t.movsReady || 0, assessed: stage === 1 && mov, css: 'movs', reason: stage !== 1 ? 'Not assessed for this stage' : 'Not assessed' }];
+  return '<div class="activity-progress-stack">' + rows.map(function (r) {
+    var rate = target ? Math.max(0, Math.min(100, r.count / target * 100)) : 0;
+    var value = r.assessed ? n(r.count) + '/' + n(target) + ' · ' + (target ? rate.toFixed(1).replace(/\.0$/, '') + '%' : 'N/A') : r.reason || 'Not assessed';
+    return '<div class="activity-progress-row ' + r.css + '"><div class="activity-progress-label"><span>' + r.label + '</span><span>' + value + '</span></div>' +
+      '<div class="activity-progress-track" role="img" aria-label="' + attr(r.label + ': ' + value) + '"><i style="width:' + (r.assessed ? rate : 0) + '%"></i></div></div>';
+  }).join('') + '</div>';
+}
+function activityProgressExport(t) {
+  var assessed = STATE.stage === 1 && SNAP.movs && SNAP.movs.imported;
+  return [t.encoded || 0, assessed ? t.movsReady || 0 : 'Not assessed', assessed ? t.movBacklog || 0 : 'Not assessed'];
 }
 
 function quotaMiniProgressBar(count, total, targetRate, targetLabel) {
@@ -1997,10 +2044,10 @@ function renderOverviewTriageTray(triage) {
   }
   if (triage.pendingSheetsTot > 0) {
     items.push(
-      '<button type="button" class="triage-item triage-warn" data-act="kpi-brgy" data-v="nosheet" title="Filter barangays missing signed attendance sheet">' +
+      '<button type="button" class="triage-item triage-warn" data-act="kpi-brgy" data-v="nosheet" title="Filter barangays without reported attendance">' +
         '<div class="triage-item-info">' +
           '<span class="triage-item-count">' + n(triage.pendingSheetsTot) + '</span>' +
-          '<span class="triage-item-label">Activities Pending Signed Sheet</span>' +
+          '<span class="triage-item-label">Attendance Not Encoded</span>' +
         '</div>' +
         '<span class="triage-item-arrow">' + icon('arrow-right') + '</span>' +
       '</button>'
@@ -2035,7 +2082,7 @@ function renderOverviewTriageTray(triage) {
         (!isAllGood ? '<span class="tiny muted">Click any triage card to drill down directly into the affected records</span>' : '') +
       '</div>' +
       (isAllGood
-        ? '<div class="msg ok" style="margin:0">' + icon('check-circle-2') + ' <span><strong>Optimal Field State:</strong> Zero activity backlog, all physical attendance sheets attached, and K2 household quorum thresholds met.</span></div>'
+        ? '<div class="msg ok" style="margin:0">' + icon('check-circle-2') + ' <span><strong>Optimal Field State:</strong> Zero activity backlog, all attendance counts encoded, and K2 household quorum thresholds met.</span></div>'
         : '<div class="triage-grid">' + items.join('') + '</div>'
       ) +
     '</div>'
@@ -2066,13 +2113,13 @@ function renderMilestoneStepper(pipe) {
     var stepCls = 'milestone-step' + (isComplete ? ' is-complete' : (isBottleneck ? ' is-bottleneck' : '')) + (isFiltered ? ' active' : '');
 
     return (
-      '<button type="button" class="' + stepCls + '" data-act="ov-filter-seq" data-v="' + attr(p.a.code) + '" title="' + attr(p.a.label + ': ' + pctText(rate) + ' with signed sheet (' + n(p.complete) + ' of ' + n(p.expected) + ')') + '">' +
+      '<button type="button" class="' + stepCls + '" data-act="ov-filter-seq" data-v="' + attr(p.a.code) + '" title="' + attr(p.a.label + ': ' + pctText(rate) + ' complete (' + n(p.complete) + ' of ' + n(p.expected) + ')') + '">' +
         '<div class="step-top">' +
           '<span class="step-seq-pill">Seq ' + esc(p.a.seq) + '</span>' +
           '<span class="step-rate">' + pct + '%</span>' +
         '</div>' +
         '<div class="step-name">' + esc(p.a.label) + '</div>' +
-        '<div class="step-progress-mini"><div class="step-progress-mini-bar" style="width:' + pct + '%"></div></div>' +
+        activityProgressBars(p, p.a.stage) +
       '</button>'
     );
   }).join('');
@@ -2167,14 +2214,14 @@ function renderOverview() {
       '<div class="tiny">' + esc(p.a.level) + ' level · field: ' + esc(p.a.field) + '</div></td>' +
       '<td class="num">' + n(p.expected) + '</td><td class="num">' + n(p.complete) + '</td><td class="num">' + n(p.noAttendees) + '</td>' +
       '<td class="num">' + n(p.notEncoded) + '</td><td class="num">' + (p.backlog ? '<strong style="color:var(--bad-text)">' + n(p.backlog) + '</strong>' : '0') + '</td>' +
-      '<td><div class="cell-pct"><span>' + pctText(pctOf(p.complete, p.expected)) + ' <span class="tiny">(' + pctText(pctOf(cond, p.expected)) + ' recorded)</span></span>' + progressBar(p.complete, p.noAttendees, p.expected) + '</div></td></tr>';
+      '<td><div class="cell-pct"><span>' + pctText(pctOf(p.complete, p.expected)) + ' <span class="tiny">(' + pctText(pctOf(cond, p.expected)) + ' recorded)</span></span>' + activityProgressBars(p, p.a ? p.a.stage : STATE.stage) + '</div></td></tr>';
   }).join('');
 
   var totalCond = tot.c + tot.na;
   var totalRow = '<tr class="total"><td class="num"></td><td>Total · Stage ' + STATE.stage + '</td>' +
     '<td class="num">' + n(tot.e) + '</td><td class="num">' + n(tot.c) + '</td><td class="num">' + n(tot.na) + '</td>' +
     '<td class="num">' + n(tot.ne) + '</td><td class="num">' + (tot.b ? '<span style="color:var(--bad-text)">' + n(tot.b) + '</span>' : '0') + '</td>' +
-    '<td><div class="cell-pct"><span>' + pctText(pctOf(tot.c, tot.e)) + ' <span class="tiny">(' + pctText(pctOf(totalCond, tot.e)) + ' recorded)</span></span>' + progressBar(tot.c, tot.na, tot.e) + '</div></td></tr>';
+    '<td><div class="cell-pct"><span>' + pctText(pctOf(tot.c, tot.e)) + ' <span class="tiny">(' + pctText(pctOf(totalCond, tot.e)) + ' recorded)</span></span>' + activityProgressBars(activityProgressSum(scopedPipeline())) + '</div></td></tr>';
 
   var th = function (col, label, num, extra) {
     var opts = { col: col, curCol: curCol, dir: curDir, label: label, num: num, act: 'ov-sort' };
@@ -2231,7 +2278,7 @@ function renderOverview() {
   var ovFilters = [
     { id: 'all', label: 'All Activities', count: pipe.length, cls: '' },
     { id: 'lacking', label: 'Lacking / Backlog', count: pipe.filter(function (p) { return p.backlog > 0; }).length, cls: 'chip-bad' },
-    { id: 'nosheet', label: 'Pending Signed Sheet', count: pipe.filter(function (p) { return p.noAttendees > 0; }).length, cls: 'chip-warn' },
+    { id: 'nosheet', label: 'Attendance Not Encoded', count: pipe.filter(function (p) { return p.noAttendees > 0; }).length, cls: 'chip-warn' },
     { id: 'complete', label: 'Complete (100%)', count: pipe.filter(function (p) { return p.expected > 0 && p.complete >= p.expected; }).length, cls: '' }
   ];
 
@@ -2261,30 +2308,30 @@ function renderOverview() {
       kpiCard({
         label: 'Overall Readiness Index',
         value: metrics.compositeIndex + '%',
-        sub: metrics.compositeIndex >= 80 ? 'Optimal implementation readiness' : (metrics.compositeIndex >= 60 ? 'Moderate compliance; address gaps' : 'High priority risk; immediate support'),
+        sub: metrics.compositeIndex >= 80 ? 'High attendance and compliance progress' : (metrics.compositeIndex >= 60 ? 'Moderate compliance; address gaps' : 'High priority risk; immediate support'),
         ico: 'gauge',
         accent: metrics.compositeIndex >= 80 ? 'accent-good' : (metrics.compositeIndex >= 60 ? 'accent-warn' : 'accent-bad'),
         tooltip: 'Weighted strategic readiness index across Pipeline completion, K2 quorum, and volunteer teams',
         act: 'go', v: 'kpisummary', title: 'Open Executive KPI Scorecard'
       }) +
       kpiCard({
-        label: 'With attendance sheet',
+        label: 'Activities with attendees',
         value: pctText(pctOf(tot.c, tot.e)),
-        sub: n(tot.c) + ' of ' + n(tot.e) + ' Stage ' + STATE.stage + ' records complete',
+        sub: n(tot.c) + ' of ' + n(tot.e) + ' Stage ' + STATE.stage + ' activities with attendees',
         ico: 'check-circle-2',
         accent: tot.c === tot.e && tot.e > 0 ? 'accent-good' : '',
-        bar: progressBar(tot.c, tot.na, tot.e),
-        tooltip: 'Total activities encoded with verified physical attendance sheet attached',
+        bar: activityProgressBars(activityProgressSum(scopedPipeline())),
+        tooltip: 'Total activities with reported participants',
         act: 'kpi-brgy', v: 'all', title: 'Open Barangays view'
       }) +
       kpiCard({
-        label: 'Pending signed sheet',
+        label: 'Attendance not encoded',
         value: n(tot.na),
-        sub: 'Encoded in KCIS, attendance sheet still missing',
+        sub: 'Activity exists in KCIS with zero reported participants',
         ico: 'clock-alert',
         accent: tot.na > 0 ? 'accent-warn' : 'accent-good',
         term: 'nosheet',
-        act: 'kpi-brgy', v: 'nosheet', title: 'Filter barangays recorded without a sheet'
+        act: 'kpi-brgy', v: 'nosheet', title: 'Filter barangays with zero reported participants'
       }) +
       kpiCard({
         label: 'Critical backlog (lacking)',
@@ -2299,7 +2346,7 @@ function renderOverview() {
         kpiCard({
           label: 'BA HH Rate · 2nd BA Quorum',
           value: pctText(metrics.k2_ba2.rate),
-          sub: metrics.k2_ba2.listed ? n(metrics.k2_ba2.present) + ' of ' + n(metrics.k2_ba2.listed) + ' households present (≥70% target)' : 'Not reported: load 2nd BA Household Participation export',
+          sub: metrics.k2_ba2.listed ? n(metrics.k2_ba2.present) + ' of ' + n(metrics.k2_ba2.listed) + ' households present (≥70% target)' : 'Not reported: load 2nd BA Activity Tracker',
           ico: 'users',
           accent: metrics.k2_ba2.rate === null ? 'accent-idle' : (metrics.k2_ba2.rate >= 0.7 ? 'accent-good' : 'accent-warn'),
           bar: metrics.k2_ba2.listed ? progressBar(metrics.k2_ba2.present, 0, metrics.k2_ba2.listed) : '',
@@ -2310,7 +2357,7 @@ function renderOverview() {
         kpiCard({
           label: 'BA HH Rate · 3rd BA Quorum',
           value: pctText(metrics.k2_ba3.rate),
-          sub: metrics.k2_ba3.listed ? n(metrics.k2_ba3.present) + ' of ' + n(metrics.k2_ba3.listed) + ' households present (≥70% target)' : 'Not reported: load 3rd BA Household Participation export',
+          sub: metrics.k2_ba3.listed ? n(metrics.k2_ba3.present) + ' of ' + n(metrics.k2_ba3.listed) + ' households present (≥70% target)' : 'Not reported: load 3rd BA Activity Tracker',
           ico: 'users',
           accent: metrics.k2_ba3.rate === null ? 'accent-idle' : (metrics.k2_ba3.rate >= 0.7 ? 'accent-good' : 'accent-warn'),
           bar: metrics.k2_ba3.listed ? progressBar(metrics.k2_ba3.present, 0, metrics.k2_ba3.listed) : '',
@@ -2322,7 +2369,7 @@ function renderOverview() {
         kpiCard({
           label: 'BA HH Rate · 1st BA Quorum',
           value: pctText(k2.rate),
-          sub: k2.listed ? n(k2.present) + ' of ' + n(k2.listed) + ' households present (≥70% target)' : 'Not reported: load 1st BA Household Participation export',
+          sub: k2.listed ? n(k2.present) + ' of ' + n(k2.listed) + ' households present (≥70% target)' : 'Not reported: load 1st BA Activity Tracker',
           ico: 'users',
           accent: k2.rate === null ? 'accent-idle' : (k2.rate >= 0.7 ? 'accent-good' : 'accent-warn'),
           bar: k2.listed ? progressBar(k2.present, 0, k2.listed) : '',
@@ -2342,15 +2389,15 @@ function renderOverview() {
           '<label class="field" style="flex:1"><span>Search activities</span><input type="search" id="ov-search" value="' + attr(STATE.ovSearch) + '" placeholder="Search activity, sequence, code, level…"></label>' +
           (STATE.ovSearch || STATE.ovFilter !== 'all' || STATE.ovSeqFilter ? '<button type="button" class="btn ghost btn-sm" data-act="ov-reset">' + icon('rotate-ccw') + ' <span>Reset filters</span></button>' : '') +
         '</div><span class="tiny">Showing <strong>' + n(sortedPipe.length) + '</strong> of <strong>' + n(pipe.length) + '</strong></span></div>' +
-        '<div class="legend"><span class="pill good">With attendance sheet</span><span class="pill warn">Recorded, pending sheet</span><span>Not encoded means not in KCIS yet, not "not conducted".</span></div>' +
+        '<div class="legend"><span class="pill good">With attendees</span><span class="pill warn">Recorded, attendance not encoded</span>' + '' + '<span>Not encoded means not in KCIS yet, not "not conducted".</span></div>' +
         '<div class="table-wrap"><table class="grid"><thead><tr>' +
           th('seq', 'Seq', true, { tooltip: 'Standard activity sequence number in CRIP' }) +
           th('activity', 'Activity', false, { tooltip: 'Official assembly or workshop milestone' }) +
           th('expected', 'Target', true, { tooltip: 'Expected total activities for monitored barangays' }) +
-          th('complete', 'With sheet', true, { tooltip: 'Activities encoded with verified attendance sheet' }) +
-          th('noAttendees', 'Pending Sheet', true, { term: 'nosheet', tooltip: 'Encoded in KCIS, physical signed attendance sheet pending attachment' }) +
+          th('complete', 'With attendees', true, { tooltip: 'Activities with positive reported Participants attendance; MOVs are assessed separately' }) +
+          th('noAttendees', 'No attendance', true, { term: 'nosheet', tooltip: 'Encoded in KCIS, reported participant count is zero' }) +
           th('notEncoded', 'Not encoded', true, { tooltip: 'Activities not yet recorded in the KCIS database' }) +
-          th('backlog', 'Lacking', true, { term: 'lacking' }) +
+          th('backlog', 'Attendance backlog', true, { term: 'lacking' }) +
           th('progress', 'Progress', false, { tooltip: 'Completion percentage against targeted activities' }) +
         '</tr></thead><tbody>' + (rows || '<tr><td colspan="8" class="empty-state">No activity matches your search.</td></tr>') + totalRow + '</tbody></table></div></div>' +
       '<div>' +
@@ -2484,13 +2531,13 @@ function renderMuniTriageTray(summary, cvOn) {
     );
   }
 
-  // 3. Pending Sheets
+  // 3. No attendances
   if (summary.munisWithNoSheet > 0) {
     items.push(
-      '<button type="button" class="triage-item triage-warn' + (STATE.muniFilter === 'nosheet' ? ' active-triage' : '') + '" data-act="mu-filter" data-v="nosheet" title="Filter municipalities with activities recorded without signed attendance sheets">' +
+      '<button type="button" class="triage-item triage-warn' + (STATE.muniFilter === 'nosheet' ? ' active-triage' : '') + '" data-act="mu-filter" data-v="nosheet" title="Filter municipalities with activities reporting zero participants">' +
         '<div class="triage-item-info">' +
           '<span class="triage-item-count">' + n(summary.munisWithNoSheet) + '</span>' +
-          '<span class="triage-item-label">Pending Signed Sheets (' + n(summary.totalNoSheetRecords) + ')</span>' +
+          '<span class="triage-item-label">Attendance Not Encoded (' + n(summary.totalNoSheetRecords) + ')</span>' +
         '</div>' +
         '<span class="triage-item-arrow">' + icon('arrow-right') + '</span>' +
       '</button>'
@@ -2656,9 +2703,9 @@ function renderMunis() {
   var cell = function (c, a) {
     if (!c || (a.prioOnly && !c.expected)) return '<td class="num tiny">—</td>';
     return '<td><div class="cell-pct"><span class="num">' + n(c.complete) + '/' + n(c.expected) +
-      (c.noAttendees ? ' <span class="tiny" style="color:var(--warn-text)" title="' + n(c.noAttendees) + ' records pending signed attendance sheet">+' + n(c.noAttendees) + '</span>' : '') +
+      (c.noAttendees ? ' <span class="tiny" style="color:var(--warn-text)" title="' + n(c.noAttendees) + ' records without reported attendance">+' + n(c.noAttendees) + '</span>' : '') +
       '</span>' +
-      progressBar(c.complete, c.noAttendees, c.expected) + '</div></td>';
+      activityProgressBars(c, a.stage) + '</div></td>';
   };
 
   var body = rows.map(function (r) {
@@ -2674,11 +2721,9 @@ function renderMunis() {
         '</div>' +
         '<div class="tiny text-muted">' + esc(r.province) + '</div>' +
         '<div style="margin-top:4px">' +
-          '<div class="step-progress-mini" style="height:3px" title="' + pPct + '% stage pipeline complete">' +
-            '<div class="step-progress-mini-bar" style="width:' + pPct + '%;' + (pRate >= 1 ? 'background:var(--good);' : '') + '"></div>' +
-          '</div>' +
+          activityProgressBars(activityProgressForMuni(r, acts)) +
           '<div class="tiny" style="color:var(--text-dim);margin-top:2px;font-size:10px;display:flex;justify-content:space-between">' +
-            '<span>' + pPct + '% complete</span>' +
+            '<span>' + pPct + '% with attendees</span>' +
             '<span class="link" style="font-size:9.5px">Drill down →</span>' +
           '</div>' +
         '</div>' +
@@ -2711,7 +2756,7 @@ function renderMunis() {
   var quickFilters = [
     { id: 'all', label: 'All LGUs', count: summary.totalMunis, cls: '' },
     { id: 'lacking', label: '🚨 With Backlog', count: summary.munisWithBacklog, cls: 'chip-bad' },
-    { id: 'nosheet', label: '⚠️ Pending Sheet', count: summary.munisWithNoSheet, cls: 'chip-warn' }
+    { id: 'nosheet', label: '⚠️ No attendance', count: summary.munisWithNoSheet, cls: 'chip-warn' }
   ];
   if (STATE.stage === 2) {
     quickFilters.push({ id: 'k2_ba2', label: '👥 2nd BA HH Rate < 70%', count: summary.munisK2Ba2Issue, cls: 'chip-warn' });
@@ -2744,7 +2789,7 @@ function renderMunis() {
       '<div class="card-head">' +
         '<div>' +
           '<h2>Municipalities</h2>' +
-          '<div class="muted">Records with signed attendance sheet / expected target per activity (+ recorded without sheet). Click any municipality row to drill down into its barangays.</div>' +
+          '<div class="muted">Independent progress: Encoded, With attendees, and MOVs ready against the activity target. Click any municipality row to drill down into its barangays.</div>' +
         '</div>' +
         '<button class="btn ghost btn-sm" data-act="csv-munis">' + icon('download') + ' <span>CSV</span></button>' +
       '</div>' +
@@ -2782,7 +2827,7 @@ function renderMunis() {
 var BRGY_FILTERS = [
   { id: 'all', label: 'All barangays', test: function () { return true; } },
   { id: 'lacking', label: 'Lacking records', test: function (b) { return ((b.todo && b.todo.length) || (b.owed || 0)) > 0; } },
-  { id: 'nosheet', label: 'Recorded without sheet', test: function (b) { return Object.keys(b.activities || {}).some(function (k) { return b.activities[k].status === 'No Attendees' && !b.activities[k].notApplicable; }); } },
+  { id: 'nosheet', label: 'Recorded, zero participants', test: function (b) { return Object.keys(b.activities || {}).some(function (k) { return b.activities[k].status === 'No Attendees' && !b.activities[k].notApplicable; }); } },
   { id: 'k2', label: 'BA HH Rate below 70%', test: function (b) {
     if (STATE.stage === 2) {
       var h2 = (typeof hhOf === 'function') ? hhOf(b, 'BA2') : ((b.activities && b.activities['BA2']) || {});
@@ -2821,8 +2866,8 @@ var BRGY_FILTERS = [
 
 function brgyStatusPill(x, a) {
   if (!x || x.notApplicable || x.status === 'N/A') return '<span class="tiny">—</span>';
-  if (x.status === 'Complete') return '<span class="pill good" title="' + attr(n(x.attendees) + ' attendees recorded with signed attendance sheet') + '">✓ ' + n(x.attendees) + '</span>';
-  if (x.status === 'No Attendees') return '<span class="pill warn" title="Activity encoded in KCIS, signed physical attendance sheet pending upload">Pending Sheet</span>';
+  if (x.status === 'Complete') return '<span class="pill good" title="' + attr(n(x.attendees) + ' attendees recorded with reported attendance') + '">✓ ' + n(x.attendees) + '</span>';
+  if (x.status === 'No Attendees') return '<span class="pill warn" title="Activity encoded in KCIS, reported participant count is zero">No attendance</span>';
   return '<span class="pill ' + (a.field === 'Completed' ? 'bad' : 'idle') + '" title="Not in KCIS' + (a.field === 'Completed' ? ' (field conduct: Completed)' : '') + '">○</span>';
 }
 function cvPill(v, code) {
@@ -2946,13 +2991,13 @@ function renderBrgyTriageTray(summary, cvOn) {
     );
   }
 
-  // 3. Pending Sheets
+  // 3. No attendances
   if (summary.noSheetBrgys > 0) {
     items.push(
-      '<button type="button" class="triage-item triage-warn' + (STATE.brgyFilter === 'nosheet' ? ' active-triage' : '') + '" data-act="brgy-filter" data-v="nosheet" title="Filter barangays with activities recorded without signed attendance sheets">' +
+      '<button type="button" class="triage-item triage-warn' + (STATE.brgyFilter === 'nosheet' ? ' active-triage' : '') + '" data-act="brgy-filter" data-v="nosheet" title="Filter barangays with activities reporting zero participants">' +
         '<div class="triage-item-info">' +
           '<span class="triage-item-count">' + n(summary.noSheetBrgys) + '</span>' +
-          '<span class="triage-item-label">Pending Signed Sheets (' + n(summary.totalNoSheetActivities) + ')</span>' +
+          '<span class="triage-item-label">Attendance Not Encoded (' + n(summary.totalNoSheetActivities) + ')</span>' +
         '</div>' +
         '<span class="triage-item-arrow">' + icon('arrow-right') + '</span>' +
       '</button>'
@@ -3112,7 +3157,7 @@ function renderBrgys() {
   var quickFilters = [
     { id: 'all', label: 'All Barangays', count: summary.totalBrgys, cls: '' },
     { id: 'lacking', label: '🚨 With Backlog', count: summary.lackingBrgys, cls: 'chip-bad' },
-    { id: 'nosheet', label: '⚠️ Pending Sheet', count: summary.noSheetBrgys, cls: 'chip-warn' }
+    { id: 'nosheet', label: '⚠️ No attendance', count: summary.noSheetBrgys, cls: 'chip-warn' }
   ];
   if (STATE.stage === 2) {
     quickFilters.push({ id: 'k2_ba2', label: '👥 2nd BA HH Rate < 70%', count: summary.k2Ba2RiskBrgys, cls: 'chip-warn' });
@@ -3178,11 +3223,9 @@ function renderBrgys() {
           (b.stage2Prio && STATE.stage === 2 ? ' <span class="pill idle">Prio</span>' : '') +
         '</div>' +
         '<div style="margin-top:4px">' +
-          '<div class="step-progress-mini" style="height:3px" title="' + pPct + '% stage activities completed">' +
-            '<div class="step-progress-mini-bar" style="width:' + pPct + '%;' + (pRate >= 1 ? 'background:var(--good);' : '') + '"></div>' +
-          '</div>' +
+          activityProgressBars(activityProgressForBrgy(b, displayActs)) +
           '<div class="tiny" style="color:var(--text-dim);margin-top:2px;font-size:10px;display:flex;justify-content:space-between;align-items:center">' +
-            '<span>' + pPct + '% complete</span>' +
+            '<span>' + pPct + '% with attendees</span>' +
             '<button type="button" class="link tiny" data-act="p-open" data-v="' + attr('attendees#' + bkey) + '" style="font-size:9.5px">Attendees ›</button>' +
           '</div>' +
         '</div>' +
@@ -3192,7 +3235,8 @@ function renderBrgys() {
           return '<td class="cell-muni-muted" title="' + attr(a.label + ' is conducted at the Municipal level') + '"><span class="tiny">—</span></td>';
         }
         var x = b.activities[a.code], pill = brgyStatusPill(x, a);
-        return '<td>' + (x && x.status !== 'Not Encoded' && x.status !== 'N/A' ? link('attendees#' + bkey + '#' + a.code, pill, 'See the attendees') : pill) + '</td>';
+        return '<td>' + (x && x.status !== 'Not Encoded' && x.status !== 'N/A' ? link('attendees#' + bkey + '#' + a.code, pill, 'See reported attendance') : pill) +
+          (x && !x.notApplicable && x.status !== 'N/A' ? activityProgressBars(activityProgressForBrgy(b, [a]), a.stage) : '') + '</td>';
       }).join('') +
       baHhCells +
       (cvOn ? '<td>' + link('volunteers#' + bkey + '#BREST', cvPill(b.volunteers, 'BREST'), 'See BResT') + '</td><td>' + link('volunteers#' + bkey + '#SFMSC', cvPill(b.volunteers, 'SFMSC'), 'See SFMSC') + '</td>' : '') +
@@ -3226,7 +3270,7 @@ function renderBrgys() {
         (hasFilter ? '<button type="button" class="btn ghost btn-sm" data-act="brgy-reset">' + icon('rotate-ccw') + ' <span>Reset filters</span></button>' : '') +
       '</div><div class="legend" style="margin:0">' +
         '<span class="pill good">✓ Attendees</span>' +
-        '<span class="pill warn">Pending Sheet</span>' +
+        '<span class="pill warn">No attendance</span>' +
         '<span class="pill idle">○ Not in KCIS</span>' +
         (!hideMuni ? '<span class="pill idle" style="opacity:0.65">— Municipal (N/A)</span>' : '') +
       '</div></div>' +
@@ -3246,7 +3290,7 @@ function renderBrgys() {
           th('k2', 'BA HH Rate', true, '1st BA Quorum', 'Barangay Assembly Household Participation Rate (Threshold: ≥ 70% Quorum required)', false, '', 'k2', 'Barangay Assembly Household Participation Rate for 1st Barangay Assembly (BA1). Target: ≥ 70%.')
         )) +
         (cvOn ? th('BREST', 'BResT', false, 'Resilience Team', 'Barangay Resiliency Team volunteers', false, '', 'brest') + th('SFMSC', 'SFMSC', false, 'Feedback Comm.', 'Stakeholder & Feedback Mechanism Sub-Committee volunteers', false, '', 'sfmsc') : '') +
-        th('lacking', 'Backlog', true, 'Missing Items', 'Unencoded activities conducted in field > 3 days ago or missing attendance sheets', false, '', 'lacking', 'Activity backlog: unencoded field activities conducted > 3 days ago or missing physical attendance sheets.') +
+        th('lacking', 'Backlog', true, 'Missing Items', 'Unencoded activities or zero reported participants after the conduct window', false, '', 'lacking', 'Activity backlog: unencoded field activities or zero reported participants after the conduct window.') +
       '</tr></thead><tbody>' + (body || '<tr><td colspan="30" class="empty-state">No barangay matches your active filter or search criteria.</td></tr>') + '</tbody></table></div>' +
     '</div>';
   bindSearch('bg-search', function (v) { STATE.brgySearch = v; renderBrgys(); });
@@ -3306,7 +3350,7 @@ function renderKpiSummary() {
   var cardsHtml =
     '<div class="kpi-section-title">' + icon('gauge') + ' <span>Tier 1 Strategic Performance Index</span></div>' +
     '<div class="kpi-mini-grid">' +
-      '<div class="kpi-mini-card ' + (pipeRate >= 0.8 ? 'accent-good' : (pipeRate >= 0.5 ? 'accent-warn' : 'accent-bad')) + '" data-tooltip="Percentage of expected Stage ' + STATE.stage + ' activities encoded with verified physical attendance sheet">' +
+      '<div class="kpi-mini-card ' + (pipeRate >= 0.8 ? 'accent-good' : (pipeRate >= 0.5 ? 'accent-warn' : 'accent-bad')) + '" data-tooltip="Percentage of expected Stage ' + STATE.stage + ' activities with reported participants">' +
         '<div class="kpi-mini-label">Pipeline Completion (Attn Sheet)</div>' +
         '<div class="kpi-mini-val">' + pctText(pipeRate) + '</div>' +
         '<div class="kpi-mini-sub">' + n(pipeTot.c) + ' of ' + n(pipeTot.e) + ' Stage ' + STATE.stage + ' target activities</div>' +
@@ -3318,19 +3362,19 @@ function renderKpiSummary() {
           return '<div class="kpi-mini-card ' + (k2_2.rate !== null && k2_2.rate >= 0.7 ? 'accent-good' : (k2_2.rate !== null ? 'accent-warn' : 'accent-idle')) + '" data-term="k2_ba2">' +
             '<div class="kpi-mini-label">2nd BA Quorum (≥70% Target)</div>' +
             '<div class="kpi-mini-val">' + (k2_2.rate !== null ? pctText(k2_2.rate) : '—') + '</div>' +
-            '<div class="kpi-mini-sub">' + (k2_2.listed ? n(k2_2.present) + ' of ' + n(k2_2.listed) + ' households present (' + n(k2_2.met) + ' brgys met ≥70%)' : 'Load 2nd BA Household Participation export') + '</div>' +
+            '<div class="kpi-mini-sub">' + (k2_2.listed ? n(k2_2.present) + ' of ' + n(k2_2.listed) + ' households present (' + n(k2_2.met) + ' brgys met ≥70%)' : 'Load 2nd BA Activity Tracker') + '</div>' +
           '</div>' +
           '<div class="kpi-mini-card ' + (k2_3.rate !== null && k2_3.rate >= 0.7 ? 'accent-good' : (k2_3.rate !== null ? 'accent-warn' : 'accent-idle')) + '" data-term="k2_ba3">' +
             '<div class="kpi-mini-label">3rd BA Quorum (≥70% Target)</div>' +
             '<div class="kpi-mini-val">' + (k2_3.rate !== null ? pctText(k2_3.rate) : '—') + '</div>' +
-            '<div class="kpi-mini-sub">' + (k2_3.listed ? n(k2_3.present) + ' of ' + n(k2_3.listed) + ' households present (' + n(k2_3.met) + ' brgys met ≥70%)' : 'Load 3rd BA Household Participation export') + '</div>' +
+            '<div class="kpi-mini-sub">' + (k2_3.listed ? n(k2_3.present) + ' of ' + n(k2_3.listed) + ' households present (' + n(k2_3.met) + ' brgys met ≥70%)' : 'Load 3rd BA Activity Tracker') + '</div>' +
           '</div>';
         }
         var kpiBaLabel = '1st BA';
         return '<div class="kpi-mini-card ' + (k2.rate !== null && k2.rate >= 0.7 ? 'accent-good' : (k2.rate !== null ? 'accent-warn' : 'accent-idle')) + '" data-term="k2">' +
           '<div class="kpi-mini-label">' + kpiBaLabel + ' Quorum (≥70% Target)</div>' +
           '<div class="kpi-mini-val">' + (k2.rate !== null ? pctText(k2.rate) : '—') + '</div>' +
-          '<div class="kpi-mini-sub">' + (k2.listed ? n(k2.present) + ' of ' + n(k2.listed) + ' households present (' + n(k2.met) + ' brgys met ≥70%)' : 'Load ' + kpiBaLabel + ' Household Participation export') + '</div>' +
+          '<div class="kpi-mini-sub">' + (k2.listed ? n(k2.present) + ' of ' + n(k2.listed) + ' households present (' + n(k2.met) + ' brgys met ≥70%)' : 'Load ' + kpiBaLabel + ' Activity Tracker') + '</div>' +
         '</div>';
       })() +
       '<div class="kpi-mini-card accent-good" data-term="femaleratio">' +
@@ -3351,13 +3395,13 @@ function renderKpiSummary() {
       '<div class="kpi-mini-card ' + (compositeIndex >= 80 ? 'accent-good' : (compositeIndex >= 60 ? 'accent-warn' : 'accent-bad')) + '" data-tooltip="Weighted composite performance index across Pipeline completion, K2 Quorum, BResT formation, and MResT institutionalization" data-tooltip-title="Overall Composite Readiness" data-tooltip-badge="Strategic Metric">' +
         '<div class="kpi-mini-label">Overall Composite Readiness</div>' +
         '<div class="kpi-mini-val" style="color:' + (compositeIndex >= 80 ? 'var(--good-text)' : (compositeIndex >= 60 ? 'var(--warn-text)' : 'var(--bad-text)')) + '">' + compositeIndex + '%</div>' +
-        '<div class="kpi-mini-sub">' + (compositeIndex >= 80 ? 'Optimal implementation readiness' : (compositeIndex >= 60 ? 'Moderate compliance; address gaps' : 'Requires high priority field support')) + '</div>' +
+        '<div class="kpi-mini-sub">' + (compositeIndex >= 80 ? 'High attendance and compliance progress' : (compositeIndex >= 60 ? 'Moderate compliance; address gaps' : 'Requires high priority field support')) + '</div>' +
       '</div>' +
     '</div>';
 
   // Section 2: Milestone Pipeline Heatmap Table
   var milestoneRows = pipe.map(function (p) {
-    var prate = p.expected > 0 ? (p.complete / p.expected) : 0;
+    var prate = (p.expected > 0 ? (p.complete / p.expected) : 0);
     return '<tr>' +
       '<td class="num"><strong>' + esc(p.a.seq) + '</strong></td>' +
       '<td><strong>' + esc(p.a.label) + '</strong><div class="tiny">' + esc(p.a.level) + ' level · field: ' + esc(p.a.field) + '</div></td>' +
@@ -3365,15 +3409,15 @@ function renderKpiSummary() {
       '<td class="num"><strong style="color:var(--good-text)">' + n(p.complete) + '</strong></td>' +
       '<td class="num">' + (p.noAttendees ? '<strong style="color:var(--warn-text)">' + n(p.noAttendees) + '</strong>' : '0') + '</td>' +
       '<td class="num">' + (p.backlog ? '<strong style="color:var(--bad-text)">' + n(p.backlog) + '</strong>' : '0') + '</td>' +
-      '<td style="min-width:180px"><div class="cell-pct"><span><strong>' + pctText(prate) + '</strong></span>' + progressBar(p.complete, p.noAttendees, p.expected) + '</div></td>' +
+      '<td style="min-width:180px"><div class="cell-pct"><span><strong>' + pctText(prate) + '</strong></span>' + activityProgressBars(p, p.a ? p.a.stage : STATE.stage) + '</div></td>' +
     '</tr>';
   }).join('');
 
   var pipelineTableHtml =
     '<div class="card" style="margin-bottom:20px">' +
-      '<div class="card-head"><div><h3>Stage ' + STATE.stage + ' Milestone Pipeline Execution</h3><div class="tiny">Detailed delivery progress with signed attendance sheets (attn sheet) per activity</div></div></div>' +
+      '<div class="card-head"><div><h3>Stage ' + STATE.stage + ' Milestone Pipeline Execution</h3><div class="tiny">Detailed delivery progress with reported attendance per activity</div></div></div>' +
       '<div class="table-wrap"><table class="grid"><thead><tr>' +
-        '<th class="num">Seq</th><th>Activity</th><th class="num">Target</th><th class="num">With Attn Sheet</th><th class="num">No Sheet</th><th class="num">Lacking</th><th>Progress Rate</th>' +
+        '<th class="num">Seq</th><th>Activity</th><th class="num">Target</th><th class="num">Complete</th><th class="num">Zero participants</th><th class="num">Lacking</th><th>Progress Rate</th>' +
       '</tr></thead><tbody>' + milestoneRows + '</tbody></table></div>' +
     '</div>';
 
@@ -3384,7 +3428,7 @@ function renderKpiSummary() {
   if (isMuni) {
     // ---- BARANGAY SCORECARD (PEA / MDM) ----
     var brgyScoreList = brgysInScope.map(function (b) {
-      var bActs = Object.keys(b.activities).map(function (k) { return b.activities[k]; });
+      var bActs = stageActs().filter(function (a) { return a.level !== 'Municipal'; }).map(function (a) { return b.activities[a.code]; }).filter(Boolean);
       var bExp = bActs.filter(function (x) { return !x.notApplicable && x.status !== 'N/A'; }).length;
       var bComp = bActs.filter(function (x) { return x.status === 'Complete'; }).length;
       var bNoSheet = bActs.filter(function (x) { return x.status === 'No Attendees'; }).length;
@@ -3401,7 +3445,7 @@ function renderKpiSummary() {
         expected: bExp,
         complete: bComp,
         noSheet: bNoSheet,
-        pipeRate: bExp > 0 ? bComp / bExp : 0,
+        pipeRate: (bExp > 0 ? bComp / bExp : 0),
         hhListed: hCur.hhListed || 0,
         hhPresent: hCur.hhPresent || 0,
         hhRate: hCur.hhListed ? hCur.hhRate : null,
@@ -3471,7 +3515,7 @@ function renderKpiSummary() {
 
       return '<tr>' +
         '<td><strong>' + esc(x.brgy) + '</strong></td>' +
-        '<td><div class="cell-pct"><span>' + pctText(x.pipeRate) + ' <span class="tiny">(' + x.complete + '/' + x.expected + ')</span></span>' + progressBar(x.complete, x.noSheet, x.expected) + '</div></td>' +
+        '<td><div class="cell-pct"><span>' + pctText(x.pipeRate) + ' <span class="tiny">(' + x.complete + '/' + x.expected + ')</span></span>' + activityProgressBars(activityProgressForBrgy(x.b)) + '</div></td>' +
         '<td class="num">' + (x.noSheet ? '<strong style="color:var(--warn-text)">' + x.noSheet + '</strong>' : '0') + '</td>' +
         '<td class="num">' + k2Pill + '</td>' +
         '<td>' + bPill + '</td>' +
@@ -3492,7 +3536,7 @@ function renderKpiSummary() {
         '<div class="table-wrap"><table class="grid"><thead><tr>' +
           th('brgy', 'Barangay', false, 'Community') +
           th('pipe', 'Pipeline Progress', false, 'Activities') +
-          th('nosheet', 'Missing Sheet', true, 'Pending') +
+          th('nosheet', 'Zero participants', true, 'Attendance not encoded') +
           th('k2', 'BA HH Rate', true, '≥70% Target') +
           th('brest', 'BResT Status', false, 'Resilience') +
           th('lacking', 'Backlog', true, 'Missing') +
@@ -3506,17 +3550,8 @@ function renderKpiSummary() {
     var muniScoreList = mRows.map(function (r) {
       var mKey = r.province + '|' + r.municipality;
       var mBrgys = (SNAP.barangayRows || []).filter(function (b) { return b.province + '|' + b.municipality === mKey; });
-      var totExp = 0, totComp = 0, totOwed = 0;
-      mBrgys.forEach(function (b) {
-        Object.keys(b.activities).forEach(function (k) {
-          var act = b.activities[k];
-          if (!act.notApplicable && act.status !== 'N/A') {
-            totExp++;
-            if (act.status === 'Complete') totComp++;
-          }
-        });
-        totOwed += (b.owed || 0) + ((b.todo && b.todo.length) || 0);
-      });
+      var stageTotals = stageActs().reduce(function (t, a) { var c = (r.cells && r.cells[a.code]) || {}; t.expected += c.expected || 0; t.complete += c.complete || 0; t.backlog += c.backlog || 0; return t; }, { expected: 0, complete: 0, backlog: 0 });
+      var totExp = stageTotals.expected, totComp = stageTotals.complete, totOwed = stageTotals.backlog;
       var pScore = totExp > 0 ? (totComp / totExp) * 100 : 100;
       var hProp = STATE.stage === 2 ? 'households_ba2' : 'households';
       var h = (r && r[hProp]) || (r && r.households) || {};
@@ -3536,7 +3571,7 @@ function renderKpiSummary() {
         muni: r.municipality,
         prov: r.province,
         brgysCount: mBrgys.length,
-        pipeRate: totExp > 0 ? totComp / totExp : 0,
+        pipeRate: (totExp > 0 ? totComp / totExp : 0),
         pipeComp: totComp,
         pipeExp: totExp,
         k2Rate: k2Rate,
@@ -3609,7 +3644,7 @@ function renderKpiSummary() {
       return '<tr>' +
         '<td><strong>' + esc(x.muni) + '</strong> <span class="tiny muted">' + esc(x.prov) + '</span></td>' +
         '<td class="num">' + n(x.brgysCount) + '</td>' +
-        '<td><div class="cell-pct"><span>' + pctText(x.pipeRate) + '</span>' + progressBar(x.pipeComp, 0, x.pipeExp) + '</div></td>' +
+        '<td><div class="cell-pct"><span>' + pctText(x.pipeRate) + '</span>' + activityProgressBars(activityProgressForMuni(x.r)) + '</div></td>' +
         '<td class="num">' + k2Pill + '</td>' +
         '<td class="num">' + pctText(x.brestRate) + ' <span class="tiny">(' + x.brestCompliant + '/' + x.brgysCount + ')</span></td>' +
         '<td>' + mrestPill + '</td>' +
@@ -3660,9 +3695,9 @@ function exportKpiSummaryCsv() {
 
   if (isMuni) {
     var brgys = (SNAP.barangayRows || []).filter(function (b) { return b.province + '|' + b.municipality === key; });
-    var head = ['Barangay', 'Municipality', 'Province', 'Activities Expected', 'With Attn Sheet', 'Missing Attn Sheet', 'Pipeline Completion %', 'K2 HH in Barangay', 'K2 HH Represented', 'K2 Quorum %', 'BResT Status', 'Lacking Records', 'Composite Score %'];
+    var head = ['Barangay', 'Municipality', 'Province', 'Activities Expected', 'With attendees', 'Zero reported participants', 'Attendance Completion %', 'K2 HH in Barangay', 'K2 HH Represented', 'K2 Quorum %', 'BResT Status', 'Attendance backlog', 'Composite Score %', 'Encoded', 'MOVs ready', 'MOV backlog'];
     var rows = brgys.map(function (b) {
-      var bActs = Object.keys(b.activities).map(function (k) { return b.activities[k]; });
+      var bActs = stageActs().filter(function (a) { return a.level !== 'Municipal'; }).map(function (a) { return b.activities[a.code]; }).filter(Boolean);
       var bExp = bActs.filter(function (x) { return !x.notApplicable && x.status !== 'N/A'; }).length;
       var bComp = bActs.filter(function (x) { return x.status === 'Complete'; }).length;
       var bNoSheet = bActs.filter(function (x) { return x.status === 'No Attendees'; }).length;
@@ -3679,26 +3714,17 @@ function exportKpiSummaryCsv() {
         b.hhListed || 0, b.hhPresent || 0, (b.hhListed ? (b.hhRate * 100).toFixed(1) + '%' : 'N/A'),
         brstObj ? brstObj.status : 'Not encoded',
         owed, compScore + '%'
-      ];
+      ].concat(activityProgressExport(activityProgressForBrgy(b)));
     });
     downloadCsv('PCRP_KPI_Summary_' + (h.municipality || 'muni').replace(/[^A-Za-z0-9]+/g, '_') + '_' + stamp() + '.csv', csvOf([head].concat(rows)));
   } else {
     var mRows = overviewRows();
-    var head = ['Municipality', 'Province', 'Monitored Barangays', 'Pipeline Target', 'With Attn Sheet', 'Pipeline Completion %', 'K2 HH in Barangay', 'K2 HH Represented', 'K2 Quorum %', 'BResT Compliant', 'BResT Rate %', 'MResT Status', 'Lacking Records', 'Composite Score %'];
+    var head = ['Municipality', 'Province', 'Monitored Barangays', 'Pipeline Target', 'With attendees', 'Attendance Completion %', 'K2 HH in Barangay', 'K2 HH Represented', 'K2 Quorum %', 'BResT Compliant', 'BResT Rate %', 'MResT Status', 'Attendance backlog', 'Composite Score %', 'Encoded', 'MOVs ready', 'MOV backlog'];
     var rows = mRows.map(function (r) {
       var mKey = r.province + '|' + r.municipality;
       var mBrgys = (SNAP.barangayRows || []).filter(function (b) { return b.province + '|' + b.municipality === mKey; });
-      var totExp = 0, totComp = 0, totOwed = 0;
-      mBrgys.forEach(function (b) {
-        Object.keys(b.activities).forEach(function (k) {
-          var act = b.activities[k];
-          if (!act.notApplicable && act.status !== 'N/A') {
-            totExp++;
-            if (act.status === 'Complete') totComp++;
-          }
-        });
-        totOwed += (b.owed || 0) + ((b.todo && b.todo.length) || 0);
-      });
+      var stageTotals = stageActs().reduce(function (t, a) { var c = (r.cells && r.cells[a.code]) || {}; t.expected += c.expected || 0; t.complete += c.complete || 0; t.backlog += c.backlog || 0; return t; }, { expected: 0, complete: 0, backlog: 0 });
+      var totExp = stageTotals.expected, totComp = stageTotals.complete, totOwed = stageTotals.backlog;
       var pScore = totExp > 0 ? (totComp / totExp) * 100 : 100;
       var h = r.households || {};
       var k2Score = h.listed > 0 ? Math.min(100, (h.present / h.listed) / 0.7 * 100) : 0;
@@ -3719,7 +3745,7 @@ function exportKpiSummaryCsv() {
         brestEnc, (bRate * 100).toFixed(1) + '%',
         ({ complete: 'Formed', incomplete: 'Incomplete (missing: ' + mComp.gaps.join('; ') + ')', none: 'Not in KCIS' }[mComp.status] + (mVer ? ' · EO Verified' : '')),
         totOwed, compScore + '%'
-      ];
+      ].concat(activityProgressExport(activityProgressForMuni(r)));
     });
     downloadCsv('PCRP_Regional_KPI_Summary_' + stamp() + '.csv', csvOf([head].concat(rows)));
   }
@@ -3825,7 +3851,7 @@ function renderSettings() {
         '<div class="card-head" style="margin-bottom:8px">' +
           '<div>' +
             '<h2>KCIS Pull Date</h2>' +
-            '<div class="muted">The date the exports were pulled from KCIS. A record with no attendance sheet counts as lacking from the 3rd day after the activity, judged on this date.</div>' +
+            '<div class="muted">The date the exports were pulled from KCIS. A record with zero reported participants counts as lacking from the 3rd day after the activity, judged on this date.</div>' +
           '</div>' +
           '<span class="pill neutral">' + icon('calendar') + ' ' + esc(p.evalDate || today()) + '</span>' +
         '</div>' +
@@ -3979,23 +4005,21 @@ function afterSettingsChange() {
 // ---- export ------------------------------------------------------------------
 
 function pipelineTable() {
-  return [['Seq', 'Activity', 'Level', 'Field conduct', 'Target', 'With attendance sheet', 'Recorded without sheet', 'Not encoded', 'Lacking', '% with sheet']]
-    .concat(scopedPipeline().map(function (p) {
-      return [p.a.seq, p.a.label, p.a.level, p.a.field, p.expected, p.complete, p.noAttendees, p.notEncoded, p.backlog, p.expected ? Math.round(p.complete / p.expected * 1000) / 10 : ''];
-    }));
+  return [['Seq', 'Activity', 'Level', 'Field conduct', 'Target', 'With attendees', 'Zero participants', 'Not encoded', 'Encoded', 'MOVs ready', 'MOV backlog', 'Attendance backlog', '% complete']]
+    .concat(scopedPipeline().map(function (p) { return [p.a.seq, p.a.label, p.a.level, p.a.field, p.expected, p.complete, p.noAttendees, p.notEncoded, p.encoded, STATE.stage === 1 && SNAP.movs && SNAP.movs.imported ? p.movsReady : 'Not assessed', STATE.stage === 1 && SNAP.movs && SNAP.movs.imported ? p.movBacklog : 'Not assessed', p.backlog, p.expected ? Math.round(p.complete / p.expected * 1000) / 10 : '']; }));
 }
 function muniTable(allStages) {
   var acts = allStages ? S.overview.activities : stageActs();
   var cvOn = S.overview.volunteers && S.overview.volunteers.imported;
   var head = ['Province', 'Municipality'];
-  acts.forEach(function (a) { head.push(a.code + ' with sheet', a.code + ' target', a.code + ' no sheet', a.code + ' lacking'); });
+  acts.forEach(function (a) { head.push(a.code + ' with attendees', a.code + ' target', a.code + ' zero participants', a.code + ' attendance backlog', a.code + ' encoded', a.code + ' MOVs ready', a.code + ' MOV backlog'); });
   head.push('K2 HH in barangay', 'K2 HH represented', 'K2 %');
   if (cvOn) head.push('BResT encoded', 'BResT target', 'SFMSC encoded', 'SFMSC to fix', 'SFMSC target');
   // the export compares the chosen municipality with the rest of its province
   var h = home(), exportRows = S.matrix.rows.filter(function (r) { return !h || h.region || r.province === h.province; });
   var rows = (allStages ? exportRows : muniTableData()).map(function (r) {
     var line = [r.province, r.municipality];
-    acts.forEach(function (a) { var c = r.cells[a.code] || {}; line.push(c.complete || 0, c.expected || 0, c.noAttendees || 0, c.backlog || 0); });
+    acts.forEach(function (a) { var c = r.cells[a.code] || {}; line.push(c.complete || 0, c.expected || 0, c.noAttendees || 0, c.backlog || 0, c.encoded || 0, a.stage === 1 && SNAP.movs && SNAP.movs.imported ? c.movsReady || 0 : 'Not assessed', a.stage === 1 && SNAP.movs && SNAP.movs.imported ? c.movBacklog || 0 : 'Not assessed'); });
     var h = r.households || {};
     line.push(h.listed || 0, h.present || 0, h.listed ? Math.round(h.present / h.listed * 1000) / 10 : '');
     if (cvOn) { var v = r.volunteers || {}, B = v.BREST || {}, F = v.SFMSC || {}; line.push(B.encoded || 0, B.expected || 0, F.encoded || 0, F.needsFix || 0, F.expected || 0); }
@@ -4007,11 +4031,13 @@ function brgyTable(rows, allStages) {
   var acts = allStages ? S.overview.activities : stageActs();
   var cvOn = S.overview.volunteers && S.overview.volunteers.imported;
   var head = ['Province', 'Municipality', 'Barangay', 'PSGC'].concat(acts.map(function (a) { return a.code + ' (Seq ' + a.seq + ')'; }))
+    .concat(acts.reduce(function (out, a) { return out.concat([a.code + ' encoded', a.code + ' with attendees', a.code + ' MOVs ready', a.code + ' MOV backlog']); }, []))
     .concat(['K2 HH in barangay', 'K2 HH represented', 'K2 %', '4Ps HH represented', 'IP HH represented', 'SLP HH represented',
-             'Individuals female', 'Individuals male', 'Individuals total']).concat(cvOn ? ['BResT', 'BResT volunteers', 'SFMSC', 'SFMSC volunteers', 'SFMSC to fix'] : []).concat(['Lacking']);
-  var st = function (x) { return !x || x.notApplicable || x.status === 'N/A' ? 'N/A' : x.status === 'Complete' ? 'With sheet (' + x.attendees + ')' : x.status === 'No Attendees' ? 'No sheet' : 'Not encoded'; };
+             'Individuals female', 'Individuals male', 'Individuals total']).concat(cvOn ? ['BResT', 'BResT volunteers', 'SFMSC', 'SFMSC volunteers', 'SFMSC to fix'] : []).concat(['Attendance backlog']);
+  var st = function (x) { return !x || x.notApplicable || x.status === 'N/A' ? 'N/A' : x.status === 'Complete' ? 'Complete (' + x.attendees + ')' : x.status === 'No Attendees' ? 'Attendance not encoded' : 'Not encoded'; };
   return [head].concat(rows.map(function (b) {
     var line = [b.province, b.municipality, b.barangay, b.psgcBrgy || ''].concat(acts.map(function (a) { return st(b.activities[a.code]); }))
+      .concat(acts.reduce(function (out, a) { var x = b.activities[a.code], applies = x && !x.notApplicable && x.status !== 'N/A'; var assessed = a.stage === 1 && SNAP.movs && SNAP.movs.imported; return out.concat([applies ? (x.status !== 'Not Encoded' ? 1 : 0) : 'N/A', applies ? (x.attendees > 0 ? 1 : 0) : 'N/A', applies && assessed ? (x.mov && x.mov.ready ? 1 : 0) : 'Not assessed', applies && assessed ? (x.mov && x.mov.lacking ? 1 : 0) : 'Not assessed']); }, []))
       .concat([b.hhListed || 0, b.hhPresent || 0, b.hhListed ? Math.round(b.hhRate * 1000) / 10 : ''])
       .concat(['hh4Ps', 'hhIp', 'hhSlp', 'indivFemale', 'indivMale', 'indivTotal'].map(function (k) {
         var d = b.hhDetail;   // the 1st BA breakdown, when KCIS has it
@@ -4057,9 +4083,10 @@ function exportExcel() {
     ['Generated', new Date().toLocaleString()],
     ['Pull date', prefs().evalDate || today()],
     ['Monitor rules', 'v' + BUILT_IN.monitorVersion],
-    ['Participants file', LOADED.participants ? LOADED.participants.file : ''],
-    ['Household participation file', LOADED.households ? LOADED.households.file : ''],
-    ['Volunteer file', LOADED.volunteers ? LOADED.volunteers.file : ''], []];
+    ['Activity Tracker file', LOADED.activityTracker ? LOADED.activityTracker.file : ''],
+    ['Volunteer file', LOADED.volunteers ? LOADED.volunteers.file : ''],
+    ['MOV file', LOADED.movs ? LOADED.movs.file : ''],
+    ['Progress measures', 'Encoded, With attendees and MOVs ready are independent. Attendance backlog and MOV backlog are separate.'], []];
   STATE.prov = '';
   [1, 2].forEach(function (s) { STATE.stage = s; summary.push(['Stage ' + s]); summary = summary.concat(pipelineTable()); summary.push([]); });
   STATE.stage = keepStage; STATE.prov = keepProv;
@@ -4071,6 +4098,16 @@ function exportExcel() {
   }
   sheets.push({ name: 'Barangays', rows: brgyTable((SNAP.barangayRows || []).filter(function (b) { return !homeKey() || inOverviewScope(b); }), true) });
   sheets.push({ name: 'DQA Audit', rows: healthTable() });
+  sheets.push({ name: 'Stage 1 MOVs', rows: movExportRows(movGetData(), inOverviewScope) });
+  sheets.push({ name: 'MOV Attachments', rows: movAttachmentExportRows(movGetData(), inOverviewScope) });
+  var attendance = (SNAP.attendanceRows || []).filter(inOverviewScope);
+  sheets.push({ name: 'Attendance Summary', rows: [['Province', 'Municipality', 'Barangay', 'Activity', 'Target Start', 'Target End', 'Actual Start', 'Actual End',
+    'Participants Male', 'Participants Female', 'Participants Unspecified', 'Participants Total', 'Person Volunteers Male', 'Person Volunteers Female', 'Person Volunteers Unspecified', 'Person Volunteers Total', 'Source Rows', 'Repeated']].concat(attendance.map(function (r) {
+      return [r.province, r.municipality, r.barangay, r.actLabel, r.targetStart, r.targetEnd, r.dateStart, r.dateEnd,
+        r.participants.male, r.participants.female, r.participants.unspecified, r.participants.total,
+        r.personVolunteers.male, r.personVolunteers.female, r.personVolunteers.unspecified, r.personVolunteers.total,
+        r.sourceRows.map(function (x) { return x.sourceRow; }).join('; '), r.repeated ? 'Included; review DQA' : 'No'];
+    })) });
   var fname = 'PCRP_findings_' + (homeKey() ? (isMuni ? home().municipality.replace(/[^A-Za-z0-9]+/g, '_') + '_' : '') : 'Regional_') + stamp() + '.xlsx';
   saveBlob(makeXlsx(sheets), fname);
   toast('Saved ' + fname + ' (' + sheets.length + ' sheets).');
@@ -4155,7 +4192,15 @@ document.addEventListener('click', function (ev) {
       count: count
     };
 
-    if (checkId === 'quorum' || checkId === 'hhcounts') {
+    if (checkId.indexOf('mov_') === 0) {
+      MOV_UI.municipality = muniKey; MOV_UI.activity = actCode; MOV_UI.search = ''; MOV_UI.status = ''; MOV_UI.open = '';
+      var parts = (bkey || (muniKey + '|')).split('|');
+      var groupKey = movGroupKey({ province: parts[0] || '', municipality: parts[1] || '', barangay: parts[2] || '' }, actCode);
+      MOV_UI.requirement = t.getAttribute('data-requirement') || ''; MOV_UI.note = null; MOV_UI.limit = 60;
+      if (movGetData().byKey[groupKey]) MOV_UI.open = groupKey;
+      else { MOV_UI.view = 'attachments'; MOV_UI.search = t.getAttribute('data-path') || ''; }
+      go('movs');
+    } else if (checkId === 'quorum' || checkId === 'hhcounts' || checkId === 'hhattendance') {
       if (typeof HH_STATE !== 'undefined') {
         HH_STATE.quorum = 'all';
         HH_STATE.search = '';
@@ -4163,13 +4208,15 @@ document.addEventListener('click', function (ev) {
         if (actCode) HH_STATE.asm = actCode;
       }
       go('households');
-    } else if (checkId === 'late' || checkId === 'dates' || checkId === 'multidate' || checkId === 'attdup' || checkId === 'sex' || checkId === 'unmapped') {
+    } else if (checkId === 'activityrepeat' || checkId === 'summaryfigures' || checkId === 'late' || checkId === 'dates' || checkId === 'multidate' || checkId === 'attdup' || checkId === 'sex' || checkId === 'unmapped') {
       if (typeof ATT_STATE !== 'undefined') {
+        ATT_STATE.muni = muniKey; ATT_STATE.search = ''; ATT_STATE.sex = 'all'; ATT_STATE.flag = 'all'; ATT_STATE.brgy = '';
         if (bkey) ATT_STATE.brgy = bkey;
         if (actCode) ATT_STATE.act = actCode;
         if (nameVal) ATT_STATE.search = nameVal;
         if (checkId === 'sex') { ATT_STATE.sex = 'all'; ATT_STATE.flag = 'all'; }
         if (checkId === 'attdup') { ATT_STATE.flag = 'duplicate'; }
+        if (checkId === 'activityrepeat') { ATT_STATE.flag = 'duplicate'; }
       }
       go('attendees');
     } else if (checkId === 'names') {
@@ -4434,6 +4481,11 @@ document.addEventListener('change', function (ev) {
 if ($('btn-theme')) $('btn-theme').addEventListener('click', toggleTheme);
 // Masthead utility row: today's date, as in the Apps Script UI kit.
 if ($('masthead-date')) $('masthead-date').textContent = new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+// The sticky tab band wraps to two rows on narrower laptops: publish its real height
+// (--band-h) so the sticky Settings sidebar and section anchors clear it.
+if (typeof ResizeObserver === 'function' && $('tabs')) {
+  new ResizeObserver(function () { document.documentElement.style.setProperty('--band-h', $('tabs').offsetHeight + 'px'); }).observe($('tabs'));
+}
 $('tabs').addEventListener('click', function (ev) {
   var trigger = ev.target.closest('.tab-group-trigger');
   if (trigger && !trigger.disabled) {
@@ -4523,7 +4575,7 @@ $('btn-compute').addEventListener('click', function () { computeAndShow('overvie
 var btnComputeSide = $('btn-compute-side');
 if (btnComputeSide) btnComputeSide.addEventListener('click', function () { computeAndShow('overview'); });
 $('btn-clear').addEventListener('click', function () {
-  delete TABS.Raw_Participants; delete TABS.Raw_HH_Participation; delete TABS.Raw_Volunteers;
+  delete TABS.Raw_MOVs; MOV_STATE = { referenceVersion: MOV_REFERENCE_VERSION, assignments: {}, applicability: {} }; MOV_CACHE = null; delete TABS.Raw_Activity_Tracker; delete TABS.Raw_Participants; delete TABS.Raw_HH_Participation; delete TABS.Raw_Volunteers;
   LOADED = {}; IMPORT_ERRORS = []; STATE.computed = false; SNAP = null; S.overview = null; S.matrix = null; PEOPLE = null;
   // The saved exports go too; earlier pulls and verification tags stay until "Forget saved data".
   SAVED.current = null;

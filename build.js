@@ -47,7 +47,7 @@ function scrub(file, text) {
 }
 
 // Refresh vendor/monitor from the monitor project when it is next to us.
-if (fs.existsSync(MONITOR_SRC)) {
+if (process.env.PCRP_REFRESH_MONITOR === '1' && fs.existsSync(MONITOR_SRC)) {
   fs.mkdirSync(VENDOR, { recursive: true });
   MONITOR_FILES.forEach(f => fs.writeFileSync(path.join(VENDOR, f), scrub(f, fs.readFileSync(path.join(MONITOR_SRC, f), 'utf8'))));
 }
@@ -133,7 +133,7 @@ const version = (/version:\s*'([^']+)'/.exec(read('JS_Modals.html')) || [])[1] |
 // Baseline + Activities: from the workbook when it is here (and saved to
 // data/reference.json), otherwise from data/reference.json.
 let ref;
-if (fs.existsSync(WORKBOOK)) {
+if (fs.existsSync(WORKBOOK) && (process.argv[2] || process.env.PCRP_REFRESH_MONITOR === '1')) {
   const wb = readWorkbook(WORKBOOK, ['Baseline', 'Activities']);
   if (!wb.Baseline || !wb.Activities) throw new Error('The workbook needs Baseline and Activities tabs');
   ref = { source: path.basename(WORKBOOK), extractedAt: new Date().toISOString(), Baseline: wb.Baseline, Activities: wb.Activities };
@@ -169,6 +169,9 @@ const html = tpl
   .replace('/*@@MONITOR@@*/', () => safe(['Code.js', 'Store.js', 'WebApp.js'].map(read).join('\n;\n')))
   .replace('/*@@CORE@@*/', () => safe(['esc', 'n', 'pct', 'normSearch', 'labelFor'].map(f => grab(core, f)).join('\n')))
   .replace('/*@@RUNTIME@@*/', () => safe(fs.readFileSync(path.join(HERE, 'src', 'runtime.js'), 'utf8')))
+  .replace('/*@@MOV_CORE@@*/', () => safe(fs.readFileSync(path.join(HERE, 'src', 'mov-core.js'), 'utf8')))
+  .replace('/*@@MOV_UI@@*/', () => safe(fs.readFileSync(path.join(HERE, 'src', 'mov-ui.js'), 'utf8')))
+  .replace('/*@@TRACKER@@*/', () => safe(fs.readFileSync(path.join(HERE, 'src', 'activity-tracker.js'), 'utf8')))
   .replace('/*@@HEALTH@@*/', () => safe(script('JS_Health.html')))
   .replace('/*@@APP@@*/', () => safe(fs.readFileSync(path.join(HERE, 'src', 'app.js'), 'utf8')))
   .replace('/*@@PEOPLE@@*/', () => safe(fs.readFileSync(path.join(HERE, 'src', 'people.js'), 'utf8')))
