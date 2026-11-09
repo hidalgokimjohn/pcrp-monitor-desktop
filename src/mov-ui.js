@@ -81,6 +81,19 @@ function movRenderGroup(data, group, presentation) {
       '<td>' + movPill(data.imported ? req.status : 'MOVs not assessed') + '</td><td>' + (links || '<span class="tiny">No credited attachment</span>') + '</td><td>' +
       '<button class="btn ghost btn-sm" data-act="mov-requirement" data-v="' + attr(req.id) + '">Review</button></td></tr>';
   }).join('');
+  // The profile's evidence panel lists the requirements only; reviewing assignments stays on the DQA Stage 1 MOVs page.
+  if (presentation && presentation.embedded) {
+    var listed = group.requirements.map(function (req) {
+      var files = req.attachmentKeys.map(function (key) {
+        var a = data.byAttachmentKey[key];
+        return '<div class="mov-filename">' + esc(a.filename) + ' <button class="link" data-act="mov-copy" data-key="' + attr(key) + '">Copy path</button></div>';
+      }).join('');
+      return '<tr' + (req.id === MOV_UI.requirement ? ' class="mov-selected"' : '') + '><td>' + esc(req.name) + '</td><td>' + movPill(data.imported ? req.status : 'MOVs not assessed') + '</td><td>' + (files || '<span class="tiny">No credited attachment</span>') + '</td></tr>';
+    }).join('');
+    return '<div class="card mov-panel-list"><h3>All ' + group.requirements.length + ' requirements for this activity</h3>' +
+      (data.imported ? '<p class="tiny muted">' + group.submitted + ' of ' + group.required + ' submitted</p>' : '') +
+      '<div class="table-wrap"><table class="grid"><thead><tr><th>Required MOV</th><th>Submission status</th><th>Credited evidence</th></tr></thead><tbody>' + listed + '</tbody></table></div></div>';
+  }
   var editor = '';
   if (r) {
     var q = normSearch(MOV_UI.candidateSearch), candidates = data.attachments.filter(function (a) {
@@ -107,13 +120,8 @@ function movRenderGroup(data, group, presentation) {
   var checklist = '<div class="table-wrap"><table class="grid"><thead><tr><th>Required MOV</th><th>Submission status</th><th>Credited evidence</th><th>Review</th></tr></thead><tbody>' + rows + '</tbody></table></div>';
   var sources = '<div class="card"><h3>Source attachments and supplementary files (' + attachments.length + ' distinct associations)</h3>' + movAttachmentTable(attachments.slice(0, MOV_UI.limit)) +
     (attachments.length > MOV_UI.limit ? '<button class="btn ghost" data-act="mov-more">Show more attachments</button>' : '') + '</div>';
-  if (presentation && presentation.embedded && r) {
-    var evidence = r.attachmentKeys.map(function (key) { var a = data.byAttachmentKey[key]; return '<div class="mov-filename">' + esc(a.filename) + ' <button class="link" data-act="mov-copy" data-key="' + attr(key) + '">Copy path</button></div>'; }).join('');
-    return '<div class="card"><h3>' + esc(r.name) + '</h3>' + movPill(data.imported ? r.status : 'MOVs not assessed') + '<p class="tiny muted">Field Guide · Stage 1 row ' + r.sourceRow + (r.note ? ' · ' + esc(r.note) : '') + '</p><h4>Credited evidence</h4>' + (evidence || '<p class="muted">No credited attachment</p>') + '</div>' + editor +
-      '<details class="card"><summary>All ' + group.requirements.length + ' requirements for this activity</summary>' + checklist + '</details>' + sources;
-  }
-  return '<div class="card">' + (presentation && presentation.embedded ? '' : '<button class="link" data-act="mov-back">← All Stage 1 MOVs</button>') + '<h2>' + esc(group.barangay || group.municipality) + ' · ' + esc(group.actLabel) + '</h2>' +
-    (presentation && presentation.embedded ? '' : '<button type="button" class="btn ghost btn-sm" data-act="profile-from-mov" data-v="' + attr(group.key) + '">Open municipality profile →</button>') +
+  return '<div class="card"><button class="link" data-act="mov-back">← All Stage 1 MOVs</button><h2>' + esc(group.barangay || group.municipality) + ' · ' + esc(group.actLabel) + '</h2>' +
+    '<button type="button" class="btn ghost btn-sm" data-act="profile-from-mov" data-v="' + attr(group.key) + '">Open municipality profile →</button>' +
     '<p>' + esc(group.municipality + ', ' + group.province) + ' · ' + group.submitted + '/' + group.required + ' submitted · ' +
     (group.due ? (group.actCode === 'APPRAISAL' ? 'Appraisal follow-up due after MRP end: ' : 'Activity ended: ') + esc(group.dateEnd) : 'Activity end not yet recorded or after pull date') + '</p>' +
     checklist + '</div>' + editor + sources;

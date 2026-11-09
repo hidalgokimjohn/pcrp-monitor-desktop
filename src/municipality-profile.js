@@ -328,13 +328,13 @@ function profileStepperHtml(model) {
     if (a.appraisal) {
       var gs = profileGroupState(model, a.rows[0]);
       body = '<span class="pstep-meta">MOVs ' + esc(gs && gs.text ? gs.text : gs ? gs.label : '—') + '</span>';
-    } else body = profileStack(m, { tracker: model.trackerImported, size: 'sm' }) + '<span class="pstep-meta"><b>' + (model.trackerImported ? profilePct(m.complete, m.total) : '—') + '</b> ' + (model.trackerImported ? esc(profileSegments(m)[0].label.toLowerCase()) : 'not assessed') + '</span>';
+    } else body = profileDonuts(model, a);
     return '<li class="pstep ' + state + (selected ? ' selected' : '') + '"><button type="button" data-act="profile-activity" data-v="' + attr(a.code) + '" aria-current="' + (selected ? 'step' : 'false') + '" title="' + attr(a.label) + '">' +
       '<span class="pstep-marker" aria-hidden="true">' + (state === 'done' ? '✓' : a.appraisal ? '+' : esc(a.seq)) + '</span>' +
       '<span class="pstep-level">' + (a.appraisal ? 'Follow-up' : esc(a.level)) + '</span><span class="pstep-label">' + esc(a.label) + '</span>' + body +
       (due ? '<span class="pstep-due">! ' + n(due) + ' due</span>' : '') + '</button></li>';
   }).join('');
-  return '<section class="pstepper-card" aria-label="Stage ' + PROFILE_STATE.stage + ' activity sequence"><div class="pstepper-head"><h3>Stage ' + PROFILE_STATE.stage + ' activity sequence</h3>' + profileLegend(model.movImported && PROFILE_STATE.stage === 1) + '</div><div class="pstepper-scroll"><ol class="pstepper">' + steps + '</ol></div></section>';
+  return '<section class="pstepper-card" aria-label="Stage ' + PROFILE_STATE.stage + ' activity sequence"><div class="pstepper-head"><h3>Stage ' + PROFILE_STATE.stage + ' activity sequence</h3>' + profileDonutLegend(model.movImported && PROFILE_STATE.stage === 1) + '</div><div class="pstepper-scroll"><ol class="pstepper">' + steps + '</ol></div></section>';
 }
 function profileDefaultActivity(model) {
   var acts = profileStageActivities(model);
@@ -596,8 +596,8 @@ function profileStatusTable(model, activity, rows) {
     if (model.trackerImported && model.movImported && r.group && r.group.lacking) flags += profileFlag('bad', 'MOV due');
     if (r.reviewCount) flags += profileFlag('warn', r.reviewCount + ' to review');
     var attendees = !model.trackerImported ? '<span class="muted">Not assessed</span>' : !a ? '<span class="muted">—</span>' :
-      '<strong class="patt' + (p.total ? '' : ' zero') + '">' + n(p.total) + '</strong><div class="tiny muted">M ' + n(p.male) + ' · F ' + n(p.female) + (p.unspecified ? ' · U ' + n(p.unspecified) : '') + '</div>';
-    return '<tr><th scope="row">' + profileBarangayLink(r) + profileScopeNote(r) + '</th><td>' + profilePill(profileEncodingLabel(model, r)) + '</td><td class="num">' + (a ? profileCellButton(r, '', attendees) : attendees) + '</td>' + (activity.households ? '<td>' + profileQuorumCell(model, r) + '</td>' : '') + '<td>' +
+      profileCountLine(p);
+    return '<tr><th scope="row">' + profileBarangayLink(r) + profileScopeNote(r) + '</th><td>' + profilePill(profileEncodingLabel(model, r)) + '</td><td>' + (a ? profileCellButton(r, '', attendees) : attendees) + '</td>' + (activity.households ? '<td>' + profileQuorumCell(model, r) + '</td>' : '') + '<td>' +
       (r.group ? profileCellButton(r, profileFirstOpenReq(r), profileMovDots(model, r)) : '<span class="tiny muted">Not configured for this stage</span>') + '</td><td class="tiny">' + esc(a ? (a.dateStart || 'Missing start') + ' → ' + (a.dateEnd || 'Missing end') : '—') +
       '</td><td><span class="pseq-flags">' + (flags || '<span class="muted">—</span>') + '</span></td></tr>';
   }).join('') + '</tbody></table></div>';
@@ -635,12 +635,55 @@ function profileAttendanceHtml(model, row) {
       return '<article class="profile-source"><strong>Row ' + n(s.sourceRow) + ' · ' + esc(s.title || 'Untitled activity') + '</strong><div>Target: ' + esc((s.targetStart || '—') + ' → ' + (s.targetEnd || '—')) + '</div><div>Actual: ' + esc((s.actualStart || '—') + ' → ' + (s.actualEnd || '—')) + '</div><div>Participants M/F/U/Total: ' + [s.participants.male, s.participants.female, s.participants.unspecified, s.participants.total].map(n).join(' / ') + '</div></article>';
     }).join('') + '</details></div>';
 }
+// One circular progress ring per measure: count of target, with the percentage in the middle.
+function profileDonut(label, short, count, total, css, assessed) {
+  var pct = assessed && total ? Math.round(count / total * 100) : 0, r = 14, c = 2 * Math.PI * r;
+  var title = label + ': ' + (assessed ? n(count) + ' of ' + n(total) + (total ? ' (' + pct + '%)' : '') : 'not assessed');
+  return '<span class="pdonut ' + css + (assessed ? '' : ' idle') + '" role="img" aria-label="' + attr(title) + '" title="' + attr(title) + '">' +
+    '<svg viewBox="0 0 36 36" aria-hidden="true"><circle class="pdonut-track" cx="18" cy="18" r="' + r + '"></circle>' +
+    (pct ? '<circle class="pdonut-fill" cx="18" cy="18" r="' + r + '" stroke-dasharray="' + (c * pct / 100).toFixed(2) + ' ' + c.toFixed(2) + '"></circle>' : '') + '</svg>' +
+    '<b>' + (assessed && total ? pct + '%' : '—') + '</b><small>' + esc(short) + '</small></span>';
+}
+// Encoded, with attendees and MOVs ready, each counted against the same activity target.
+function profileDonuts(model, a) {
+  var m = profileMix(model, a), t = a.tally, tracker = model.trackerImported;
+  return '<span class="pdonuts">' + profileDonut('Encoded', 'Encoded', t.encoded, t.expected, 'enc', tracker) +
+    profileDonut('With attendees', 'Attendees', t.complete, t.expected, 'att', tracker) +
+    profileDonut('MOVs ready', 'MOV', t.movsReady, t.expected, 'done', m.movs) + '</span>';
+}
+function profileDonutLegend(movs) {
+  return '<div class="pstack-legend pdonut-legend" aria-hidden="true"><span><i class="enc"></i>Encoded</span><span><i class="att"></i>With attendees</span><span><i class="done"></i>' +
+    (movs ? 'MOV (all required MOVs submitted)' : 'MOV (not assessed)') + '</span></div>';
+}
+// "Total: 100 (M: 50, F: 50, U: 0)" on one line.
+function profileCountLine(p, extraClass) {
+  return '<span class="patt-line' + (p.total ? '' : ' zero') + (extraClass ? ' ' + extraClass : '') + '">Total: <b>' + n(p.total) + '</b> (M: ' + n(p.male) + ', F: ' + n(p.female) + ', U: ' + n(p.unspecified) + ')</span>';
+}
+function profileDateRange(start, end, missing) {
+  if (!start && !end) return missing || '—';
+  return start && end && start !== end ? esc(start) + ' → ' + esc(end) : esc(start || end);
+}
+// Municipal activities: dates first, then the attendance breakdown, then the required MOVs as small file cards.
 function profileMunicipalHtml(model, activity) {
-  var row = activity.rows[0];
-  return '<div class="card"><h3>' + (activity.appraisal ? 'Appraisal MOV follow-up' : 'Municipal attendance and dates') + '</h3>' + profileAttendanceHtml(model, row) + '</div>' +
-    '<div class="card"><h3>Required MOVs</h3>' + (activity.requirements.length ? '<div class="table-wrap"><table class="grid"><thead><tr><th>Requirement</th><th>Status</th><th></th></tr></thead><tbody>' + activity.requirements.map(function (r) {
-      return '<tr><th scope="row">' + esc(r.name) + '</th><td>' + profilePill(profileRequirementStatus(model, row, r.id)) + '</td><td>' + profileCellButton(row, r.id, 'Inspect evidence →') + '</td></tr>';
-    }).join('') + '</tbody></table></div>' : '<p class="muted">MOV requirements are not configured for this stage.</p>') + '</div>';
+  var row = activity.rows[0], a = row.attendance, html = '';
+  if (activity.appraisal) html += '<div class="msg info">RPMO appraisal is a MOV follow-up, with MRP actual end as its due-date trigger. It has no attendance activity or target.</div>';
+  else {
+    var body = !model.trackerImported ? '<div class="msg info">Import Activity Tracker to assess encoding, attendance and conduct dates.</div>' :
+      !a ? '<div class="msg warn">No Activity Tracker record is encoded for this municipal activity.</div>' :
+      '<div class="pmuni-dates"><div><span class="eyebrow">Target date</span><strong>' + profileDateRange(a.targetStart, a.targetEnd, 'Not set') + '</strong></div>' +
+      '<div><span class="eyebrow">Actual date</span><strong>' + profileDateRange(a.dateStart, a.dateEnd, 'Not recorded') + '</strong></div></div>' +
+      '<div class="pmuni-counts"><div><span>Participants</span>' + profileCountLine(a.participants) + '</div><div><span>Person Volunteers</span>' + profileCountLine(a.personVolunteers) + '</div></div>' +
+      (a.repeated ? '<p class="tiny muted">Includes repeated source records, so these are not unique-person totals.</p>' : '');
+    html += '<div class="card pmuni-att"><h3>Municipal attendance</h3>' + body + '</div>';
+  }
+  var reqs = activity.requirements, submitted = reqs.filter(function (d) { return profileRequirementStatus(model, row, d.id) === 'Submitted'; }).length;
+  html += '<div class="card"><div class="pfiles-head"><h3>Required MOVs</h3><span class="tiny muted">' + (!reqs.length ? '' : model.movImported ? submitted + ' of ' + reqs.length + ' submitted' : 'Not assessed') + '</span></div>' +
+    (!reqs.length ? '<p class="muted">MOV requirements are not configured for this stage.</p>' : '<div class="pfiles">' + reqs.map(function (def) {
+      var status = profileRequirementStatus(model, row, def.id), css = profileReqCss(status);
+      return '<button type="button" id="' + attr('profile-cell-' + encodeURIComponent(row.key + '|' + def.id)) + '" class="pfile pf-' + css + '" data-act="profile-cell" data-row="' + attr(row.key) + '" data-requirement="' + attr(def.id) + '" title="' + attr(def.name + ': ' + status + '. Click to inspect evidence.') + '">' +
+        '<span class="pfile-icon">' + icon('file-text') + '</span><span class="pfile-body"><span class="pfile-name">' + esc(def.name) + '</span><span class="pfile-status">' + PROFILE_GLYPH[css] + ' ' + esc(status) + '</span></span></button>';
+    }).join('') + '</div>') + '</div>';
+  return html;
 }
 function profileActivityHtml(model, activity) {
   var rows = profileFilterRows(model, activity, profileFilters());
@@ -649,7 +692,7 @@ function profileActivityHtml(model, activity) {
   else html += '<p class="muted">MRP follow-up trigger: ' + esc(activity.rows[0].group && activity.rows[0].group.dateEnd || 'No MRP actual end recorded') + '</p>';
   if (activity.level === 'Municipal') return html + profileMunicipalHtml(model, activity);
   html += '<div class="card profile-activity-card"><div class="profile-view-tabs" role="group" aria-label="Activity view">' +
-    profileButton('profile-view', 'Barangay status', 'status', ' aria-pressed="' + (PROFILE_STATE.view === 'status') + '"') + profileButton('profile-view', 'Activity & MOV checklist', 'checklist', ' aria-pressed="' + (PROFILE_STATE.view === 'checklist') + '"') + '</div>' + profileFiltersHtml(model, activity, profileFilters()) +
+    profileButton('profile-view', 'Barangay Encoding Status', 'status', ' aria-pressed="' + (PROFILE_STATE.view === 'status') + '"') + profileButton('profile-view', 'Activity & MOV checklist', 'checklist', ' aria-pressed="' + (PROFILE_STATE.view === 'checklist') + '"') + '</div>' + profileFiltersHtml(model, activity, profileFilters()) +
     '<p class="tiny muted">Showing ' + rows.length + ' of ' + activity.rows.length + ' monitored barangays. Outside-target barangays retain their applicable MOV obligations.</p>';
   if (!rows.length) html += '<div class="msg info">No barangays match these filters.</div>';
   else html += PROFILE_STATE.view === 'checklist' ? profileChecklistGrid(model, activity, rows) : profileStatusTable(model, activity, rows);
@@ -778,16 +821,16 @@ function profileBarangayHtml(model, b) {
     if (model.trackerImported && model.movImported && r.group && r.group.lacking) rowFlags += profileFlag('bad', 'MOV due');
     if (r.reviewCount) rowFlags += profileFlag('warn', r.reviewCount + ' to review');
     var attendees = !model.trackerImported ? '<span class="muted">Not assessed</span>' : !att ? '<span class="muted">—</span>' :
-      profileCellButton(r, '', '<strong class="patt' + (p.total ? '' : ' zero') + '">' + n(p.total) + '</strong>') + '<div class="tiny muted">M ' + n(p.male) + ' · F ' + n(p.female) + (p.unspecified ? ' · U ' + n(p.unspecified) : '') + '</div>';
+      profileCellButton(r, '', profileCountLine(p));
     var docs = !a.requirements.length ? '<span class="tiny muted">Not configured for this stage</span>' :
       '<div class="pdoc-row">' + a.requirements.map(function (def) { return profileReqTile(r, def, profileRequirementStatus(model, r, def.id), r.expected ? '' : 'outside'); }).join('') +
       '<span class="pdots-text">' + (movs ? '<b>' + esc(profileGroupState(model, r).text) + '</b>' : 'Not assessed') + '</span></div>';
     return '<tr><td class="pseq-no">' + esc(a.seq) + '</td><th scope="row"><button type="button" class="profile-cell-button" data-act="profile-activity" data-v="' + attr(a.code) + '" title="Open this activity for all barangays">' + esc(a.label) + '</button>' + profileScopeNote(r) + '</th>' +
-      '<td><span class="pstate"><i class="seg-' + st.css + '"></i>' + esc(st.label) + '</span></td><td>' + profilePill(profileEncodingLabel(model, r)) + '</td><td class="num">' + attendees + (r.hh ? '<div class="pquorum-cell">' + profileQuorumCell(model, r) + '</div>' : '') + '</td>' +
+      '<td><span class="pstate"><i class="seg-' + st.css + '"></i>' + esc(st.label) + '</span></td><td>' + profilePill(profileEncodingLabel(model, r)) + '</td><td>' + attendees + (r.hh ? '<div class="pquorum-cell">' + profileQuorumCell(model, r) + '</div>' : '') + '</td>' +
       '<td class="tiny">' + esc(att ? (att.dateStart || 'Missing start') + ' → ' + (att.dateEnd || 'Missing end') : '—') + '</td><td>' + docs + '</td><td><span class="pseq-flags">' + (rowFlags || '<span class="muted">—</span>') + '</span></td></tr>';
   }).join('');
   return header + controls + '<div class="card pbrgy-card"><div class="pseq-head"><div><h3>Activities in sequence</h3><p class="tiny muted">Click a MOV mark to inspect evidence or review it, attendees to see source records, or an activity to compare all barangays.</p></div>' + profileTileLegend(['ok', 'due', 'review', 'pending', 'na']) + '</div>' +
-    '<div class="table-wrap"><table class="grid pbrgy-table"><thead><tr><th>Seq</th><th>Activity</th><th>Progress</th><th>Encoding</th><th class="num">Attendees</th><th>Actual dates</th><th>MOV documents</th><th>Follow-up</th></tr></thead><tbody>' + rows + '</tbody></table></div></div>';
+    '<div class="table-wrap"><table class="grid pbrgy-table"><thead><tr><th>Seq</th><th>Activity</th><th>Progress</th><th>Encoding</th><th>Attendees</th><th>Actual dates</th><th>MOV documents</th><th>Follow-up</th></tr></thead><tbody>' + rows + '</tbody></table></div></div>';
 }
 
 // ---- Printable municipality report (A4 landscape): summary, activity table, MOV checklist and follow-ups.
@@ -946,7 +989,7 @@ function profileRenderPanel() {
     editor = movRenderGroup(model.mov, group, { embedded: true });
   } else editor = profileAttendanceHtml(model, row) + (group ? profileButton('profile-panel-movs', 'Inspect MOV checklist →') : '<p class="muted">MOV requirements are not configured for this stage.</p>');
   body.innerHTML = '<header class="profile-panel-head"><div><span class="eyebrow">' + esc(model.municipality + ' · ' + model.province) + '</span><h2 id="profile-panel-title">' + esc(row.name) + '</h2><p>' + esc(model.byCode[row.code].label) + '</p></div><button type="button" class="btn ghost icon-btn" data-act="profile-panel-close" aria-label="Close evidence panel">' + icon('x') + '</button></header>' +
-    '<div class="profile-panel-content">' + profileScopeNote(row) + (selection.kind === 'movs' ? '<p class="tiny muted">Submission records establish attachment presence. Document contents and signatures remain unverified.</p>' + profileButton('profile-panel-attendance', 'Attendance and source records') : '') + editor + '</div>';
+    '<div class="profile-panel-content">' + (selection.kind === 'movs' ? '' : profileScopeNote(row)) + editor + '</div>';
   if (!dialog.open) dialog.showModal();
   body.scrollTop = scroll;
   if (focused && $(focused)) $(focused).focus({ preventScroll: true });

@@ -12,6 +12,7 @@ function context() {
     $:()=>null, toast(){}, go(){}, renderStatus(){}, loadReferenceTables(){},setTabsEnabled(){},renderImport(){},updateTabBadges(){},
     n:v=>v==null?'—':String(v),normSearch:v=>String(v||'').trim().toLowerCase(), BUILT_IN:{monitorVersion:'test'}, PEOPLE:null};
   // Same as app.js, which this context does not load.
+  c.icon=()=>'<span class="ico"></span>';
   c.pctText=v=>v===null||v===undefined?'—':(Math.round(v*1000)/10).toFixed(1)+'%';
   c.activityProgressSum=items=>items.reduce((t,x)=>{['expected','encoded','complete','movsReady','movBacklog'].forEach(k=>{t[k]+=x[k]||0;});return t;},{expected:0,encoded:0,complete:0,movsReady:0,movBacklog:0});
   c.window=c;vm.createContext(c);
@@ -85,14 +86,14 @@ test('profile caches refresh after review or replacement and reuse the existing 
  c.MOV_UI.municipality=m.key;c.movApproveAssignment(req.key,a.key,{reviewer:'QA',note:'Reviewed correct minutes'});c.computeAll('2026-11-05');
  const next=c.profileModel(m.key);assert.notEqual(next,m);assert.equal(c.profileRequirementStatus(next,next.byCode.BA1.rows[0],'minutes'),'Submitted');assert.equal(next.byCode.BA1.tally.complete,m.byCode.BA1.tally.complete);assert.equal(next.byCode.BA1.tally.backlog,m.byCode.BA1.tally.backlog);
 });
-test('embedded evidence opens the selected requirement first and keeps standalone navigation out of the panel',()=>{
+test('the evidence panel lists only the activity requirements, with review left to the DQA MOV page',()=>{
  const c=context(),m=load(c,[tracker(c)],[attachment(c)]),row=m.byCode.BA1.rows[0];
  c.esc=v=>String(v??'');c.attr=c.esc;c.MOV_UI.requirement='minutes';
  const html=c.movRenderGroup(m.mov,row.group,{embedded:true});
- assert.ok(html.indexOf('Barangay Activity Minutes Form')<html.indexOf('Review:'));
+ assert.match(html,/All 4 requirements for this activity/);assert.match(html,/<tr class="mov-selected"><td>Barangay Activity Minutes Form<\/td>/);
  assert.doesNotMatch(html,/data-act="mov-back"|data-act="profile-from-mov"/);
- assert.match(html,/<details class="card">/);assert.match(html,/data-act="mov-approve"/);
- const standalone=c.movRenderGroup(m.mov,row.group);assert.match(standalone,/data-act="mov-back"/);
+ assert.doesNotMatch(html,/data-act="mov-approve"|data-act="mov-requirement"|Review|<details|Source attachments and supplementary files/);
+ const standalone=c.movRenderGroup(m.mov,row.group);assert.match(standalone,/data-act="mov-back"/);assert.match(standalone,/data-act="mov-approve"/);assert.match(standalone,/Source attachments and supplementary files/);
 });
 test('scope checks block other municipalities, including same-name towns and exported rows',()=>{
  const c=context();load(c);const other=c.profileModel('Province B|Town');c.preferences={role:'pea_mdm',homeKey:'Province A|Town'};
@@ -257,4 +258,12 @@ test('individual MOV forms always remain visible, including after restoring olde
  c.PROFILE_STATE.filters={};c.PROFILE_RESTORED=false;c.profileRestore();assert.equal(c.profileMapFilters().details,undefined);assert.equal(c.profileMapFilters().search,'Village');assert.match(c.profileMovMapHtml(m),/id="profile-cell-/);
  const d=c.profileMapData(m,true);assert.ok(c.profileMapLines(d,{show:'notEncoded'}).every(l=>l.notEncoded));
  const other=c.profileModel('Province B|Town');c.preferences={role:'pea_mdm',homeKey:m.key};assert.deepEqual(plain(c.profileMapExportRows(other)),[]);
+});
+test('activity stepper shows three nested donuts and attendance reads as one line',()=>{
+ const c=context(),mrest=c.DEFAULT_ACTIVITIES.find(a=>a.code==='MREST').name,m=load(c,[tracker(c),tracker(c,{Barangay:'Village B','Participants - Total':0}),tracker(c,{Barangay:'','CRIP/MC09 Activity':mrest,'Target Start':'2026-09-30','Target End':'2026-09-30','Actual Start':'2026-10-01','Actual End':'2026-10-01'})],['29','30','31','37'].map(t=>attachment(c,t)));
+ c.esc=v=>String(v??'');c.attr=c.esc;
+ const html=c.profileDonuts(m,m.byCode.BA1);
+ assert.equal((html.match(/class="pdonut /g)||[]).length,3);assert.match(html,/Encoded: 2 of 2 \(100%\)/);assert.match(html,/With attendees: 1 of 2 \(50%\)/);assert.match(html,/MOVs ready: 1 of 2 \(50%\)/);assert.match(html,/<small>MOV<\/small>/);
+ assert.equal(c.profileCountLine({total:100,male:50,female:50,unspecified:0}),'<span class="patt-line">Total: <b>100</b> (M: 50, F: 50, U: 0)</span>');
+ const muni=c.profileMunicipalHtml(m,m.byCode.MREST);assert.match(muni,/Target date<\/span><strong>2026-09-30<\/strong>[\s\S]*Actual date<\/span><strong>2026-10-01<\/strong>[\s\S]*Participants<\/span><span class="patt-line">Total: <b>10<\/b> \(M: 3, F: 7, U: 0\)/);assert.doesNotMatch(muni,/source records/);assert.match(muni,/class="pfile pf-/);
 });
