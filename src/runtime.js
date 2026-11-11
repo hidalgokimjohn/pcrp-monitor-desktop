@@ -53,7 +53,7 @@ buildSnapshot = function (evalDateIso) {
   var rows = table.rows.map(function (r, i) { var copy = r.slice(); copy.sourceRow = stored.rowNumbers ? stored.rowNumbers[i] : i + 2; return copy; });
   var base = readBaseline(), acts = readActivities(), volunteers = readRawTable(SHEETS.VOLUNTEERS);
   var snap = computeSnapshot(rows, rows, base.rows, base.monitored, acts, table.headers, table.headers,
-    evalDateIso, volunteers.rows, volunteers.headers, typeof movBuild === 'function' ? { table: TABS.Raw_MOVs || null, review: MOV_STATE } : null);
+    evalDateIso, volunteers.rows, volunteers.headers, typeof movBuild === 'function' ? { table: TABS.Raw_MOVs || null } : null);
   snap.generatedAt = new Date().toISOString(); snap.activities = acts;
   return snap;
 };
@@ -204,7 +204,8 @@ function detectKind(headers, sheetName) {
   if (sn === 'raw_volunteers') return 'volunteers';
   if (sn === 'baseline') return 'baseline';
   if (sn === 'activities') return 'activities';
-  if (names >= 3 || (has('Committee') && has('Position'))) return 'volunteers';
+  // The Community Volunteer List: older exports head three columns "Name", newer ones carry volunteer_committee.
+  if (names >= 3 || (has('Committee') && has('Position')) || has('volunteer_committee') || has('volunteer_committee_position')) return 'volunteers';
   if (has('Total Hh Represented') || has('Total Hh In Barangay')) return 'households';
   if (has('Is Present') || has('Is Hh Head') && has('Birthdate')) return 'roster';
   if (has('Sequence No') && has('First Name')) return 'participants';

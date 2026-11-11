@@ -1060,14 +1060,25 @@ var VOLUNTEER_HEADERS = [
 ];
 
 /**
- * KCIS heads three columns "Name": the activity, the committee and the
- * position, in that order (their positions move between exports). Renamed so
- * each is found by header; an already-renamed sheet passes through unchanged.
+ * Two KCIS layouts, renamed to the same headers so each column is found by name:
+ *   older  three columns headed "Name" (the activity, the committee and the
+ *          position, in that order) and "Start Date";
+ *   newer  one "Name" (the activity) with volunteer_committee,
+ *          volunteer_committee_position, vol_start_date and vol_end_date.
+ * An already-renamed sheet passes through unchanged.
  */
+var VOLUNTEER_HEADER_ALIASES = {
+  'volunteer_committee': 'Committee', 'volunteer_committee_position': 'Position',
+  'vol_start_date': 'Start Date', 'vol_end_date': 'End Date'
+};
 function volunteerHeaders(headers) {
-  var names = ['Activity', 'Committee', 'Position'], seen = 0;
-  return (headers || []).map(function (h) {
-    if (normKey(h) === 'name' && seen < names.length) return names[seen++];
+  var keys = (headers || []).map(function (h) { return normKey(h); });
+  var aliased = {};
+  keys.forEach(function (k) { if (VOLUNTEER_HEADER_ALIASES[k]) aliased[normKey(VOLUNTEER_HEADER_ALIASES[k])] = true; });
+  var names = ['Activity', 'Committee', 'Position'].filter(function (n) { return !aliased[normKey(n)]; }), seen = 0;
+  return (headers || []).map(function (h, i) {
+    if (VOLUNTEER_HEADER_ALIASES[keys[i]]) return VOLUNTEER_HEADER_ALIASES[keys[i]];
+    if (keys[i] === 'name' && seen < names.length) return names[seen++];
     return h;
   });
 }
@@ -1102,11 +1113,12 @@ function volunteerColumnIndex(headers) {
   }
   return {
     province: col('Province Name', 'Province'), muni: col('City Name', 'Municipality'), brgy: col('Barangay Name', 'Barangay'),
-    psgcBrgy: col('lib_brgy.code_correspondence'), seq: col('Sequence No'),
+    psgcBrgy: col('lib_brgy.code_correspondence', 'brgy_psgc'), psgcCity: col('lib_city.code_correspondence', 'city_psgc'),
+    seq: col('Sequence No'),
     activity: col('Activity'), committee: col('Committee'), position: col('Position'),
     first: col('First Name'), middle: col('Middle Name'), last: col('Last Name'), sex: col('Sex Description', 'Sex'),
     ip: col('Is Ip', 'IP'), pwd: pwd, fisher: col('Fisherfolks', 'Fisherfolk', 'Is Fisherfolk'),
-    start: col('Start Date')
+    start: col('Start Date'), end: col('End Date')
   };
 }
 
@@ -1141,8 +1153,9 @@ function cvBlankRollup() {
 function volunteerSnapshot(vRows, vHeaders, base, index, barangayRows) {
   var C = volunteerColumnIndex(vHeaders);
   var tallies = {};              // "prov|muni|brgy" (normKey) -> { BREST: tally, SFMSC: tally }
-  var issues = { noCommittee: {}, otherBody: {}, noName: {}, noSex: {}, noPosition: {}, badTerm: {} };
+  var issues = { noCommittee: {}, otherBody: {}, noName: {}, noSex: {}, noPosition: {}, badTerm: {}, duplicate: {} };
   var notInBaseline = 0, notInBaseSamples = [], otherActivityRows = 0, rows = 0;
+  var seenPerson = {};           // place|person|committee -> true: KCIS exports repeat some volunteers
 
   function bump(map, key, place, extra) {
     if (!map[key]) {
@@ -1173,6 +1186,10 @@ function volunteerSnapshot(vRows, vHeaders, base, index, barangayRows) {
 
     var named = normAlpha(row[C.first]) || normAlpha(row[C.last]);
     if (!named) { bump(issues.noName, key, place); return; }
+    // A person listed twice for the same committee in the same barangay is counted once.
+    var personAt = key + '|' + normAlpha(row[C.first]) + ' ' + normAlpha(row[C.middle]) + ' ' + normAlpha(row[C.last]) + '|' + normAlpha(row[C.committee]);
+    if (seenPerson[personAt]) { bump(issues.duplicate, key, place); return; }
+    seenPerson[personAt] = true;
 
     var kind = cvCommitteeKind(row[C.committee]);
     if (kind === 'NONE') { bump(issues.noCommittee, key, place); return; }
@@ -1263,7 +1280,8 @@ function volunteerSnapshot(vRows, vHeaders, base, index, barangayRows) {
     issues: imported ? {
       missing: missing, sfmscFix: sfmscFix,
       noCommittee: list(issues.noCommittee), otherBody: list(issues.otherBody), noName: list(issues.noName),
-      noSex: list(issues.noSex), noPosition: list(issues.noPosition), badTerm: list(issues.badTerm)
+      noSex: list(issues.noSex), noPosition: list(issues.noPosition), badTerm: list(issues.badTerm),
+      duplicate: list(issues.duplicate)
     } : null
   };
 }
@@ -1337,7 +1355,6 @@ function dqaFindings(health) {
   (h.outOfSequenceRows || []).forEach(function (r) { add('sequence', r, '', '', 1); });
   (dq.dateIssues || []).forEach(function (r) { add('dates', r, r.actCode, r.problems.join('; '), 1); });
   (dq.multiDate || []).forEach(function (r) { add('multidate', r, r.actCode, '', r.sittings.length); });
-  if (h.movs && h.movs.imported) (h.movs.findings || []).forEach(function (r) { add('mov_' + r.kind, r, r.actCode, (r.requirementId || '') + '|' + r.issue, Math.max(1, r.paths.length)); });
   (h.repeatedActivities || []).forEach(function (r) { add('activityrepeat', r, r.actCode, '', r.records); });
   var summaryIssues = {};
   (h.trackerIssues || []).forEach(function (r) {
@@ -1357,6 +1374,7 @@ function dqaFindings(health) {
     (v.noSex || []).forEach(function (r) { add('cv_gaps', r, 'BA1', 'Sex not recorded', r.rows); });
     (v.noPosition || []).forEach(function (r) { add('cv_gaps', r, 'BA1', 'No position', r.rows); });
     (v.badTerm || []).forEach(function (r) { add('cv_gaps', r, 'BA1', 'Term start date', r.rows); });
+    (v.duplicate || []).forEach(function (r) { add('cv_gaps', r, 'BA1', 'Listed more than once', r.rows); });
   }
   return out;
 }
@@ -1649,7 +1667,7 @@ function computeSnapshot(participants, households, baselineRows, monitored,
   });
   var hhImported = households.length > 0;
   var movs = colP.summary && movInput && typeof movBuild === 'function'
-    ? movBuild(base, index, rec, movInput.table, movInput.review, evalDateIso || todayIso(), true) : null;
+    ? movBuild(base, index, rec, movInput.table, evalDateIso || todayIso(), true) : null;
 
   // ---- status per record -----------------------------------------
   function statusOf(key) {
@@ -2104,7 +2122,6 @@ function computeSnapshot(participants, households, baselineRows, monitored,
     municipalRows: municipalRows,
     byMuniActivity: byMuniActivity,
     health: {
-      movs: movs ? { imported: movs.imported, findings: movs.findings, stats: movs.stats } : null,
       participantRows: participants ? participants.length : 0,
       householdRows: households ? households.length : 0,
       unmapped: unmapped,

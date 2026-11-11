@@ -175,6 +175,7 @@ function savedApplyLedger() {
     var m = SAVED.ledger[d];
     Object.keys(m).forEach(function (k) {
       var f = m[k];
+      if (String(f.check).indexOf('mov_') === 0) return;   // MOV checks were removed from DQA; older pulls must not report them as fixed
       rows.push([d, k, f.check, f.province, f.municipality, f.barangay, f.act, f.part, f.count]);
     });
   });
@@ -220,7 +221,6 @@ function savedSaveCurrent() {
 
   SAVED.current = {
     sourceType: SAVE_SOURCE,
-    movState: typeof MOV_STATE !== 'undefined' ? MOV_STATE : null,
     pullDate: pd,
     savedAt: new Date().toISOString(),
     home: (typeof prefs === 'function' ? prefs().home : null) || null,
@@ -310,16 +310,12 @@ function savedLoadCurrent(cur) {
       IMPORT_ERRORS.push({ file: 'Saved Activity Tracker', error: e.message });
     }
   }
-  if (typeof MOV_STATE !== 'undefined') {
-    MOV_STATE = cur.movState || { referenceVersion: MOV_REFERENCE_VERSION, assignments: {}, applicability: {} };
-    try { validateMovState(MOV_STATE); } catch (error) {
-      MOV_STATE = { referenceVersion: MOV_REFERENCE_VERSION, assignments: {}, applicability: {} };
-      IMPORT_ERRORS.push({ file: 'Saved MOV decisions', error: error.message + ' Review decisions again.' });
-    }
+  // Sessions saved before the MOV review was removed may carry a movState; it is ignored.
+  if (typeof MOV_CACHE !== 'undefined') {
     if (TABS.Raw_MOVs) {
       try { validateMovTable(TABS.Raw_MOVs); } catch (error) { delete TABS.Raw_MOVs; delete LOADED.movs; IMPORT_ERRORS.push({ file: 'Saved MOVs', error: error.message }); }
     }
-    if (typeof MOV_CACHE !== 'undefined') MOV_CACHE = null;
+    MOV_CACHE = null;
   }
   if (!TABS.Raw_Activity_Tracker) {
     delete LOADED.activityTracker;
@@ -401,7 +397,7 @@ function savedToFile() {
   SAVE_TABLES.forEach(function (t) { if (TABS[t]) tables[t] = TABS[t]; });
   var p = prefs();
   var data = {
-    format: SAVE_FORMAT, version: 3, sourceType: SAVE_SOURCE, movState: typeof MOV_STATE !== 'undefined' ? MOV_STATE : null, monitorVersion: BUILT_IN.monitorVersion, savedAt: new Date().toISOString(),
+    format: SAVE_FORMAT, version: 3, sourceType: SAVE_SOURCE, monitorVersion: BUILT_IN.monitorVersion, savedAt: new Date().toISOString(),
     pullDate: pd, home: p.home || null, field: p.field || null,
     loaded: LOADED, tables: tables, ledger: SAVED.ledger, tags: VERIFY.tags
   };
@@ -435,7 +431,6 @@ function savedFromFile(file) {
     if (d.tags && (!d.tags.records || typeof d.tags.records !== 'object' || Array.isArray(d.tags.records))) throw new Error('Invalid saved verification records.');
     if (d.tables.Raw_Volunteers && (!Array.isArray(d.tables.Raw_Volunteers.rows) || d.tables.Raw_Volunteers.rows.some(function (r) { return !Array.isArray(r); }) || !Array.isArray(d.tables.Raw_Volunteers.headers) || checkHeaders(d.tables.Raw_Volunteers.headers, VOLUNTEER_HEADERS).length)) throw new Error('Invalid saved Community Volunteer List.');
     if (d.tables.Raw_MOVs) validateMovTable(d.tables.Raw_MOVs);
-    if (d.movState) validateMovState(d.movState);
     d.loaded = {};
     if (d.tables.Raw_MOVs) d.loaded.movs = { file: file.name, sheet: 'Raw_MOVs', rows: d.tables.Raw_MOVs.rows.length };
     if (d.tables.Raw_Activity_Tracker) d.loaded.activityTracker = { file: file.name, sheet: 'Raw_Activity_Tracker', rows: d.tables.Raw_Activity_Tracker.rows.length };
@@ -447,7 +442,7 @@ function savedFromFile(file) {
     loadReferenceTables();
     SAVED.ledger = d.ledger || {};
     if (d.tags) VERIFY.tags = d.tags;
-    var cur = { movState: d.movState || null, sourceType: SAVE_SOURCE, pullDate: d.pullDate, savedAt: d.savedAt, home: d.home, loaded: d.loaded, tables: d.tables, findings: null, dataStamp: 'file' + d.savedAt };
+    var cur = { sourceType: SAVE_SOURCE, pullDate: d.pullDate, savedAt: d.savedAt, home: d.home, loaded: d.loaded, tables: d.tables, findings: null, dataStamp: 'file' + d.savedAt };
     SAVED.current = null;              // the file is the data now; no ledger move for it
     savedApplyLedger();
     IMPORT_ERRORS = [];

@@ -903,11 +903,25 @@ async function runAll() {
     });
 
     test('DQA Routing: src/app.js routes dqa aliases and manages isDqaGroup tab state', () => {
-      assert.strictEqual(appJs.includes("if (page === 'dqa' || page === 'data-health') page = 'health';"), true);
-      assert.strictEqual(appJs.includes("var isDqaGroup = (page === 'health' || page === 'verify' || page === 'movs');"), true);
+      assert.strictEqual(appJs.includes("if (page === 'dqa' || page === 'data-health' || page === 'movs') page = 'health';"), true);
+      assert.strictEqual(appJs.includes("var isDqaGroup = (page === 'health' || page === 'verify');"), true);
       assert.strictEqual(appJs.includes("var grpDqa = $('tab-group-dqa');"), true);
       assert.strictEqual(appJs.includes("setBadge('group-dqa'"), true);
       assert.strictEqual(appJs.includes("'DQA Audit'"), true);
+    });
+
+    test('Stage 1 MOVs review removed: no DQA page, nav item, reviewer decisions or MOV DQA checks', () => {
+      const root = path.join(__dirname, '..');
+      const read = (f) => fs.readFileSync(path.join(root, f), 'utf8');
+      assert.strictEqual(appHtml.includes('id="tab-movs"'), false);
+      assert.strictEqual(appHtml.includes('id="page-movs"'), false);
+      assert.strictEqual(appJs.includes("go('movs')"), false);
+      ['src/mov-ui.js', 'src/mov-core.js', 'src/saved.js', 'src/municipality-profile.js', 'src/app.js'].forEach((f) => {
+        const src = read(f);
+        assert.strictEqual(/MOV_STATE|renderMovs|movApproveAssignment|movSetApplicability|movDqaChecks/.test(src), false, f);
+      });
+      assert.strictEqual(read('vendor/monitor/JS_Health.html').includes('movDqaChecks'), false);
+      assert.strictEqual(read('vendor/monitor/Code.js').includes("'mov_'"), false);
     });
 
     test('DQA Audit & Scorecard: JS_Health.html contains sub-nav tabs, DQA header & SM7 subtitle', () => {
@@ -2215,6 +2229,39 @@ async function runAll() {
       assert.strictEqual(sandbox.KIND_INFO.activityTracker.sheet, 'Raw_Activity_Tracker');
       assert.strictEqual(sandbox.KIND_INFO.participants, undefined);
       assert.strictEqual(sandbox.KIND_INFO.households, undefined);
+    });
+
+    test('Community Volunteer List: the newer KCIS layout (volunteer_committee, brgy_psgc) imports and counts each person once', () => {
+      const H = ['Region Name', 'Province Name', 'City Name', 'Barangay Name', 'Sequence No', 'Name', 'Is Copy Plan', 'First Name', 'Middle Name', 'Last Name',
+        'Sex Description', 'Is Hh Head', 'Is Ip', '4Ps Beneficiary', 'Is Slp', 'region_psgc', 'province_psgc', 'city_psgc', 'brgy_psgc', 'Crip Mc09 Activity Id',
+        'volunteer_committee', 'volunteer_committee_position', 'vol_start_date', 'vol_end_date', 'PWD', 'Fisherfolks', 'Is Bdc', 'Is Bdrrmc Bdc Twg', 'Is Bspmc',
+        'Is Lgu Official', 'Persons With Disability'];
+      assert.strictEqual(sandbox.detectKind(H, ''), 'volunteers', 'not mistaken for a legacy attendance list');
+      const hs = sandbox.volunteerHeaders(H);
+      assert.deepStrictEqual(Array.from(sandbox.checkHeaders(hs, sandbox.VOLUNTEER_HEADERS)), []);
+      assert.strictEqual(hs[5], 'Activity'); assert.strictEqual(hs[20], 'Committee'); assert.strictEqual(hs[21], 'Position'); assert.strictEqual(hs[22], 'Start Date');
+      assert.deepStrictEqual(Array.from(sandbox.volunteerHeaders(['Name', 'Name', 'Name'])), ['Activity', 'Committee', 'Position'], 'the older layout still renames three Name columns');
+      const C = sandbox.volunteerColumnIndex(hs);
+      assert.strictEqual(C.psgcBrgy, 18); assert.strictEqual(C.psgcCity, 17); assert.strictEqual(C.end, 23);
+
+      const brgy = { province: 'Agusan del Norte', municipality: 'Jabonga', barangay: 'Baleguian', psgcBrgy: '1600205001' };
+      const base = { psgcToBrgy: { '1600205001': brgy }, brgyRowByKey: {}, brgyNoProv: {} };
+      const index = sandbox.buildActivityIndex([{ seq: 2, code: 'BA1', kcisName: '1st BA', label: '1st BA' }]);
+      const row = (first, last, committee, position, sex) => ['Region XIII (Caraga)', 'Agusan del Norte', 'Jabonga', 'BALEGUIAN', 2, '1st BA', true, first, 'M', last, sex,
+        false, false, false, false, '1600000000', '1600200000', '1600205000', '1600205001', 2, committee, position, 46220, '', false, 0, false, false, false, false, ''];
+      const SF = 'Stakeholders Feedback Mechanism Sub Committee (SFMSC - Barangay)';
+      const rows = [row('Ana', 'Cruz', SF, 'Chairperson', 'female'), row('Ana', 'Cruz', SF, 'Chairperson', 'female'),
+        row('Ben', 'Reyes', SF, 'Member', 'male'), row('Cara', 'Lim', SF, 'Member', 'female'),
+        row('Dan', 'Uy', 'Barangay Resilience Team', 'Member', ''), row('Eve', 'Go', '', '', 'female')];
+      const brs = [Object.assign({ activities: { BA1: { status: 'Complete' } } }, brgy)];
+      const snap = JSON.parse(JSON.stringify(sandbox.volunteerSnapshot(rows, hs, base, index, brs)));
+      assert.strictEqual(snap.notInBaseline, 0, 'matched by brgy_psgc even with the name in capitals');
+      assert.strictEqual(brs[0].volunteers.SFMSC.status, 'Encoded', 'the repeated Chairperson is not a second Chairperson');
+      assert.strictEqual(brs[0].volunteers.SFMSC.members, 3);
+      assert.strictEqual(brs[0].volunteers.BREST.members, 1);
+      assert.strictEqual(snap.issues.duplicate[0].rows, 1);
+      assert.strictEqual(snap.issues.noCommittee[0].rows, 1);
+      assert.strictEqual(snap.issues.noSex[0].rows, 1);
     });
   }
 

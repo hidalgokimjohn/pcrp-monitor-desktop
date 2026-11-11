@@ -1,0 +1,18 @@
+# Upload only the files needed to build the app.
+/*
+!/build.js
+!/build-vercel.js
+!/vercel.json
+!/src
+!/vendor
+!/data
+/data/*
+!/data/reference.json
+
+# Never upload local exports, sessions, or credentials.
+**/*.xlsx
+**/*.xls
+**/*.xlsm
+**/*.csv
+**/*.pcrp
+**/.env*

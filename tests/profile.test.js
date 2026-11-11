@@ -14,7 +14,7 @@ function context() {
   // Same as app.js, which this context does not load.
   c.icon=()=>'<span class="ico"></span>';
   c.pctText=v=>v===null||v===undefined?'—':(Math.round(v*1000)/10).toFixed(1)+'%';
-  c.activityProgressSum=items=>items.reduce((t,x)=>{['expected','encoded','complete','movsReady','movBacklog'].forEach(k=>{t[k]+=x[k]||0;});return t;},{expected:0,encoded:0,complete:0,movsReady:0,movBacklog:0});
+  c.activityProgressSum=items=>items.reduce((t,x)=>{['expected','encoded','complete','movsReady','movSubmitted','movRequired','movBacklog'].forEach(k=>{t[k]+=x[k]||0;});return t;},{expected:0,encoded:0,complete:0,movsReady:0,movSubmitted:0,movRequired:0,movBacklog:0});
   c.window=c;vm.createContext(c);
   ['vendor/monitor/Code.js','vendor/monitor/Store.js','vendor/monitor/WebApp.js','src/runtime.js','src/activity-tracker.js','src/mov-core.js','src/people.js','src/mov-ui.js','src/municipality-profile.js'].forEach(f=>vm.runInContext(fs.readFileSync(path.join(ROOT,f),'utf8'),c,{filename:f}));
   c.TABS.Baseline={headers:['Province','Municipality','Barangay','Monitored','Stage 2 Prioritized','lib_city.code_correspondence','lib_brgy.code_correspondence'],rows:[
@@ -37,6 +37,108 @@ function load(c, trs=[tracker(c)], movs) {
   c.computeAll('2026-11-05');c.STATE.computed=true;c.S.overview=c.apiOverview('');return c.profileModel('Province A|Town');
 }
 const plain=v=>JSON.parse(JSON.stringify(v));
+
+test('swimlane uses Actual End independently of attendance and counts each target once',()=>{
+ const c=context(),mrest=c.DEFAULT_ACTIVITIES.find(a=>a.code==='MREST').name;
+ const m=load(c,[tracker(c,{Barangay:'','CRIP/MC09 Activity':mrest}),tracker(c,{'Participants - Total':0}),tracker(c,{'Participants - Total':0}),tracker(c,{Barangay:'Village B','Actual End':''})]);
+ const d=c.profileSwimlaneData(m),ba=d.cells.find(x=>x.activity.code==='BA1');
+ assert.equal(d.current,'BA1');assert.equal(ba.target,2);assert.equal(ba.completed,1);assert.equal(ba.status,'partial');
+ assert.equal(m.byCode.BA1.tally.complete,1,'existing attendance metric remains independent');
+ assert.equal(d.cells[0].status,'complete');assert.equal(d.cells.some(x=>x.activity.appraisal),false);
+});
+
+test('swimlane keeps the first gap while displaying later completions and rejects invalid dates',()=>{
+ const c=context(),m=load(c,[tracker(c),tracker(c,{Barangay:'Village B'}),tracker(c,{'CRIP/MC09 Activity':c.DEFAULT_ACTIVITIES.find(a=>a.code==='PROFILE').name,'Actual End':'2026-02-30'})]);
+ const d=c.profileSwimlaneData(m);
+ assert.equal(d.current,'MREST');assert.equal(d.cells.find(x=>x.activity.code==='BA1').status,'complete');
+ assert.equal(d.cells.find(x=>x.activity.code==='PROFILE').completed,0);
+ for (const date of ['',null,'nonsense','2026-13-01','2026-02-30']) {
+   m.byCode.BA1.rows[0].attendance.dateEnd=date;
+   assert.equal(c.profileSwimlaneData(m).cells.find(x=>x.activity.code==='BA1').completed,1,String(date));
+ }
+ c.esc=v=>String(v??'');c.attr=c.esc;
+ const html=c.profileSwimlaneHtml(c.profileDirectoryRows());
+ assert.match(html,/aria-current="step"/);assert.match(html,/data-code="BA1"/);assert.match(html,/Actual End/);
+});
+
+test('swimlane respects priority targets, stage changes and zero-target activities',()=>{
+ const c=context(),m=load(c,[]),ba2=c.DEFAULT_ACTIVITIES.find(a=>a.code==='BA2');
+ load(c,[tracker(c,{'CRIP/MC09 Activity':ba2.name}),tracker(c,{Barangay:'Village B','CRIP/MC09 Activity':ba2.name})]);
+ const fresh=c.profileModel(m.key),d=c.profileSwimlaneData(fresh,2);
+ assert.equal(d.cells[0].target,1);assert.equal(d.cells[0].completed,1);assert.equal(d.current,'TR_CSPMC');
+ assert.ok(d.cells.every(x=>x.activity.stage===2));
+ fresh.byCode.BA2.rows.forEach(r=>r.expected=false);
+ assert.equal(c.profileSwimlaneData(fresh,2).current,'TR_CSPMC');
+ fresh.activities.filter(a=>a.stage===2).forEach(a=>a.rows.forEach(r=>r.expected=false));
+ assert.equal(c.profileSwimlaneData(fresh,2).status,'na');assert.equal(c.profileSwimlaneData(fresh,2).current,'');
+});
+
+test('swimlane finishes only when every applicable activity is completed',()=>{
+ const c=context();
+ const trs=c.DEFAULT_ACTIVITIES.filter(a=>a.stage===1).flatMap(a=>(a.level==='Municipal'?['']:a.prioOnly?['Village A']:['Village A','Village B']).map(b=>tracker(c,{Barangay:b,'CRIP/MC09 Activity':a.name})));
+ const m=load(c,trs),d=c.profileSwimlaneData(m);
+ assert.equal(d.status,'complete');assert.equal(d.current,'');
+ c.esc=v=>String(v??'');c.attr=c.esc;
+ // Across all stages the same municipality has cleared Stage 1 and waits at the first Stage 2 activity.
+ const whole=c.profileSwimlaneData(m,'all');assert.equal(whole.cells.length,c.DEFAULT_ACTIVITIES.length);assert.equal(whole.status,'active');assert.equal(whole.current,'BA2');
+ assert.equal(c.profileRaceStanding(whole).position,d.cells.length);
+ let html=c.profileSwimlaneHtml(c.profileDirectoryRows());
+ assert.doesNotMatch(html,/class="psw-finished-marker"/);assert.match(html,/style="grid-column:span 9">Stage 1</);assert.match(html,/class="psw-leg psw-leg-start" style="grid-column:span 6">Stage 2</);
+ assert.match(html,/psw-current psw-leg-start" data-act="profile-dir-cell" data-v="Province A\|Town" data-code="BA2"/);assert.match(html,/All stages complete/);
+ c.PROFILE_DIR.scope='stage';
+ assert.match(c.profileSwimlaneHtml(c.profileDirectoryRows()),/class="psw-finished-marker"/);
+ m.byCode.MREST.rows[0].attendance.dateEnd=null;
+ assert.equal(c.profileSwimlaneData(m).status,'active');assert.equal(c.profileSwimlaneData(m).current,'MREST');
+});
+
+test('swimlane race places each municipality by cleared activities plus the share of the current one',()=>{
+ const c=context(),mrest=c.DEFAULT_ACTIVITIES.find(a=>a.code==='MREST').name;c.esc=v=>String(v??'');c.attr=c.esc;
+ // Province A's Town clears MResT and half of the 1st BA; Province B's Town has nothing completed.
+ const m=load(c,[tracker(c,{Barangay:'','CRIP/MC09 Activity':mrest}),tracker(c)]);
+ const s=c.profileRaceStanding(c.profileSwimlaneData(m));
+ assert.equal(s.at,1);assert.equal(s.share,0.5);assert.equal(s.position,1.5);assert.equal(s.done,2);
+ const field=c.profileRaceField(c.profileDirectoryRows()),a=field.find(f=>f.entry.key==='Province A|Town'),b=field.find(f=>f.entry.key==='Province B|Town');
+ assert.equal(a.rank,1);assert.equal(b.rank,2);assert.equal(b.standing.position,0);
+ assert.deepEqual([1,2,3,4,11,12,13,21,22,103,111].map(c.profileOrdinal),['1st','2nd','3rd','4th','11th','12th','13th','21st','22nd','103rd','111th']);
+ const rows=c.profileDirectoryRows();let html=c.profileSwimlaneHtml(rows,rows);
+ assert.match(html,/style="--at:1;--f:0.5"/);assert.match(html,/<strong>1st<\/strong>/);assert.match(html,/psw-race psw-go/);
+ assert.ok(html.indexOf('data-v="Province A|Town"')<html.indexOf('data-v="Province B|Town"'),'leader first');
+ // The race board lists the leaders and puts one dot per municipality over its current activity.
+ assert.match(html,/<ol class="psw-podium"><li><span class="psw-rank psw-rank-1">1<\/span>/);assert.equal((html.match(/class="psw-dot[ "]/g)||[]).length,2);
+ assert.match(html,/class="psw-dot psw-rank-1" data-act="profile-race-focus" data-v="Province A\|Town" title="Town, Province A · 1st place · show its lane"/);
+ assert.match(html,/class="psw-lane psw-is-active" role="listitem" data-key="Province A\|Town"/);
+ // A search keeps the place earned against the whole field, and a re-render does not replay the race.
+ html=c.profileSwimlaneHtml(rows.filter(r=>r.key==='Province B|Town'),rows);
+ assert.match(html,/<strong>2nd<\/strong>/);assert.doesNotMatch(html,/psw-go/);
+ c.PROFILE_DIR.order='province';assert.match(c.profileSwimlaneHtml(rows,rows),/class="psw-province"><span>Province A</);
+ c.profileDirSaveView();c.PROFILE_DIR.order='rank';c.PROFILE_DIR.viewLoaded=false;c.profileDirLoadView();assert.equal(c.PROFILE_DIR.order,'province');
+});
+
+test('swimlane has no marker without Tracker, filters provinces, and preserves directory preference',()=>{
+ const c=context();c.esc=v=>String(v??'');c.attr=c.esc;
+ const m=c.profileModel('Province A|Town');assert.equal(c.profileSwimlaneData(m).status,'unassessed');
+ assert.equal(c.profileSwimlaneData(m).current,'');
+ let html=c.profileSwimlaneHtml(c.profileDirectoryRows());
+ assert.match(html,/Not assessed/);assert.doesNotMatch(html,/class="psw-marker"/);
+ c.profileDirLoadView();assert.equal(c.PROFILE_DIR.view,'matrix');
+ c.PROFILE_DIR.view='swimlane';c.profileDirSaveView();c.PROFILE_DIR.view='list';c.PROFILE_DIR.viewLoaded=false;c.profileDirLoadView();
+ assert.equal(c.PROFILE_DIR.view,'swimlane');
+ html=c.profileDirectoryHtml();assert.match(html,/data-v="Province A\|Town"/);assert.match(html,/data-v="Province B\|Town"/);
+ c.PROFILE_DIR.search='province b';html=c.profileDirectoryHtml();assert.doesNotMatch(html,/data-v="Province A\|Town"/);assert.match(html,/data-v="Province B\|Town"/);
+ c.PROFILE_DIR.search='missing municipality';assert.match(c.profileDirectoryHtml(),/No municipalities match/);
+ // The course covers every stage unless narrowed to the stage in view; the choice is remembered.
+ c.PROFILE_DIR.search='';c.PROFILE_STATE.stage=2;assert.match(c.profileDirectoryHtml(),/Activity 6/);assert.match(c.profileDirectoryHtml(),/>1st Barangay Assembly/);
+ c.PROFILE_DIR.scope='stage';assert.match(c.profileDirectoryHtml(),/Activity 6/);assert.doesNotMatch(c.profileDirectoryHtml(),/>1st Barangay Assembly/);
+ c.profileDirSaveView();c.PROFILE_DIR.scope='all';c.PROFILE_DIR.viewLoaded=false;c.profileDirLoadView();assert.equal(c.PROFILE_DIR.scope,'stage');
+});
+
+test('swimlane preserves municipal workspace restrictions and handles empty stages',()=>{
+ const c=context();c.esc=v=>String(v??'');c.attr=c.esc;load(c);
+ c.preferences.role='pea_mdm';c.preferences.homeKey='Province A|Town';
+ assert.equal(c.profileModel('Province B|Town'),null);assert.equal(c.profileSwimlaneHtml(c.profileDirectoryRows()),'');
+ c.preferences.role='rpmo';const rows=c.profileDirectoryRows();rows.forEach(r=>r.model.activities=[]);
+ assert.match(c.profileSwimlaneHtml(rows),/No activities are configured/);
+});
 
 test('profile activities are in numeric sequence and keep municipal and appraisal levels distinct',()=>{
  const c=context(),m=load(c);
@@ -73,27 +175,93 @@ test('MOV-only and Tracker-only profiles preserve unassessed rather than zero st
  delete c.TABS.Raw_MOVs;delete c.LOADED.movs;c.MOV_CACHE=null;m=load(c);r=m.byCode.BA1.rows[0];
  assert.equal(c.profileMovLabel(m,r),'Not assessed');assert.equal(m.byCode.BA1.tally.complete,1);
 });
-test('grid states preserve review, applicability, pending activity, lacking and not applicable',()=>{
+test('grid states preserve credited candidates, applicability, pending activity and lacking',()=>{
  const c=context(),m=load(c,[tracker(c)],[attachment(c,'30',{Activity_ID:16})]);
- const row=m.byCode.BA1.rows[0];assert.equal(c.profileRequirementStatus(m,row,'minutes'),'Needs review');assert.equal(c.profileRequirementStatus(m,row,'attendance'),'Lacking');
- const b=m.byCode.BDC.rows[0],conditional=b.group.requirements.find(r=>r.conditional);assert.equal(c.profileRequirementStatus(m,b,conditional.id),'Needs applicability');assert.equal(c.profileRequirementStatus(m,b,'action_plan'),'Pending activity');
- c.MOV_UI.municipality=m.key;c.movSetApplicability(conditional.key,'notApplicable',{reviewer:'QA',note:'Year 1'});c.MOV_CACHE=null;c.computeAll('2026-11-05');
- const next=c.profileModel(m.key);assert.equal(c.profileRequirementStatus(next,next.byCode.BDC.rows[0],conditional.id),'Not applicable');
+ const row=m.byCode.BA1.rows[0];assert.equal(c.profileRequirementStatus(m,row,'minutes'),'Submitted');assert.equal(c.profileRequirementStatus(m,row,'attendance'),'Lacking');
+ const b=m.byCode.BDC.rows[0],conditional=b.group.requirements.find(r=>r.conditional);assert.equal(c.profileRequirementStatus(m,b,conditional.id),b.place.stage2Prio?'Pending activity':'Not applicable');assert.equal(c.profileRequirementStatus(m,b,'action_plan'),'Pending activity');
 });
-test('profile caches refresh after review or replacement and reuse the existing attendance result',()=>{
+test('MOV progress counts each submitted form, so partial uploads show before a checklist is complete',()=>{
+ const c=context(),m=load(c,[tracker(c)],[attachment(c,'29'),attachment(c,'30')]);c.esc=v=>String(v??'');c.attr=c.esc;
+ // Two expected barangays with four BA1 forms each; Village A has uploaded two of its four.
+ const a=m.byCode.BA1;assert.equal(a.tally.movsReady,0);assert.equal(a.tally.movSubmitted,2);assert.equal(a.tally.movRequired,8);
+ assert.match(c.profileDonuts(m,a),/MOV forms submitted: 2 of 8 \(25%\)/);
+ const t=c.activityProgressSum(c.profileStageActivities(m,1).map(x=>x.tally));
+ assert.match(c.profileMeasures(m,t,1),/MOVs submitted <b>2\/\d+ forms<\/b>/);assert.match(c.profileMeasures(m,t,1),/MOVs ready <b>0\//);
+ assert.match(c.profileMeasures(m,t,2),/MOVs submitted <b>Not assessed<\/b>/);
+});
+test('municipal Activity & MOV checklist: municipalities as rows, activity groups of encoded, attendees and MOVs, as x/y or %',()=>{
+ const c=context(),m=load(c,[tracker(c)],[attachment(c,'29'),attachment(c,'30')]);c.esc=v=>String(v??'');c.attr=c.esc;
+ const rows=[{key:m.key,model:m}];
+ const cols=c.profileDirMatrixColumns([m]);
+ // Overall comes first, then the stage's activities in sequence.
+ assert.deepEqual(plain(cols.map(x=>x.act.code)),['__overall'].concat(plain(c.profileStageActivities(m,1).map(a=>a.code))));
+ // Overall is one column: the equal-weight average of the stage's Encoded, With attendees and MOVs rates.
+ assert.deepEqual(plain(cols[0].measures.map(x=>x[0])),['overall']);assert.deepEqual(plain(cols[0].parts.map(x=>x[0])),['encoded','attendees','movs']);
+ const sum=c.activityProgressSum(c.profileStageActivities(m,1).map(a=>a.tally)),o=c.profileDirMatrixValues(m,'__overall').overall;
+ const expected=(sum.encoded/sum.expected+sum.complete/sum.expected+sum.movSubmitted/sum.movRequired)/3;
+ assert.equal(o.assessed,true);assert.ok(Math.abs(o.rate-expected)<1e-9);
+ assert.equal(c.profileDirMatrixText(o,'frac'),Math.round(expected*100)+'%','Overall is a percentage in either format');
+ assert.deepEqual(plain(cols.find(x=>x.act.code==='BA1').measures.map(x=>x[0])),['encoded','attendees','movs']);
+ const v=c.profileDirMatrixValues(m,'BA1');
+ assert.deepEqual(plain(v),{encoded:{v:1,t:2,assessed:true},attendees:{v:1,t:2,assessed:true},movs:{v:2,t:8,assessed:true}});
+ c.PROFILE_DIR.format='frac';let html=c.profileDirMatrixHtml(rows,rows);
+ assert.match(html,/<th scope="col" rowspan="2" class="pdm-name">Municipality<\/th>/);assert.match(html,/class="pdm-measure pdm-first" title="Encoded"><abbr[^>]*>Enc<\/abbr><\/th><th scope="col" class="pdm-measure" title="With attendees"><abbr[^>]*>Att<\/abbr><\/th><th scope="col" class="pdm-measure" title="MOVs"><abbr[^>]*>MOV<\/abbr><\/th>/);
+ assert.match(html,/<th scope="col" rowspan="2" class="pdm-act pdm-overall pdm-overall-end pdm-first"[^>]*><span class="pdm-seq">Stage 1<\/span><span class="pdm-label">Overall<\/span>/);
+ assert.match(html,/pdm-overall pdm-overall-end"><button type="button" data-act="profile-dir-cell" data-v="[^"]*" data-code="" title="Town · Overall: \d+%, the average of Encoded \d+% \(\d+ of \d+\), With attendees \d+% \(\d+ of \d+\), MOVs \d+% \(2 of \d+\)"[^>]*>\d+%</);
+ assert.match(html,/data-code="BA1" title="Town · [^"]*Encoded: 1 of 2"[^>]*>1\/2</);assert.match(html,/MOVs: 2 of 8 required MOV forms"[^>]*>2\/8</);assert.match(html,/Region total/);
+ c.PROFILE_DIR.format='pct';html=c.profileDirMatrixHtml(rows,rows);
+ assert.match(html,/Encoded: 1 of 2"[^>]*>50%</);assert.match(html,/MOVs: 2 of 8 required MOV forms"[^>]*>25%</);
+ // Stage 2 has no MOV requirements: its activity groups carry only the two attendance measures.
+ c.PROFILE_STATE.stage=2;const s2=c.profileDirMatrixColumns([m]);
+ assert.ok(s2.slice(1).every(x=>x.measures.length===2));assert.deepEqual(plain(s2[0].parts.map(x=>x[0])),['encoded','attendees']);
+ assert.equal(c.profileDirMatrixValues(m,'__overall').overall.keys.length,2,'Stage 2 Overall averages only the two attendance measures');c.PROFILE_STATE.stage=1;
+ assert.equal(c.profileDirMatrixExportRows()[0][2],'Overall (Stage 1) %');
+ // Without a MOV import the MOV figures read as not assessed, never as zero.
+ const noMov=load(context(),[tracker(c)]);assert.equal(c.profileDirMatrixText(c.profileDirMatrixValues(noMov,'BA1').movs,'frac'),'—');
+ // The export keeps counts and targets in their own columns, whatever the on-screen format.
+ const ex=c.profileDirMatrixExportRows(),head=ex[0],ba1=c.profileStageActivities(m,1).find(a=>a.code==='BA1'),label=ba1.seq+' '+ba1.label;
+ const town=ex.find(r=>r[0]==='Province A'&&r[1]==='Town');
+ assert.deepEqual([head.indexOf(label+' · Encoded'),head.indexOf(label+' · MOV forms required')].map(i=>i>1),[true,true]);
+ assert.deepEqual([town[head.indexOf(label+' · Encoded')],town[head.indexOf(label+' · Target')],town[head.indexOf(label+' · MOV forms submitted')],town[head.indexOf(label+' · MOV forms required')]],[1,2,2,8]);
+});
+test('checklist summary, below-100% filter and lowest-first order work on the same figures as the cells',()=>{
+ const c=context();c.esc=v=>String(v??'');c.attr=c.esc;
+ // Province A's Town has one of two 1st BAs encoded; Province B's Town has nothing.
+ load(c,[tracker(c)],[attachment(c,'29')]);
+ const all=c.profileDirectoryRows().sort((a,b)=>a.model.province.localeCompare(b.model.province));
+ let html=c.profileDirMatrixHtml(all,all);
+ assert.match(html,/class="pdm-summary" aria-label="Region summary, Stage 1"/);assert.match(html,/Region overall · Stage 1<\/span><strong>\d+%<\/strong>/);assert.match(html,/0 of 2 municipalities at 100%/);
+ assert.match(html,/>Encoded<\/span><strong>\d+%<\/strong>[\s\S]*?<small>1 of \d+ activity targets<\/small>/);assert.match(html,/MOVs submitted<\/span>[\s\S]*?<small>1 of \d+ required MOV forms<\/small>/);
+ assert.match(html,/data-act="profile-dir-matrix-show" data-v="behind" aria-pressed="false">Below 100% <b>2<\/b>/);
+ assert.match(html,/class="pdm-prov"><th scope="rowgroup" colspan="\d+"><span>Province A <small>1<\/small>/);assert.match(html,/<i class="pdm-bar" aria-hidden="true"><b style="width:\d+%">/);
+ assert.ok(html.indexOf('data-v="Province A|Town"')<html.indexOf('data-v="Province B|Town"'));
+ // Lowest first drops the province groups, names the province on each row and puts the weakest on top.
+ c.PROFILE_DIR.msort='low';html=c.profileDirMatrixHtml(all,all);
+ assert.doesNotMatch(html,/class="pdm-prov"/);assert.match(html,/<span class="pdm-sub">Province B<\/span>/);
+ assert.ok(html.indexOf('data-v="Province B|Town"')<html.indexOf('data-v="Province A|Town"'));
+ // A municipality at 100% leaves the below-100% list, and the footer then totals only what is shown.
+ const done=all[0].model;c.profileStageActivities(done,1).forEach(a=>{a.tally.encoded=a.tally.complete=a.tally.expected;a.tally.movSubmitted=a.tally.movRequired;});
+ c.PROFILE_DIR.mshow='behind';html=c.profileDirMatrixHtml(all,all);
+ assert.match(html,/1 of 2 municipalities at 100%/);assert.match(html,/Total shown/);assert.doesNotMatch(html,/data-act="profile-open-muni" data-v="Province A\|Town"/);
+ c.profileDirSaveView();c.PROFILE_DIR.mshow='all';c.PROFILE_DIR.msort='province';c.PROFILE_DIR.viewLoaded=false;c.profileDirLoadView();
+ assert.equal(c.PROFILE_DIR.mshow,'behind');assert.equal(c.PROFILE_DIR.msort,'low');
+ // Without a MOV import the MOV columns and tile are left out rather than shown as dashes.
+ const c2=context();c2.esc=v=>String(v??'');c2.attr=c2.esc;load(c2,[tracker(c2)]);const r2=c2.profileDirectoryRows();html=c2.profileDirMatrixHtml(r2,r2);
+ assert.doesNotMatch(html,/>MOV<\/abbr>/);assert.doesNotMatch(html,/MOVs submitted<\/span>/);assert.match(html,/The MOV columns appear once they are imported/);
+});
+test('profile caches refresh after a MOV replacement and reuse the existing attendance result',()=>{
  const c=context(),m=load(c,[tracker(c)],[attachment(c,'30',{Activity_ID:16})]);assert.equal(c.profileModel(m.key),m);
- const r=m.byCode.BA1.rows[0],req=r.group.requirements.find(r=>r.id==='minutes'),a=c.SNAP.movs.attachments[0];
- c.MOV_UI.municipality=m.key;c.movApproveAssignment(req.key,a.key,{reviewer:'QA',note:'Reviewed correct minutes'});c.computeAll('2026-11-05');
+ c.TABS.Raw_MOVs={headers:Array.from(c.MOV_HEADERS),rows:[attachment(c,'30')]};c.MOV_CACHE=null;c.computeAll('2026-11-05');
  const next=c.profileModel(m.key);assert.notEqual(next,m);assert.equal(c.profileRequirementStatus(next,next.byCode.BA1.rows[0],'minutes'),'Submitted');assert.equal(next.byCode.BA1.tally.complete,m.byCode.BA1.tally.complete);assert.equal(next.byCode.BA1.tally.backlog,m.byCode.BA1.tally.backlog);
 });
-test('the evidence panel lists only the activity requirements, with review left to the DQA MOV page',()=>{
+test('the evidence panel lists only the activity requirements, with no review controls',()=>{
  const c=context(),m=load(c,[tracker(c)],[attachment(c)]),row=m.byCode.BA1.rows[0];
  c.esc=v=>String(v??'');c.attr=c.esc;c.MOV_UI.requirement='minutes';
- const html=c.movRenderGroup(m.mov,row.group,{embedded:true});
+ const html=c.movRenderGroup(m.mov,row.group);
  assert.match(html,/All 4 requirements for this activity/);assert.match(html,/<tr class="mov-selected"><td>Barangay Activity Minutes Form<\/td>/);
  assert.doesNotMatch(html,/data-act="mov-back"|data-act="profile-from-mov"/);
  assert.doesNotMatch(html,/data-act="mov-approve"|data-act="mov-requirement"|Review|<details|Source attachments and supplementary files/);
- const standalone=c.movRenderGroup(m.mov,row.group);assert.match(standalone,/data-act="mov-back"/);assert.match(standalone,/data-act="mov-approve"/);assert.match(standalone,/Source attachments and supplementary files/);
+ assert.equal(c.renderMovs,undefined);assert.equal(c.movApproveAssignment,undefined);
 });
 test('scope checks block other municipalities, including same-name towns and exported rows',()=>{
  const c=context();load(c);const other=c.profileModel('Province B|Town');c.preferences={role:'pea_mdm',homeKey:'Province A|Town'};
@@ -103,7 +271,8 @@ test('scope checks block other municipalities, including same-name towns and exp
 });
 test('restored profile selections and panel identities are validated against stage and scope',()=>{
  const c=context();load(c);c.preferences={role:'pea_mdm',homeKey:'Province A|Town',municipalityProfile:{municipality:'Province B|Town',stage:2,activity:'BA1',view:'bad',panel:{row:'elsewhere',kind:'movs'},filters:{BA1:{search:'Village A'}}}};
- const m=c.profileValidate();assert.equal(m.key,'Province A|Town');assert.equal(c.PROFILE_STATE.activity,'');assert.equal(c.PROFILE_STATE.panel,null);assert.equal(c.PROFILE_STATE.view,'status');assert.equal(c.PROFILE_STATE.filters.BA1.search,'Village A');
+ c.STATE.stage=2;   // the header's global stage switch, restored at start-up from the saved stage
+ const m=c.profileValidate();assert.equal(c.PROFILE_STATE.stage,2);assert.equal(m.key,'Province A|Town');assert.equal(c.PROFILE_STATE.activity,'');assert.equal(c.PROFILE_STATE.panel,null);assert.equal(c.PROFILE_STATE.view,'status');assert.equal(c.PROFILE_STATE.filters.BA1.search,'Village A');
 });
 test('later stages retain attendance monitoring without fabricated MOV requirements',()=>{
  const c=context(),name=c.DEFAULT_ACTIVITIES.find(a=>a.code==='BA2').name,m=load(c,[tracker(c,{'CRIP/MC09 Activity':name})],[]);
@@ -263,7 +432,60 @@ test('activity stepper shows three nested donuts and attendance reads as one lin
  const c=context(),mrest=c.DEFAULT_ACTIVITIES.find(a=>a.code==='MREST').name,m=load(c,[tracker(c),tracker(c,{Barangay:'Village B','Participants - Total':0}),tracker(c,{Barangay:'','CRIP/MC09 Activity':mrest,'Target Start':'2026-09-30','Target End':'2026-09-30','Actual Start':'2026-10-01','Actual End':'2026-10-01'})],['29','30','31','37'].map(t=>attachment(c,t)));
  c.esc=v=>String(v??'');c.attr=c.esc;
  const html=c.profileDonuts(m,m.byCode.BA1);
- assert.equal((html.match(/class="pdonut /g)||[]).length,3);assert.match(html,/Encoded: 2 of 2 \(100%\)/);assert.match(html,/With attendees: 1 of 2 \(50%\)/);assert.match(html,/MOVs ready: 1 of 2 \(50%\)/);assert.match(html,/<small>MOV<\/small>/);
+ assert.equal((html.match(/class="pdonut /g)||[]).length,3);assert.match(html,/Encoded: 2 of 2 \(100%\)/);assert.match(html,/With attendees: 1 of 2 \(50%\)/);assert.match(html,/MOV forms submitted: 4 of 8 \(50%\)/);assert.match(html,/<small>MOV<\/small>/);
  assert.equal(c.profileCountLine({total:100,male:50,female:50,unspecified:0}),'<span class="patt-line">Total: <b>100</b> (M: 50, F: 50, U: 0)</span>');
  const muni=c.profileMunicipalHtml(m,m.byCode.MREST);assert.match(muni,/Target date<\/span><strong>2026-09-30<\/strong>[\s\S]*Actual date<\/span><strong>2026-10-01<\/strong>[\s\S]*Participants<\/span><span class="patt-line">Total: <b>10<\/b> \(M: 3, F: 7, U: 0\)/);assert.doesNotMatch(muni,/source records/);assert.match(muni,/class="pfile pf-/);
+});
+function volunteers(c, rows) {
+  const H=['Region Name','Province Name','City Name','Barangay Name','Sequence No','Name','First Name','Middle Name','Last Name','Sex Description','Is Ip','city_psgc','brgy_psgc','volunteer_committee','volunteer_committee_position','vol_start_date','vol_end_date','PWD'];
+  const row=(brgy,psgc,first,last,committee,position,sex)=>['Region','Province A','Town',brgy,2,'1st BA',first,'M',last,sex,false,'1000',psgc,committee,position,46220,'',false];
+  c.TABS.Raw_Volunteers={headers:Array.from(c.volunteerHeaders(H)),rows:rows.map(r=>row(...r))};c.LOADED.volunteers={};c.PEOPLE=null;
+}
+test('Community Volunteer checklist: barangays as rows, Stage 1 committees as columns, each person once',()=>{
+ const c=context(),SF='Stakeholders Feedback Mechanism Sub Committee (SFMSC - Barangay)',BR='Barangay Resilience Team';
+ volunteers(c,[['Village A','1001','Ana','Cruz',BR,'Member','female'],['Village A','1001','Ana','Cruz',BR,'Member','female'],
+   ['Village A','1001','Ben','Reyes',SF,'Chairperson','male'],['Village A','1001','Cara','Lim',SF,'Member','female'],['Village A','1001','Dan','Uy',SF,'Member','male'],
+   ['Village A','1001','Eve','Go','','','female'],['Village B','1002','Fay','Tan',SF,'Member','female'],
+   ['Village B','1002','Gus','Ong','Stakeholders Feedback Mechanism Committee (SFMC - Municipal)','Member','male']]);
+ const m=load(c,[tracker(c),tracker(c,{Barangay:'Village B','CRIP/MC09 Activity':'1st BA'})]);
+ const d=c.profileCvData(m,1);
+ assert.deepEqual(plain(d.bodies.map(b=>b.id)),['BREST','SFMSC']);
+ assert.deepEqual(plain(d.lines.map(l=>l.name)),['Village A','Village B']);
+ const a=d.lines[0],b=d.lines[1];
+ assert.equal(a.cells[0].css,'ok');assert.equal(a.cells[0].members,1,'the repeated BResT row counts once');
+ assert.equal(a.cells[1].css,'ok');assert.equal(a.cells[1].members,3);
+ assert.equal(a.cells[1].chairs,1);assert.equal(a.cells[1].others,2);assert.equal(a.cells[1].chairCss,'ok');assert.equal(a.cells[1].memberCss,'ok');
+ assert.equal(a.cells[0].chairs,0);assert.equal(a.cells[0].chairCss,'na','BResT has no Chairperson rule');assert.equal(a.cells[0].memberCss,'ok');
+ assert.equal(a.untagged,1);assert.equal(a.total,5);assert.equal(a.women,3);assert.equal(a.ok,2);
+ assert.equal(b.cells[0].css,'due','BResT not encoded although the 1st BA is');
+ assert.equal(b.cells[1].css,'review');assert.match(b.cells[1].reasons.join(' '),/Chairperson/);
+ assert.equal(b.cells[1].chairCss,'review');assert.equal(b.cells[1].memberCss,'review','one Member of the two the SFMSC needs');
+ assert.equal(b.cells[0].chairCss,'due');assert.equal(b.cells[0].memberCss,'due');
+ assert.equal(d.municipal.sfmc.length,1);
+ c.esc=v=>String(v??'');c.attr=c.esc;const html=c.profileCvMapHtml(m);
+ assert.match(html,/Community Volunteer checklist/);assert.match(html,/data-body="SFMSC" data-position="chair"/);assert.match(html,/data-body="SFMSC" data-position="member"/);
+ assert.equal((html.match(/>Chairperson<\/th>/g)||[]).length,2);assert.equal((html.match(/>Member<\/th>/g)||[]).length,2);
+ assert.match(html,/data-body="nocommittee"/);assert.match(html,/SFMC \(Municipal\)/);
+ c.profileCvFilters().show='due';assert.deepEqual(plain(c.profileCvLines(d,c.profileCvFilters()).map(l=>l.name)),['Village B']);
+ c.profileCvFilters().show='';
+ const rows=c.profileCvExportRows(m);
+ assert.deepEqual(plain(rows[0]),['Province','Municipality','Barangay','BResT status','BResT Chairperson','BResT Member','SFMSC status','SFMSC Chairperson','SFMSC Member','No committee','Total CVs','Women','Committees meeting the rules']);
+ assert.deepEqual(plain(rows[1].slice(3,9)),['Encoded',0,1,'Encoded',1,2]);assert.match(rows[2][6],/^Needs fixing: /);assert.deepEqual(plain(rows[2].slice(7,9)),[0,1]);
+ const brest=c.profileCvBodies(1)[0];
+ assert.equal(c.profileCvRoleCss(brest,{members:3,chairs:1,others:2,memberRole:2,css:'ok'},'chair'),'na','SM1 paras 19-22: an encoded BResT Chairperson is not credited');
+ assert.match(c.profileCvRuleText(brest,'chair'),/no Chairperson required, SM1 paras 19/);
+ const s2b=c.profileCvBodies(2);
+ assert.deepEqual(plain(s2b.filter(x=>x.minMembers!==3).map(x=>x.id)),['BOOKKEEPER'],'SM1 para. 43: the CSPMC and each sub-committee have at least three CVs');
+ const ppsc=s2b.find(x=>x.id==='PPSC');
+ assert.equal(c.profileCvRoleCss(ppsc,{members:2,chairs:1,others:1,memberRole:1,css:'review'},'member'),'review');
+ assert.equal(c.profileCvRoleCss(ppsc,{members:3,chairs:1,others:2,memberRole:2,css:'ok'},'member'),'ok');
+ const s2=c.profileCvData(m,2);assert.ok(s2.bodies.some(x=>x.id==='CMSC'&&x.minMembers===3));assert.equal(s2.lines[0].cells.every(x=>x.css!=='ok'),true);assert.equal(s2.lines[0].total,0,'Stage 1 volunteers are not Stage 2 CVs');
+});
+test('Community Volunteer checklist reads as not assessed before the Volunteer List is imported',()=>{
+ const c=context(),m=load(c);c.esc=v=>String(v??'');c.attr=c.esc;
+ const d=c.profileCvData(m,1);assert.equal(d.loaded,false);assert.equal(d.lines[0].cells[0].css,'none');
+ assert.match(c.profileCvMapHtml(m),/Import the Community Volunteer List/);
+ c.PROFILE_STATE.municipality=m.key;c.PROFILE_STATE.home='cvmap';c.profileCvFilters().sort='least';c.profilePersist();
+ c.PROFILE_STATE.filters={};c.PROFILE_STATE.home='sequence';c.PROFILE_RESTORED=false;c.profileRestore();
+ assert.equal(c.PROFILE_STATE.home,'cvmap');assert.equal(c.profileCvFilters().sort,'least');
 });

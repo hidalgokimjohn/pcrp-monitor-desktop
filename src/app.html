@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>PCRP Encoding and Data Quality Assessment Tool</title>
+<title>Caraga PCRP Progress Tracker Tool</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <!-- Republic of the Philippines brand guidelines, section 04:
@@ -44,7 +44,7 @@
       </div>
       <span class="logo-tag-divider" aria-hidden="true"></span>
       <div class="brand-text">
-        <div class="brand-title">PCRP Encoding &amp; Data Quality Assessment Tool</div>
+        <div class="brand-title">Caraga PCRP Progress Tracker Tool</div>
         <div class="brand-sub">
           <span class="brand-tag">KALAHI-CIDSS PCRP</span>
           <span class="brand-tag region">Caraga Region</span>
@@ -59,12 +59,12 @@
 </header>
 
 <nav class="tabs" id="tabs" role="tablist" aria-label="Pages">
-  <button role="tab" data-page="kpis" id="tab-kpis" disabled><i data-lucide="gauge"></i> <span>KPI</span></button>
-  <button role="tab" data-page="profile" id="tab-profile" disabled><i data-lucide="landmark"></i> <span id="profile-nav-label">Municipality Profile</span></button>
+  <button role="tab" data-page="kpis" id="tab-kpis" disabled><i data-lucide="target"></i> <span>KPI</span></button>
+  <button role="tab" data-page="profile" id="tab-profile" disabled><i data-lucide="building-2"></i> <span id="profile-nav-label">Municipality Profile</span></button>
   <!-- Group 2: Volunteers & Committees -->
   <div class="nav-tab-group" id="group-volunteers-wrap">
     <button role="tab" class="tab-group-trigger" id="tab-group-volunteers" data-group="volunteers" disabled>
-      <i data-lucide="shield-check"></i> <span>Volunteers &amp; Committees</span>
+      <i data-lucide="users-round"></i> <span>Volunteers &amp; Committees</span>
       <span class="tab-badge" id="badge-group-volunteers" hidden></span>
       <i data-lucide="chevron-down" class="group-arrow"></i>
     </button>
@@ -103,7 +103,7 @@
       <span class="tab-badge" id="badge-group-dqa" hidden></span>
       <i data-lucide="chevron-down" class="group-arrow"></i>
     </button>
-    <div class="nav-tab-dropdown" id="dropdown-dqa"><button role="menuitem" data-page="movs" id="tab-movs"><i data-lucide="files"></i><div class="nav-drop-info"><span class="nav-drop-title">Stage 1 MOVs</span><span class="nav-drop-sub">Submission checklist &amp; assignment review</span></div><span class="tab-badge" id="badge-movs" hidden></span></button>
+    <div class="nav-tab-dropdown" id="dropdown-dqa">
       <button role="menuitem" data-page="health" id="tab-health">
         <i data-lucide="gauge"></i>
         <div class="nav-drop-info">
@@ -120,6 +120,13 @@
         </div>
         <span class="tab-badge" id="badge-verify" hidden></span>
       </button>
+    </div>
+  </div>
+  <!-- The activity stage rides in the sticky tab band so it stays in view on every scroll position. -->
+  <div class="stage-dock" role="presentation">
+    <div class="stage-switch" id="stage-switch" role="group" aria-label="Activity stage">
+      <button type="button" data-act="global-stage" data-v="1" aria-pressed="true">Stage 1</button>
+      <button type="button" data-act="global-stage" data-v="2" aria-pressed="false">Stage 2</button>
     </div>
   </div>
 </nav>
@@ -270,7 +277,6 @@
   <section class="page" id="page-cspmc"><div id="cspmc-body"></div></section>
   <section class="page" id="page-mrest"><div id="mrt-body"></div></section>
   <section class="page" id="page-verify"><div id="vf-body"></div></section>
-  <section class="page" id="page-movs"><div id="mov-body"></div></section>
   <section class="page" id="page-health"><div id="he-body" class="dh-page"></div></section>
 </main>
 <dialog id="profile-evidence-dialog" class="profile-drawer" aria-labelledby="profile-panel-title"><div id="profile-panel-body"></div></dialog>

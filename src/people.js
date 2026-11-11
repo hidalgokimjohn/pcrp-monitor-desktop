@@ -31,14 +31,15 @@ function looseKey(first, last) {
 // ===================================================================
 
 var STAGE2_BODIES = [
-  { id: 'CSPMC', short: 'CSPMC', name: 'Community Sub-Project Management Committee', label: 'CSPMC Officers', desc: 'Overarching executive officers (Chairperson, Vice-Chair, Secretary, Treasurer)', chairRequired: true },
+  // minMembers: SM1 para. 43, "the CSPMC and each sub-committee will be composed of at least three CVs". The Bookkeeper is one person.
+  { id: 'CSPMC', short: 'CSPMC', name: 'Community Sub-Project Management Committee', label: 'CSPMC Officers', desc: 'Overarching executive officers (Chairperson, Vice-Chair, Secretary, Treasurer)', chairRequired: true, minMembers: 3 },
   { id: 'CMSC', short: 'CMSC', name: 'Community Monitoring Sub-Committee', label: 'CMSC (Monitoring)', desc: 'Independent community monitoring & safeguards (min. 3 CVs, BResT provenance encouraged)', chairRequired: true, minMembers: 3 },
-  { id: 'PPSC', short: 'PPSC', name: 'Proposal Preparation Sub-Committee', label: 'PPSC (Proposal)', desc: 'Prepares detailed sub-project proposal, engineering & cost estimates', chairRequired: true },
-  { id: 'PSC', short: 'PSC / BASC', name: 'Procurement & Bids/Awards Sub-Committee', label: 'PSC / BASC (Procurement)', desc: 'Community procurement, canvassing & contracting', chairRequired: true },
-  { id: 'PIT', short: 'SPISC / PIT', name: 'Sub-Project Implementation Team', label: 'SPISC / PIT (Implementation)', desc: 'Supervises civil works, materials and community labor', chairRequired: true },
-  { id: 'MISC', short: 'MISC', name: 'Monitoring & Inspection Sub-Committee', label: 'MISC (Inspection)', desc: 'Quality inspection of delivered materials & construction', chairRequired: true },
-  { id: 'AISC', short: 'AISC / AIT', name: 'Audit & Inventory Sub-Committee', label: 'AISC / AIT (Audit)', desc: 'Audits vouchers, books, disbursements and warehouse inventory', chairRequired: true },
-  { id: 'OMSC', short: 'O&MSC / OMT', name: 'Operations & Maintenance Sub-Committee', label: 'O&MSC / OMT (O&M)', desc: 'Formulates O&M Plan & organizes community user group', chairRequired: true },
+  { id: 'PPSC', short: 'PPSC', name: 'Proposal Preparation Sub-Committee', label: 'PPSC (Proposal)', desc: 'Prepares detailed sub-project proposal, engineering & cost estimates', chairRequired: true, minMembers: 3 },
+  { id: 'PSC', short: 'PSC / BASC', name: 'Procurement & Bids/Awards Sub-Committee', label: 'PSC / BASC (Procurement)', desc: 'Community procurement, canvassing & contracting', chairRequired: true, minMembers: 3 },
+  { id: 'PIT', short: 'SPISC / PIT', name: 'Sub-Project Implementation Team', label: 'SPISC / PIT (Implementation)', desc: 'Supervises civil works, materials and community labor', chairRequired: true, minMembers: 3 },
+  { id: 'MISC', short: 'MISC', name: 'Monitoring & Inspection Sub-Committee', label: 'MISC (Inspection)', desc: 'Quality inspection of delivered materials & construction', chairRequired: true, minMembers: 3 },
+  { id: 'AISC', short: 'AISC / AIT', name: 'Audit & Inventory Sub-Committee', label: 'AISC / AIT (Audit)', desc: 'Audits vouchers, books, disbursements and warehouse inventory', chairRequired: true, minMembers: 3 },
+  { id: 'OMSC', short: 'O&MSC / OMT', name: 'Operations & Maintenance Sub-Committee', label: 'O&MSC / OMT (O&M)', desc: 'Formulates O&M Plan & organizes community user group', chairRequired: true, minMembers: 3 },
   { id: 'BOOKKEEPER', short: 'Bookkeeper', name: 'Community Bookkeeper / Assistant', label: 'Community Bookkeeper', desc: 'Custody of financial journals and books of accounts', chairRequired: false }
 ];
 
@@ -271,9 +272,14 @@ function buildPeopleIndex() {
     }
   });
 
+  var seenVolunteer = {};
   out.volunteers.forEach(function (v) {
     v.flags = [];
     if (!v.key) { v.flags.push('noname'); return; }
+    // The same person for the same committee in the same barangay: the export repeated the row.
+    var at = bk(v) + '|' + v.key + '|' + normAlpha(v.committee);
+    if (seenVolunteer[at]) v.flags.push('duplicate');
+    seenVolunteer[at] = true;
     if (v.kind === 'NONE') v.flags.push('nocommittee');
     else if (v.kind !== 'BREST' && v.kind !== 'SFMSC' && !v.isStage2) v.flags.push('otherbody');
     if (v.wasBrest) v.flags.push('frombrest');
@@ -338,14 +344,15 @@ var PEOPLE_FLAGS = {
     { id: 'ippwd', label: 'IP or PWD', test: function (r) { return r.ip || r.pwd; } },
     { id: 'nocommittee', label: 'No committee' },
     { id: 'otherbody', label: 'Other activity committee' },
-    { id: 'nosex', label: 'Sex not recorded' }
+    { id: 'nosex', label: 'Sex not recorded' },
+    { id: 'duplicate', label: 'Listed more than once' }
   ]
 };
 
 var FLAG_TEXT = {
   noname: ['bad', 'No name'],
   nocommittee: ['warn', 'No committee'], otherbody: ['warn', 'Other activity\'s committee'],
-  frombrest: ['good', '✓ From BResT'], nosex: ['idle', 'Sex not recorded']
+  frombrest: ['good', '✓ From BResT'], nosex: ['idle', 'Sex not recorded'], duplicate: ['warn', 'Listed more than once']
 };
 
 function pScopeTest(overrideMuni) {

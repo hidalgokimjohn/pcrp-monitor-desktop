@@ -246,7 +246,6 @@ function dhChecks(o) {
     },
   ].concat(dhHouseholdCountChecks(o, col, colMuni, colProv, colAsm, one))
    .concat(trackerDqaChecks(o, col, colMuni, colProv, colBrgyOrMuni, colAct, one))
-   .concat(typeof movDqaChecks === 'function' ? movDqaChecks(o, col, colMuni, colProv, colBrgyOrMuni, colAct, one) : [])
    .concat(dhQualityChecks(dq, col, colMuni, colProv, colBrgyOrMuni, colAct, one))
    .concat(dhVolunteerChecks(o, col, colMuni, colProv, colBrgy, one)).concat([
     {
@@ -409,7 +408,8 @@ function dhVolunteerChecks(o, col, colMuni, colProv, colBrgy, one) {
   var gaps = iss.noName.map(function (r) { return Object.assign({ problem: 'No name' }, r); })
     .concat(iss.noSex.map(function (r) { return Object.assign({ problem: 'Sex not recorded' }, r); }))
     .concat(iss.noPosition.map(function (r) { return Object.assign({ problem: 'No position (' + (r.body === 'SFMSC' ? 'SFMSC' : 'BResT') + ')' }, r); }))
-    .concat(iss.badTerm.map(function (r) { return Object.assign({ problem: 'Term start date not between 2025 and 2027' }, r); }));
+    .concat(iss.badTerm.map(function (r) { return Object.assign({ problem: 'Term start date not between 2025 and 2027' }, r); }))
+    .concat((iss.duplicate || []).map(function (r) { return Object.assign({ problem: 'Listed more than once' }, r); }));
   var muniBrgy = function (r) { return [r.province, r.municipality, r.barangay]; };
 
   return [
@@ -462,10 +462,10 @@ function dhVolunteerChecks(o, col, colMuni, colProv, colBrgy, one) {
     {
       id: 'cv_gaps', dim: 'completeness', name: 'Volunteer record gaps', icon: 'clipboard-x', severity: 'verify',
       unit: ['volunteer row', 'volunteer rows'], total: sumRows(gaps), countOf: sumRows,
-      meaning: 'Volunteer rows with no name, no sex, no position, or a term start date that cannot be right.',
-      why: 'Fields left blank or mistyped when the CV Profile Form was encoded. Sex feeds the SM1 para. 22 inclusion check.',
+      meaning: 'Volunteer rows with no name, no sex, no position, a term start date that cannot be right, or a person listed more than once for the same committee (counted once).',
+      why: 'Fields left blank or mistyped when the CV Profile Form was encoded, or the same volunteer encoded twice. Sex feeds the SM1 para. 22 inclusion check.',
       steps: ['Complete the missing fields in KCIS from the CV Profile Form.',
-              'Delete rows that are not real volunteers.',
+              'Delete rows that are not real volunteers, and the extra copies of a volunteer listed more than once.',
               'Re-export and re-import the Community Volunteer List.'],
       rows: function () { return gaps; }, places: one,
       cols: [colMuni, colProv, colBrgy, col('Problem', function (r) { return esc(r.problem); }, function (r) { return r.problem; }),

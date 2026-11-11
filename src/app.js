@@ -171,7 +171,7 @@ function downloadAppUpdate() {
     .then(function (blob) {
       UPDATE_STATE.downloading = false;
       UPDATE_STATE.downloadProgress = '';
-      var filename = 'PCRP_Encoding_and_Data_Quality_Assessment_Tool_v' + remote.version + '.html';
+      var filename = 'Caraga_PCRP_Progress_Tracker_Tool_v' + remote.version + '.html';
       saveBlob(blob, filename);
       toast('Update downloaded! Open the new file from your Downloads folder.');
       renderSettings();
@@ -1233,15 +1233,11 @@ function updateTabBadges() {
   setBadge('sni-badge-import', loadedCount ? loadedCount + '/3' : '', loadedCount === 3 ? 'good' : '');
 
   if (!STATE.computed || !S.overview || !SNAP) {
-    ['volunteers', 'brest', 'mrest', 'verify', 'movs', 'health', 'group-volunteers'].forEach(function (id) { setBadge(id, ''); });
+    ['volunteers', 'brest', 'mrest', 'verify', 'health', 'group-volunteers'].forEach(function (id) { setBadge(id, ''); });
     return;
   }
   var key = homeKey();
   var brgysInScope = (SNAP.barangayRows || []).filter(function (b) { return !key || (b.province + '|' + b.municipality === key); });
-  if (SNAP.movs) {
-    var movLacking = SNAP.movs.groups.filter(function (g) { return inOverviewScope(g) && g.lacking; }).length;
-    setBadge('movs', SNAP.movs.imported ? (movLacking ? n(movLacking) + ' lacking' : '✓') : 'Needed', SNAP.movs.imported ? (movLacking ? 'warn' : 'good') : 'warn');
-  }
 
   try {
     var P = people(), inScope = pScopeTest();
@@ -1307,7 +1303,7 @@ function updateTabBadges() {
 
 function go(page) {
   if (page === 'import') page = 'settings';
-  if (page === 'dqa' || page === 'data-health') page = 'health';
+  if (page === 'dqa' || page === 'data-health' || page === 'movs') page = 'health';
   if (page === 'kpisummary') page = 'kpis';
   // Operational summaries remain in the Municipality Profile; aggregate cards live on KPI.
   if (['overview', 'munis', 'brgys', 'attendees', 'households', 'people'].indexOf(page) !== -1) page = 'profile';
@@ -1317,7 +1313,7 @@ function go(page) {
     sessionStorage.setItem('pcrp_active_page', page);
     localStorage.setItem('pcrp_active_page', page);
   } catch (e) {}
-  Array.prototype.forEach.call(document.querySelectorAll('#tabs button'), function (b) {
+  Array.prototype.forEach.call(document.querySelectorAll('#tabs button:not([data-act="global-stage"])'), function (b) {
     var on = b.getAttribute('data-page') === page;
     b.classList.toggle('on', on); b.setAttribute('aria-selected', on);
     if (on && hasGsap()) {
@@ -1337,7 +1333,7 @@ function go(page) {
 
   // Highlight parent group triggers if active page is inside group
   var isVolunteersGroup = (page === 'volunteers' || page === 'brest' || page === 'cspmc');
-  var isDqaGroup = (page === 'health' || page === 'verify' || page === 'movs');
+  var isDqaGroup = (page === 'health' || page === 'verify');
   var grpVol = $('tab-group-volunteers');
   if (grpVol) grpVol.classList.toggle('on', isVolunteersGroup);
   var grpDqa = $('tab-group-dqa');
@@ -1355,7 +1351,42 @@ function go(page) {
   animatePageIn($('page-' + page));
 }
 
+// ---- The activity stage: one switch in the header for every stage-aware page (Municipality Profile, KPI).
+var STAGE_PAGES = ['profile', 'kpis'];
+function syncStageSwitch() {
+  var wrap = $('stage-switch'); if (!wrap) return;
+  var applies = STAGE_PAGES.indexOf(STATE.page) !== -1, stage = STATE.stage === 2 ? 2 : 1;
+  Array.prototype.forEach.call(wrap.querySelectorAll('button'), function (b) {
+    var on = Number(b.getAttribute('data-v')) === stage;
+    b.setAttribute('aria-pressed', on); b.classList.toggle('on', on); b.disabled = !applies;
+  });
+  wrap.classList.toggle('is-idle', !applies);
+  var dock = wrap.closest('.stage-dock'); if (dock) dock.classList.toggle('is-idle', !applies);   // the narrow-screen floating dock hides when idle
+  wrap.title = applies ? 'Activity stage shown on the Municipality Profile and KPI pages' : 'This page covers both stages. The stage applies to the Municipality Profile and KPI pages.';
+}
+function setGlobalStage(stage) {
+  stage = Number(stage) === 2 ? 2 : 1;
+  if (typeof profileRestore === 'function') profileRestore();
+  if (typeof kpiRestore === 'function') kpiRestore();
+  STATE.stage = stage;
+  if (typeof PROFILE_STATE !== 'undefined' && PROFILE_STATE.stage !== stage) {
+    profileClosePanel(false); PROFILE_STATE.stage = stage;
+    profileMapFilters().show = ''; profileCvFilters().show = '';
+    profilePersist();
+  }
+  if (typeof KPI_UI !== 'undefined') { KPI_UI.stage = stage; kpiPersist(); }
+  var p = prefs(); p.stage = stage; savePrefs(p);
+  renderPage(); updateTabBadges();
+}
+function restoreGlobalStage() {
+  var p = prefs(), saved = p.stage || (p.municipalityProfile && p.municipalityProfile.stage) || (p.kpiDashboard && p.kpiDashboard.stage);
+  STATE.stage = saved === 2 ? 2 : 1;
+}
+
 function renderPage() {
+  try { renderPageBody(); } finally { syncStageSwitch(); }   // a deep link can change the stage while rendering
+}
+function renderPageBody() {
   if (STATE.page === 'profile') renderMunicipalityProfile();
   else if (STATE.page === 'kpis') renderKpis();
   else if (STATE.page === 'volunteers') renderVolunteers();
@@ -1363,14 +1394,14 @@ function renderPage() {
   else if (STATE.page === 'cspmc') renderCspmc();
   else if (STATE.page === 'mrest') renderMrest();
   else if (STATE.page === 'verify') renderVerify();
-  else if (STATE.page === 'movs') renderMovs();
   else if (STATE.page === 'health') renderHealth();
   else if (STATE.page === 'settings' || STATE.page === 'import') renderSettings();
   else renderSettings();
 }
 
 function setTabsEnabled(on) {
-  Array.prototype.forEach.call(document.querySelectorAll('#tabs button'), function (b) {
+  // The stage switch sits in the tab band but is not a page tab; syncStageSwitch owns its state.
+  Array.prototype.forEach.call(document.querySelectorAll('#tabs button:not([data-act="global-stage"])'), function (b) {
     var p = b.getAttribute('data-page');
     if (p !== 'import' && p !== 'settings') b.disabled = !on;
   });
@@ -1736,9 +1767,9 @@ function progressBar(ok, warn, total) {
 
 function activityProgressSum(items) {
   return items.reduce(function (t, x) {
-    ['expected', 'encoded', 'complete', 'movsReady', 'movBacklog'].forEach(function (k) { t[k] += x[k] || 0; });
+    ['expected', 'encoded', 'complete', 'movsReady', 'movSubmitted', 'movRequired', 'movBacklog'].forEach(function (k) { t[k] += x[k] || 0; });
     return t;
-  }, { expected: 0, encoded: 0, complete: 0, movsReady: 0, movBacklog: 0 });
+  }, { expected: 0, encoded: 0, complete: 0, movsReady: 0, movSubmitted: 0, movRequired: 0, movBacklog: 0 });
 }
 function activityProgressBars(t, stage) {
   t = t || {}; stage = stage || STATE.stage;
@@ -1991,7 +2022,7 @@ function renderSettings() {
           '<span class="pill good">' + icon('shield-check') + ' Privacy Compliant</span>' +
         '</div>' +
         '<ul style="margin:8px 0 0;padding-left:18px;line-height:1.6">' +
-          '<li><strong>PCRP Encoding and Data Quality Assessment Tool</strong> runs the Encoding Monitor v' + esc(BUILT_IN.monitorVersion) + ' rules on this computer. Files are never uploaded.</li>' +
+          '<li><strong>Caraga PCRP Progress Tracker Tool</strong> runs the Encoding Monitor v' + esc(BUILT_IN.monitorVersion) + ' rules on this computer. Files are never uploaded.</li>' +
           '<li><strong>Caraga Region Implementation</strong> · Vibe coded by: <strong>kjahidalgo</strong>.</li>' +
           '<li>The loaded exports, the findings of earlier pulls, and the verification tags are kept in this browser until you choose "Forget saved data" on the Import card; settings above are remembered too.</li>' +
           '<li>Attendee and volunteer names appear in the app, as for an editor of the web monitor. Handle the exports and any downloaded file under the Data Privacy Act.</li>' +
@@ -2104,7 +2135,7 @@ function stamp() { return new Date().toISOString().slice(0, 10); }
 function exportExcel() {
   var keepStage = STATE.stage, keepProv = STATE.prov;
   var isMuni = isMunicipalUser();
-  var summary = [['PCRP Encoding and Data Quality Assessment Tool — findings'],
+  var summary = [['Caraga PCRP Progress Tracker Tool — findings'],
     ['User Scope', isMuni ? 'PEA / MDM (Field Municipal Workspace)' : 'Project Evaluation Officer (Region Level) RPMO'],
     ['Municipality', homeLabel()],
     ['Generated', new Date().toLocaleString()],
@@ -2210,15 +2241,7 @@ document.addEventListener('click', function (ev) {
       count: count
     };
 
-    if (checkId.indexOf('mov_') === 0) {
-      MOV_UI.municipality = muniKey; MOV_UI.activity = actCode; MOV_UI.search = ''; MOV_UI.status = ''; MOV_UI.open = '';
-      var parts = (bkey || (muniKey + '|')).split('|');
-      var groupKey = movGroupKey({ province: parts[0] || '', municipality: parts[1] || '', barangay: parts[2] || '' }, actCode);
-      MOV_UI.requirement = t.getAttribute('data-requirement') || ''; MOV_UI.note = null; MOV_UI.limit = 60;
-      if (movGetData().byKey[groupKey]) MOV_UI.open = groupKey;
-      else { MOV_UI.view = 'attachments'; MOV_UI.search = t.getAttribute('data-path') || ''; }
-      go('movs');
-    } else if (checkId === 'quorum' || checkId === 'hhcounts' || checkId === 'hhattendance') {
+    if (checkId === 'quorum' || checkId === 'hhcounts' || checkId === 'hhattendance') {
       profileOpenLocation(bkey || muniKey, actCode || 'BA1', !!bkey);
     } else if (checkId === 'activityrepeat' || checkId === 'summaryfigures' || checkId === 'late' || checkId === 'dates' || checkId === 'multidate' || checkId === 'attdup' || checkId === 'sex' || checkId === 'unmapped') {
       // The profile's attendance panel shows the source rows, dates and counts behind these findings.
@@ -2246,6 +2269,7 @@ document.addEventListener('click', function (ev) {
         else if (problem && problem.indexOf('Tagged to') !== -1) VOL_STATE.flag = 'otherbody';
         else if (problem === 'No name') VOL_STATE.flag = 'noname';
         else if (problem === 'Sex not recorded') VOL_STATE.flag = 'nosex';
+        else if (problem === 'Listed more than once') VOL_STATE.flag = 'duplicate';
         else if (problem) VOL_STATE.flag = 'has_flags';
       }
       go('volunteers');
@@ -2323,7 +2347,7 @@ document.addEventListener('click', function (ev) {
       remote: {
         version: '2.17.0',
         releaseDate: today(),
-        title: 'PCRP Encoding and Data Quality Assessment Tool v2.17.0',
+        title: 'Caraga PCRP Progress Tracker Tool v2.17.0',
         fileSize: '1125 KB',
         notes: [
           'Preview simulation: next-generation real-time multi-user telemetry and export sync',
@@ -2490,12 +2514,17 @@ document.addEventListener('click', function (ev) {
   }
 });
 $('btn-import-top').addEventListener('click', function () { go('settings'); });
+restoreGlobalStage(); syncStageSwitch();
+$('stage-switch').addEventListener('click', function (event) {
+  var b = event.target.closest('button[data-act="global-stage"]');
+  if (b && !b.disabled && Number(b.getAttribute('data-v')) !== STATE.stage) setGlobalStage(b.getAttribute('data-v'));
+});
 $('btn-export').addEventListener('click', exportExcel);
 $('btn-compute').addEventListener('click', function () { computeAndShow('profile'); });
 var btnComputeSide = $('btn-compute-side');
 if (btnComputeSide) btnComputeSide.addEventListener('click', function () { computeAndShow('profile'); });
 $('btn-clear').addEventListener('click', function () {
-  delete TABS.Raw_MOVs; MOV_STATE = { referenceVersion: MOV_REFERENCE_VERSION, assignments: {}, applicability: {} }; MOV_CACHE = null; delete TABS.Raw_Activity_Tracker; delete TABS.Raw_Participants; delete TABS.Raw_HH_Participation; delete TABS.Raw_Volunteers;
+  delete TABS.Raw_MOVs; MOV_CACHE = null; delete TABS.Raw_Activity_Tracker; delete TABS.Raw_Participants; delete TABS.Raw_HH_Participation; delete TABS.Raw_Volunteers;
   LOADED = {}; IMPORT_ERRORS = []; STATE.computed = false; SNAP = null; S.overview = null; S.matrix = null; PEOPLE = null;
   // The saved exports go too; earlier pulls and verification tags stay until "Forget saved data".
   SAVED.current = null;

@@ -9,6 +9,11 @@
 PCRP_*.txt
 
 node_modules/
+.vercel/
+web-dist/
+.cloud-test-results.log
+.env*
+.rollback-backup/
 .DS_Store
 Thumbs.db
 

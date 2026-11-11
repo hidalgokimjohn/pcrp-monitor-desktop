@@ -1,6 +1,5 @@
 // Stage 1 only. Reference: Field Guide, Stage 1!D4:I38. Presence is not content verification.
 var MOV_REFERENCE_VERSION = 'stage1-field-guide-2026-11-04';
-var MOV_STATE = { referenceVersion: MOV_REFERENCE_VERSION, assignments: {}, applicability: {} };
 var MOV_HEADERS = ['Region Name', 'Province Name', 'City Name', 'Barangay Name', 'Activity_ID', 'Activity_Category',
   'Date End', 'Date Start', 'Display On (Tab)', 'Attachment_Type_ID', 'File Type', 'File Name',
   'lib_region.code_correspondence', 'lib_province.code_correspondence', 'lib_city.code_correspondence',
@@ -74,34 +73,16 @@ function validateMovTable(table) {
   if (table.rows.some(function (r) { return !Array.isArray(r); })) throw new Error('Invalid MOV attachment record.');
   if (table.rowNumbers && (!Array.isArray(table.rowNumbers) || table.rowNumbers.length !== table.rows.length || table.rowNumbers.some(function (r) { return !Number.isInteger(r) || r < 1; }))) throw new Error('Invalid MOV source row numbers.');
 }
-function validateMovState(state) {
-  if (!state || state.referenceVersion !== MOV_REFERENCE_VERSION || !state.assignments || !state.applicability ||
-      typeof state.assignments !== 'object' || Array.isArray(state.assignments) || typeof state.applicability !== 'object' || Array.isArray(state.applicability)) throw new Error('Invalid or unsupported MOV review data.');
-  Object.keys(state.assignments).forEach(function (k) {
-    var assignments = state.assignments[k];
-    if (!assignments || typeof assignments !== 'object' || Array.isArray(assignments)) throw new Error('Invalid MOV assignment.');
-    Object.keys(assignments).forEach(function (a) { var v = assignments[a]; if (!v || typeof v.note !== 'string' || !v.note.trim() || typeof v.reviewer !== 'string' || !v.reviewer.trim()) throw new Error('MOV assignments require a reviewer and note.'); });
-  });
-  Object.keys(state.applicability).forEach(function (k) { var v = state.applicability[k]; if (!v || ['applicable', 'notApplicable'].indexOf(v.state) === -1 || !v.note || !v.reviewer) throw new Error('Invalid MOV applicability decision.'); });
-}
-
-function movBuild(base, index, rec, table, review, evalDate, trackerImported) {
-  review = review || { assignments: {}, applicability: {} };
-  var imported = !!table, groups = [], byKey = {}, attachments = [], byAttachmentKey = {}, findings = [], findingIndex = {};
+function movBuild(base, index, rec, table, evalDate, trackerImported) {
+  var imported = !!table, groups = [], byKey = {}, attachments = [], byAttachmentKey = {};
   var stats = { records: table ? table.rows.length : 0, attachmentRows: 0, emptyRows: 0, distinctPaths: 0, repeatedPaths: 0, repeatedOccurrences: 0 };
-  function issue(kind, place, code, text, rows, paths, requirement) {
-    var k = [kind, movPlaceKey(place), code || '', requirement || '', text].join('|');
-    var f = findingIndex[k];
-    if (!f) { f = findingIndex[k] = { kind: kind, actCode: code || '', issue: text, sourceRows: [], paths: [], requirementId: requirement || '', groupKey: movGroupKey(place, code || ''), province: place.province, municipality: place.municipality, barangay: place.barangay || '' }; findings.push(f); }
-    (rows || []).forEach(function (r) { if (f.sourceRows.indexOf(r) === -1) f.sourceRows.push(r); });
-    (paths || []).forEach(function (p) { if (f.paths.indexOf(p) === -1) f.paths.push(p); });
-  }
-  function makeGroup(place, code, pipelineApplicable) {
+  // stage2Prio: the baseline's "Stage 2 Prioritized" flag for barangay groups; it decides the conditional Year 2/3 requirements.
+  function makeGroup(place, code, pipelineApplicable, stage2Prio) {
     var key = movGroupKey(place, code), slotCode = code === 'APPRAISAL' ? 'MRP' : code;
     var slot = rec[movGroupKey(place, slotCode)], end = slot ? slot.dateEnd : null;
     var due = !!trackerImported && trackerIsDate(end) && end <= evalDate;
     var group = Object.assign({ key: key, actCode: code, actLabel: code === 'APPRAISAL' ? 'RPMO Appraisal of Municipal Resilience Plan' : index.byCode[code].label,
-      trackerEncoded: !!(slot && slot.rows > 0) && code !== 'APPRAISAL', pipelineApplicable: pipelineApplicable, due: due, dateEnd: end, attendance: slot && code !== 'APPRAISAL' ? slot.att : 0, requirements: [], ready: false }, place);
+      trackerEncoded: !!(slot && slot.rows > 0) && code !== 'APPRAISAL', pipelineApplicable: pipelineApplicable, stage2Prio: !!stage2Prio, due: due, dateEnd: end, attendance: slot && code !== 'APPRAISAL' ? slot.att : 0, requirements: [], ready: false }, place);
     group.requirements = MOV_CATALOG[code].map(function (def) { return Object.assign({ key: key + '|' + def.id, groupKey: key, actCode: code,
       status: 'Pending activity', submittedPaths: [], attachmentKeys: [], candidateKeys: [], due: due, assessed: imported }, def, place); });
     groups.push(group); byKey[key] = group;
@@ -109,7 +90,7 @@ function movBuild(base, index, rec, table, review, evalDate, trackerImported) {
   base.muniList.forEach(function (m) { ['MREST', 'MRP', 'APPRAISAL'].forEach(function (code) { if (code === 'APPRAISAL' || index.byCode[code]) makeGroup({ province: m.province, municipality: m.municipality, barangay: '' }, code, code !== 'APPRAISAL'); }); });
   base.rows.forEach(function (b) {
     ['BA1', 'PROFILE', 'WALK', 'MAP', 'FGD', 'BPRVA', 'BDC'].forEach(function (code) {
-      if (index.byCode[code]) makeGroup({ province: b.province, municipality: b.municipality, barangay: b.barangay }, code, !index.byCode[code].prioOnly || b.stage2Prio);
+      if (index.byCode[code]) makeGroup({ province: b.province, municipality: b.municipality, barangay: b.barangay }, code, !index.byCode[code].prioOnly || b.stage2Prio, b.stage2Prio);
     });
   });
   var pathRows = Object.create(null), attachmentIndex = {}, byGroup = {};
@@ -120,7 +101,7 @@ function movBuild(base, index, rec, table, review, evalDate, trackerImported) {
       var sourceRow = table.rowNumbers ? table.rowNumbers[i] : i + 2;
       var path = movPath(val('File Path')), category = normText(val('Activity_Category'));
       var code = /rpmo.*appraisal|appraisal.*municipal.*resilience/i.test(category) ? 'APPRAISAL' : classify(index, null, category, null);
-      var isStage1 = !!MOV_CATALOG[code], municipal = code === 'APPRAISAL' || (index.byCode[code] && index.byCode[code].level === 'Municipal');
+      var municipal =code === 'APPRAISAL' || (index.byCode[code] && index.byCode[code].level === 'Municipal');
       var place = { province: normText(val('Province Name')), municipality: normText(val('City Name')), barangay: trackerBarangay(val('Barangay Name')) };
       var cityCode = normKey(val('lib_city.code_correspondence')), brgyCode = normKey(val('lib_brgy.code_correspondence'));
       var canonical = municipal ? base.psgcCityToMuni[cityCode] : base.psgcToBrgy[brgyCode];
@@ -136,11 +117,7 @@ function movBuild(base, index, rec, table, review, evalDate, trackerImported) {
       var type = movHas(val('Attachment_Type_ID')) ? String(val('Attachment_Type_ID')).trim() : '';
       var label = normText(val('File Name'));
       var identity = JSON.stringify([path, movPlaceKey(place), code || category, activityId, type, normKey(label)]);
-      if (attachmentIndex[identity]) {
-        var existing = attachmentIndex[identity]; existing.sourceRows.push(sourceRow);
-        if (formatDateVal(val('Date Start')) !== existing.dateStart || formatDateVal(val('Date End')) !== existing.dateEnd) issue('dates', place, code, 'Repeated file path carries different attachment dates', [sourceRow], [path]);
-        return;
-      }
+      if (attachmentIndex[identity]) { attachmentIndex[identity].sourceRows.push(sourceRow); return; }
       var filename = path.split('/').pop(); try { filename = decodeURIComponent(filename); } catch (e) {}
       var a = Object.assign({ key: identity, path: path, filename: filename, label: label, typeId: type, activityId: activityId, category: category,
         actCode: code || '', groupKey: movGroupKey(place, code || ''), sourceRows: [sourceRow], dateStart: formatDateVal(val('Date Start')),
@@ -148,87 +125,46 @@ function movBuild(base, index, rec, table, review, evalDate, trackerImported) {
         locationOK: !!canonical, activityOK: activityOK, supplementary: ['14', '20', '33', '35', '36'].indexOf(type) !== -1 }, place);
       attachments.push(a); attachmentIndex[identity] = a; byAttachmentKey[identity] = a;
       (byGroup[a.groupKey] = byGroup[a.groupKey] || []).push(a);
-      if (!canonical) issue('unmapped', place, code, 'Attachment location is not in the monitored baseline', [sourceRow], [path]);
-      if (!code) issue('unmapped', place, '', 'Attachment activity is unrecognized or missing', [sourceRow], [path]);
-      else if (isStage1 && !activityOK) issue('conflict', place, code, 'Activity_ID does not agree with Activity_Category', [sourceRow], [path]);
-      if (!isStage1) return;
-      if (MOV_TYPES[type] && normAlpha(MOV_TYPES[type]) !== normAlpha(label)) issue('conflict', place, code, 'Attachment type ID and document label disagree', [sourceRow], [path]);
-      var trackerSlot = rec[a.groupKey];
-      if (trackerImported && canonical && !trackerSlot && code !== 'APPRAISAL') issue('unmapped', place, code, 'MOV activity has no Activity Tracker record', [sourceRow], [path]);
-      if (trackerSlot) {
-        var pairs = trackerSlot.sourceRows || [];
-        var agrees = pairs.some(function (s) { return a.dateStart && a.dateEnd && s.actualStart === a.dateStart && s.actualEnd === a.dateEnd; });
-        if (!agrees) issue('dates', place, code, 'Attachment dates differ from or are missing against Tracker actual dates; clear MOV matches remain credited', [sourceRow], [path]);
-      }
     });
     stats.distinctPaths = Object.keys(pathRows).length;
     Object.keys(pathRows).forEach(function (p) {
       var rows = pathRows[p];
-      if (rows.length > 1) {
-        stats.repeatedPaths++; stats.repeatedOccurrences += rows.length - 1;
-        attachments.filter(function (a) { return a.path === p && MOV_CATALOG[a.actCode]; }).forEach(function (a) {
-          issue('repeated', a, a.actCode, 'Repeated file path: counted once per requirement', a.sourceRows, [p]);
-        });
-      }
+      if (rows.length > 1) { stats.repeatedPaths++; stats.repeatedOccurrences += rows.length - 1; }
     });
   }
   var byMuni = {};
   groups.forEach(function (g) {
     var source = byGroup[g.key] || [];
     g.requirements.forEach(function (r) {
-      var decision = review.applicability[r.key];
-      if (r.conditional && !decision) r.status = 'Needs applicability';
-      else if (r.conditional && decision.state === 'notApplicable') r.status = 'Not applicable';
+      // Year 2/3 requirements apply only to barangays the baseline marks Stage 2 Prioritized.
+      if (r.conditional && !g.stage2Prio) r.status = 'Not applicable';
       else {
+        // Exact: KCIS type ID and label agree. Candidate: a related type ID or a filename match. Both are credited,
+        // since there is no reviewer step; candidates are kept apart so the evidence can still be told apart.
         var candidates = [], credit = Object.create(null);
         source.forEach(function (a) {
-          var exact = a.locationOK && a.activityOK && r.types.indexOf(a.typeId) !== -1 && MOV_TYPES[a.typeId] && normAlpha(MOV_TYPES[a.typeId]) === normAlpha(a.label);
+          if (!a.locationOK) return;
+          var exact = a.activityOK && r.types.indexOf(a.typeId) !== -1 && MOV_TYPES[a.typeId] && normAlpha(MOV_TYPES[a.typeId]) === normAlpha(a.label);
           if (exact) { credit[a.path] = a.key; }
-          else if (!a.supplementary && (r.types.indexOf(a.typeId) !== -1 || r.candidateTypes.indexOf(a.typeId) !== -1 || movHintMatches(r.hint, a.filename))) candidates.push(a.key);
+          else if (!a.supplementary && (r.types.indexOf(a.typeId) !== -1 || r.candidateTypes.indexOf(a.typeId) !== -1 || movHintMatches(r.hint, a.filename))) candidates.push(a);
         });
-        Object.keys(review.assignments[r.key] || {}).forEach(function (key) {
-          var a = byAttachmentKey[key], approval = review.assignments[r.key][key];
-          if (!a || !a.locationOK || !approval.note || !approval.reviewer || normKey(a.province) !== normKey(r.province) || normKey(a.municipality) !== normKey(r.municipality)) return;
-          credit[a.path] = a.key;
-          if (a.actCode !== r.actCode || normKey(a.barangay) !== normKey(r.barangay)) issue('reassigned', r, r.actCode, 'Reviewed evidence is filed under a different activity or barangay: ' + a.category + ' / ' + (a.barangay || 'Municipal level'), a.sourceRows, [a.path], r.id);
-        });
-        r.submittedPaths = Object.keys(credit); r.attachmentKeys = r.submittedPaths.map(function (p) { return credit[p]; }); r.candidateKeys = candidates;
-        r.status = r.submittedPaths.length ? 'Submitted' : (candidates.length ? 'Needs review' : (imported && g.due ? 'Lacking' : 'Pending activity'));
+        candidates.forEach(function (a) { if (!credit[a.path]) credit[a.path] = a.key; });
+        r.submittedPaths = Object.keys(credit); r.attachmentKeys = r.submittedPaths.map(function (p) { return credit[p]; });
+        r.candidateKeys = candidates.map(function (a) { return a.key; });
+        r.status = r.submittedPaths.length ? 'Submitted' : (imported && g.due ? 'Lacking' : 'Pending activity');
       }
-      if (imported && r.status === 'Needs applicability') issue('applicability', r, r.actCode, r.name + ': applicability requires a reviewer decision', [], [], r.id);
-      if (imported && r.status === 'Needs review') issue('review', r, r.actCode, r.name + ': uncertain attachments need assignment review', [], [], r.id);
-      if (imported && g.due && r.status !== 'Submitted' && r.status !== 'Not applicable' && r.status !== 'Needs applicability') issue('lacking', r, r.actCode, r.name + ': required MOV not submitted', [], [], r.id);
     });
     g.ready = imported && g.requirements.every(function (r) { return r.status === 'Submitted' || r.status === 'Not applicable'; });
     g.submitted = g.requirements.filter(function (r) { return r.status === 'Submitted'; }).length;
     g.required = g.requirements.filter(function (r) { return r.status !== 'Not applicable'; }).length;
     g.lacking = imported && g.due && !g.ready;
     var mk = normKey(g.province) + '|' + normKey(g.municipality);
-    if (!byMuni[mk]) byMuni[mk] = { province: g.province, municipality: g.municipality, movsReady: imported, submitted: 0, required: 0, lacking: 0, unresolved: 0, appraisalReady: false };
+    if (!byMuni[mk]) byMuni[mk] = { province: g.province, municipality: g.municipality, movsReady: imported, submitted: 0, required: 0, lacking: 0, appraisalReady: false };
     var m = byMuni[mk]; m.submitted += g.submitted; m.required += g.required; if (g.lacking) m.lacking++;
-    m.unresolved += g.requirements.filter(function (r) { return r.status === 'Needs applicability'; }).length;
     if (!g.ready) m.movsReady = false;
     if (g.actCode === 'APPRAISAL') m.appraisalReady = g.ready;
   });
   return { imported: imported, trackerImported: !!trackerImported, referenceVersion: MOV_REFERENCE_VERSION, groups: groups, byKey: byKey,
-    attachments: attachments, byAttachmentKey: byAttachmentKey, findings: findings, stats: stats, byMuni: byMuni,
+    attachments: attachments, byAttachmentKey: byAttachmentKey, stats: stats, byMuni: byMuni,
     movsReady: imported && Object.keys(byMuni).length > 0 && Object.keys(byMuni).every(function (k) { return byMuni[k].movsReady; }) };
-}
-
-function movDqaChecks(o, col, muni, province, place, activity, one) {
-  var data = o.health && o.health.movs;
-  if (!data || !data.imported) return [];
-  var titles = { lacking: 'Required MOVs lacking after activity end', applicability: 'MOV applicability unresolved', review: 'MOV assignments need review',
-    repeated: 'Repeated MOV file paths', unmapped: 'Unmapped MOV records', conflict: 'MOV activity or document type conflicts', dates: 'MOV date discrepancies', reassigned: 'MOVs filed under another activity or barangay' };
-  return Object.keys(titles).map(function (kind) {
-    var rows = data.findings.filter(function (f) { return f.kind === kind; });
-    return { id: 'mov_' + kind, dim: kind === 'lacking' ? 'completeness' : (kind === 'repeated' ? 'integrity' : 'accuracy'), name: titles[kind], icon: 'files', severity: 'verify',
-      unit: ['finding', 'findings'], total: rows.length, meaning: 'Stage 1 MOV submission records; document contents and signatures are unverified.',
-      why: 'Check the imported attachment metadata against the Stage 1 requirements and source documents.',
-      steps: ['Open the Stage 1 MOV checklist and review the source rows.', 'Resolve assignment or applicability with a note, or correct KCIS and reimport.'],
-      rows: function () { return rows; }, places: one,
-      cols: [muni, province, place, activity, col('Finding', function (r) { return dhFindingLink('mov_' + kind, r, r.issue, 1, 'Open Stage 1 MOVs', { requirement: r.requirementId, path: r.paths[0] || '' }); }, function (r) { return r.issue; }),
-        col('Source rows', function (r) { return esc(r.sourceRows.join(', ')); }, function (r) { return r.sourceRows.join('; '); })],
-      text: function (r) { return [r.province, r.municipality, r.barangay, r.actCode, r.issue, r.sourceRows.join(' ')]; }, detail: function (r) { return r.issue + (r.sourceRows.length ? ' (rows ' + r.sourceRows.join(', ') + ')' : ''); } };
-  });
 }

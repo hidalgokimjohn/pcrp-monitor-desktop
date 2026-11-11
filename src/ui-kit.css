@@ -214,9 +214,13 @@ html.dark .tabs .tab-group-trigger.on { border-bottom-color: #fff; }
 .tab-group-trigger:disabled { opacity: 0.45; }
 .tabs button:focus-visible { outline: 2px solid #fff; outline-offset: -3px; }
 .nav-tab-group { align-self: stretch; }
-/* The kit's tabs are words only: drop the leading icon on the band (dropdown items keep theirs) */
+/* Each band tab leads with a small icon, a little dimmer than its label until the tab is active */
 .tabs > button > .ico:first-child,
-.tab-group-trigger > .ico:first-child { display: none; }
+.tab-group-trigger > .ico:first-child { width: 15px; height: 15px; flex-shrink: 0; opacity: 0.8; }
+.tabs > button.on > .ico:first-child,
+.tab-group-trigger.on > .ico:first-child,
+.tabs > button:hover:not(:disabled) > .ico:first-child,
+.tab-group-trigger:hover:not(:disabled) > .ico:first-child { opacity: 1; }
 .tabs .tab-badge,
 .tabs button.on .tab-badge { min-width: 0; height: 17px; padding: 0 5px; font-size: 10px; background: rgba(255, 255, 255, 0.16); color: #fff; border: none; }
 .tab-group-trigger .group-arrow { width: 11px; height: 11px; }
