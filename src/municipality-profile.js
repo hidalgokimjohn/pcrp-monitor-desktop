@@ -759,10 +759,11 @@ function profileDirectoryHtml() {
       '<div class="pdm-format" role="group" aria-label="Lane order">' +
       [['rank', 'Leaders first'], ['province', 'By province']].map(function (f) { return '<button type="button" data-act="profile-race-order" data-v="' + f[0] + '" aria-pressed="' + ((PROFILE_DIR.order === 'province' ? 'province' : 'rank') === f[0]) + '">' + f[1] + '</button>'; }).join('') + '</div>' +
       profileButton('profile-race-replay', 'Replay race') : '';
-  return '<header class="pdir-head"><div><span class="eyebrow">Stage ' + stage + ' · ' + all.length + ' monitored municipalities</span><h1>Municipality profiles</h1><p class="muted">Choose a municipality to see its activities in sequence, each barangay\'s encoding, attendees and MOVs, and its MOV checklist.</p></div>' +
-    (swimlane ? '' : '<div class="pdir-region"><span class="eyebrow">Region-wide progress</span>' + profileStack(region, { tracker: tracker, head: true }) + '</div>') + '</header>' +
-    '<div class="profile-controls profile-tabbar"><div class="sub-nav-tabs profile-home-tabs" role="tablist" aria-label="Municipality view">' + tabs + '</div><div class="row-actions">' + actions + '</div></div>' +
-    '<div class="profile-controls pdir-controls"><label class="field psearch"><span>Find municipality</span><input id="profile-dir-search" type="search" value="' + attr(PROFILE_DIR.search) + '" placeholder="Municipality or province…"></label></div>' +
+  // The tab row carries the search and the view's own controls, so the content starts right under it.
+  var search = '<label class="field psearch"><span class="sr-only">Find municipality</span><input id="profile-dir-search" type="search" value="' + attr(PROFILE_DIR.search) + '" placeholder="Find municipality or province…" aria-label="Find municipality or province"></label>';
+  return '<h1 class="sr-only">Municipality profiles, Stage ' + stage + ', ' + all.length + ' monitored municipalities</h1>' +
+    '<div class="profile-controls profile-tabbar pdir-tabbar"><div class="sub-nav-tabs profile-home-tabs" role="tablist" aria-label="Municipality view">' + tabs + '</div><div class="row-actions">' + search + actions + '</div></div>' +
+    (!swimlane && !matrix ? '<div class="pdir-region"><span class="eyebrow">Region-wide progress · Stage ' + stage + ' · ' + all.length + ' municipalities</span>' + profileStack(region, { tracker: tracker, head: true }) + '</div>' : '') +
     (swimlane ? profileSwimlaneHtml(rows, all) : matrix ? profileDirMatrixHtml(rows.slice().sort(function (a, b) { return a.model.province.localeCompare(b.model.province) || a.model.municipality.localeCompare(b.model.municipality); }), all) :
       profileLegend(movs) + (rows.length ? '<div class="table-wrap pdir-wrap"><table class="grid pdir-table"><thead>' + head + '</thead><tbody>' + body + '</tbody></table></div>' : '<div class="msg info">No municipalities match “' + esc(PROFILE_DIR.search) + '”.</div>'));
 }
@@ -810,8 +811,8 @@ function profileRaceField(rows, stage) {
 function profileSwimlaneHtml(rows, all) {
   if (isMunicipalUser()) return '';
   var scope = profileRaceScope(), whole = scope === 'all';
-  var intro = '<section class="psw-section" aria-labelledby="psw-title"><h2 id="psw-title">Activity swimlane</h2>' +
-    '<p class="muted">' + (whole ? 'Every municipality swims its own lane through every stage, from the first Stage 1 activity to the last of the final stage.' : 'Every municipality swims its own lane through Stage ' + PROFILE_STATE.stage + '.') + ' The swimmer is in the first unfinished activity, moved along by the share of its locations already completed. A location is completed when its Activity Tracker record has a valid Actual End date. Later completions remain visible. Select a checkpoint to open that activity.</p>';
+  var intro = '<section class="psw-section" aria-label="Activity swimlane">';
+  var help = '<details class="pdm-help"><summary>How the race works</summary><p class="tiny muted">' + (whole ? 'Every municipality swims its own lane through every stage, from the first Stage 1 activity to the last of the final stage.' : 'Every municipality swims its own lane through Stage ' + PROFILE_STATE.stage + '.') + ' The swimmer is in the first unfinished activity, moved along by the share of its locations already completed. A location is completed when its Activity Tracker record has a valid Actual End date. Later completions remain visible. Select a checkpoint to open that activity.</p></details>';
   var legend = '<div class="psw-legend" aria-label="Swimlane legend"><span class="psw-complete">✓ Completed</span><span class="psw-partial">◐ Partially completed</span><span class="psw-none">○ No completion recorded</span><span>' + profileSwimmerIcon() + ' Current position and place</span></div>';
   if (!rows.length) return intro + legend + '<div class="msg info">No municipalities match “' + esc(PROFILE_DIR.search) + '”.</div></section>';
   var acts = profileRaceActivities(rows[0].model, scope);
@@ -887,7 +888,7 @@ function profileSwimlaneHtml(rows, all) {
   }).join('');
   return intro + summary + board + legend + (!LOADED.activityTracker ? '<div class="msg info">Import Activity Tracker to assess conduct dates and position the municipalities.</div>' : '') +
     '<div class="psw-wrap" role="region" tabindex="0" aria-label="' + (whole ? 'All stages' : 'Stage ' + PROFILE_STATE.stage) + ' municipality activity swimlane, ' + (byRank ? 'leaders first' : 'grouped by province') + '; scroll to view more activities">' +
-    '<div class="psw-race' + (animate ? ' psw-go' : '') + (acts.length > 10 ? ' psw-long' : '') + '" style="--n:' + acts.length + '">' + head + '<div role="list" aria-label="Lanes">' + body + '</div></div></div></section>';
+    '<div class="psw-race' + (animate ? ' psw-go' : '') + (acts.length > 10 ? ' psw-long' : '') + '" style="--n:' + acts.length + '">' + head + '<div role="list" aria-label="Lanes">' + body + '</div></div></div>' + help + '</section>';
 }
 
 // ---- Municipal Activity & MOV checklist: the manager's overview. Municipalities are rows; each activity is a

@@ -750,8 +750,8 @@ function renderVolunteers() {
     '<div class="card">' +
       '<div class="card-head">' +
         '<div>' +
-          '<h2>Community Volunteers &amp; Committees</h2><p class="tiny">Individual attendance cross-checks are unavailable from Activity Tracker summaries.</p>' +
-          '<div class="muted">' + (isMuni ? 'Dedicated volunteer directory for <strong>' + esc(home().municipality) + '</strong>.' : 'Region-wide community volunteer rosters.') + ' Tracks BResT, SFMSC, Stage 2 committees, GSI inclusion metrics (≥50% women), and committee chairpersons.</div>' +
+          '<div class="head-line"><h2>Community Volunteers &amp; Committees</h2><details class="head-info"><summary title="About this page" aria-label="About this page">i</summary>' +
+          '<div class="muted head-info-body">' + (isMuni ? 'Dedicated volunteer directory for <strong>' + esc(home().municipality) + '</strong>.' : 'Region-wide community volunteer rosters.') + ' Tracks BResT, SFMSC, Stage 2 committees, GSI inclusion metrics (≥50% women), and committee chairpersons. Individual attendance cross-checks are unavailable from Activity Tracker summaries.</div></details></div>' +
         '</div>' +
         '<div class="row-actions" style="margin:0"><button class="btn ghost btn-sm" data-act="vol-export">' + icon('download') + ' <span>Export Volunteers CSV</span></button></div>' +
       '</div>' +
@@ -1169,8 +1169,8 @@ function renderBrest() {
     '<div class="card">' +
       '<div class="card-head">' +
         '<div>' +
-          '<h2>Barangay Resilience Team (BResT) Management</h2>' +
-          '<div class="muted">' + (isMuni ? 'Monitoring BResT formation for <strong>' + esc(home().municipality) + '</strong>.' : 'Region-wide BResT compliance monitor.') + ' Evaluates volunteer team formation, sectoral purok coverage, and marginalized representation (&ge;30%) under Stage 1.</div>' +
+          '<div class="head-line"><h2>Barangay Resilience Team (BResT) Management</h2><details class="head-info"><summary title="About this page" aria-label="About this page">i</summary>' +
+          '<div class="muted head-info-body">' + (isMuni ? 'Monitoring BResT formation for <strong>' + esc(home().municipality) + '</strong>.' : 'Region-wide BResT compliance monitor.') + ' Evaluates volunteer team formation, sectoral purok coverage, and marginalized representation (&ge;30%) under Stage 1.</div></details></div>' +
         '</div>' +
         '<div class="row-actions" style="margin:0">' +
           '<button class="btn ghost btn-sm" data-act="brt-teams-export">' + icon('download') + ' <span>Export Teams CSV</span></button>' +
@@ -1922,8 +1922,8 @@ function renderCspmc() {
     '<div class="card">' +
       '<div class="card-head">' +
         '<div>' +
-          '<h2>CSPMC &amp; Specialized Sub-Committees (Stage 2)</h2>' +
-          '<div class="muted">' + (isMuni ? 'Stage 2 committee management for <strong>' + esc(home().municipality) + '</strong>.' : 'Region-wide Stage 2 committee monitoring.') + ' Tracks all 8 specialized sub-committees formed during the 2nd Barangay Assembly (BA2) per Project Manuals (SM1 &amp; SM7).</div>' +
+          '<div class="head-line"><h2>CSPMC &amp; Specialized Sub-Committees (Stage 2)</h2><details class="head-info"><summary title="About this page" aria-label="About this page">i</summary>' +
+          '<div class="muted head-info-body">' + (isMuni ? 'Stage 2 committee management for <strong>' + esc(home().municipality) + '</strong>.' : 'Region-wide Stage 2 committee monitoring.') + ' Tracks all 8 specialized sub-committees formed during the 2nd Barangay Assembly (BA2) per Project Manuals (SM1 &amp; SM7).</div></details></div>' +
         '</div>' +
         '<div class="row-actions" style="margin:0">' +
           '<button type="button" class="btn ' + (CSPMC_STATE.showOrgChart ? 'primary' : 'ghost') + ' btn-sm" data-act="cspmc-toggle-org">' + icon('layers') + ' <span>' + (CSPMC_STATE.showOrgChart ? 'Hide Org Chart' : 'Show Org Chart') + '</span></button>' +
@@ -2818,8 +2818,8 @@ function renderMrest() {
     '<div class="card">' +
       '<div class="card-head">' +
         '<div>' +
-          '<h2>Municipal Resilience Team (MResT)</h2>' +
-          '<div class="muted">Tracks the multi-sectoral LGU and community co-governance team organized under the Mayor\'s Executive Order for <strong>' + esc(muniName) + ' (' + esc(provName) + ')</strong> per SM1 Section 3.1.</div>' +
+          '<div class="head-line"><h2>Municipal Resilience Team (MResT)</h2><details class="head-info"><summary title="About this page" aria-label="About this page">i</summary>' +
+          '<div class="muted head-info-body">Tracks the multi-sectoral LGU and community co-governance team organized under the Mayor\'s Executive Order for <strong>' + esc(muniName) + ' (' + esc(provName) + ')</strong> per SM1 Section 3.1.</div></details></div>' +
         '</div>' +
         '<div class="row-actions" style="margin:0">' +
           '<button type="button" class="btn ' + (MRT_STATE.showOrgChart ? 'primary' : 'ghost') + ' btn-sm" data-act="mrt-toggle-org">' + icon('layers') + ' <span>' + (MRT_STATE.showOrgChart ? 'Hide Org Chart' : 'Show Org Chart') + '</span></button>' +

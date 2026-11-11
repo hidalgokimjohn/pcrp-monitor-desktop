@@ -3854,7 +3854,7 @@ html.dark .footer-credit strong {
 .eyebrow { display:block; font-size:10px; font-weight:700; letter-spacing:.10em; text-transform:uppercase; color:var(--text-muted,#607080); }
 .profile-controls { display:flex; gap:14px; justify-content:space-between; align-items:center; flex-wrap:wrap; padding:18px 0; }
 /* Municipality views as underline tabs (the app's .sub-nav-tabs), sharing one rule with the actions at the right. */
-.profile-tabbar { align-items:flex-end; gap:8px 20px; padding:22px 0 0; margin-bottom:18px; border-bottom:1px solid var(--rule-soft, var(--border-subtle)); }
+.profile-tabbar { align-items:flex-end; gap:8px 20px; padding:6px 0 0; margin-bottom:14px; border-bottom:1px solid var(--rule-soft, var(--border-subtle)); }
 .profile-tabbar .sub-nav-tabs { margin-bottom:-1px; border-bottom:0; flex-wrap:wrap; }
 .profile-tabbar .sub-nav-btn { white-space:nowrap; display:inline-flex; align-items:center; gap:7px; }
 .profile-tabbar .sub-nav-btn .ico { width:15px; height:15px; opacity:.75; }
@@ -3862,6 +3862,21 @@ html.dark .footer-credit strong {
 .profile-tabbar .row-actions { padding-bottom:8px; }
 .profile-tabbar .row-actions .field { margin:0; }
 .pdir-controls { padding-top:0; }
+.pdir-tabbar { padding-top:0; }
+.profile-controls.pdir-tabbar .row-actions { display:flex; flex-wrap:nowrap; align-items:center; gap:8px; margin:0; padding-bottom:6px; }
+.profile-controls.pdir-tabbar .psearch { margin:0; }
+.pdir-tabbar .psearch input { min-width:210px; }
+@media (max-width:1100px) { .profile-controls.pdir-tabbar .row-actions { flex-wrap:wrap; } }
+.pdir-region { max-width:520px; margin:0 0 12px; }
+/* A page's description sits behind an "i" beside its title instead of taking a line above the content. */
+.head-line { position:relative; display:flex; align-items:center; gap:8px; }
+.head-line h2 { margin-bottom:0; }
+.head-info summary { list-style:none; display:grid; place-items:center; width:20px; height:20px; border:1px solid var(--border-strong); border-radius:50%; color:var(--text-muted); font:italic 700 12px Georgia, serif; cursor:pointer; user-select:none; }
+.head-info summary::-webkit-details-marker { display:none; }
+.head-info summary:hover, .head-info[open] summary { border-color:var(--primary-500); color:var(--primary-500); }
+.head-info summary:focus-visible { outline:2px solid var(--primary-500); outline-offset:2px; }
+.head-info-body { position:absolute; top:calc(100% + 8px); left:0; z-index:30; width:min(560px, 86vw); padding:12px 14px; border:1px solid var(--border-strong); border-radius:6px; background:var(--bg-card); box-shadow:0 8px 24px rgba(0, 0, 0, .14); font-size:13px; line-height:1.55; }
+.kpi-controls .kpi-export { margin-left:auto; }
 
 /* Conduct swimlane as a race: one lane per municipality, the swimmer placed by how far its activities are completed. */
 .psw-section { min-width:0; }
@@ -3968,19 +3983,19 @@ html.dark .footer-credit strong {
 
 /* Municipal Activity & MOV checklist (manager overview): municipalities as rows, activity column groups. */
 .pdm-format { display:inline-flex; padding:2px; gap:2px; border:1px solid var(--border-strong, #c4cbd6); border-radius:999px; background:var(--bg-card,#fff); }
-.pdm-format button { border:0; background:transparent; color:var(--text-muted); font:700 11.5px var(--font-sans); padding:5px 12px; border-radius:999px; cursor:pointer; min-width:42px; }
+.pdm-format button { border:0; background:transparent; color:var(--text-muted); font:700 11.5px var(--font-sans); padding:5px 12px; border-radius:999px; cursor:pointer; min-width:42px; white-space:nowrap; }
 .pdm-format button:hover:not([aria-pressed="true"]) { background:var(--bg-subtle); color:var(--text-main); }
 .pdm-format button[aria-pressed="true"] { background:var(--accent,#164bca); color:#fff; }
 .pdm-format button:focus-visible { outline:2px solid var(--accent,#164bca); outline-offset:2px; }
 /* Summary tiles: the region's own rates, in the same colours as the cells. */
-.pdm-summary { display:grid; grid-template-columns:minmax(220px, 1.3fr) repeat(auto-fit, minmax(170px, 1fr)); gap:10px; margin:0 0 14px; }
-.pdm-tile { display:grid; grid-template-columns:1fr auto; align-items:baseline; gap:4px 10px; padding:12px 14px; border:1px solid var(--border-subtle); border-radius:6px; background:var(--bg-card,#fff); color:var(--text-main); }
+.pdm-summary { display:grid; grid-template-columns:minmax(220px, 1.3fr) repeat(auto-fit, minmax(170px, 1fr)); gap:10px; margin:0 0 10px; }
+.pdm-tile { display:grid; grid-template-columns:1fr auto; grid-template-areas:"label rate" "note rate" "meter meter"; align-items:center; gap:2px 10px; padding:8px 12px; border:1px solid var(--border-subtle); border-radius:6px; background:var(--bg-card,#fff); color:var(--text-main); }
 .pdm-tile.pdm-ok, .pdm-tile.pdm-mid, .pdm-tile.pdm-low, .pdm-tile.pdm-na { background:var(--bg-card,#fff); color:var(--text-main); }
-.pdm-tile-label { font:700 10.5px var(--font-mono, monospace); letter-spacing:.05em; text-transform:uppercase; color:var(--text-muted); }
-.pdm-tile strong { font-size:22px; line-height:1; font-variant-numeric:tabular-nums; }
-.pdm-tile-main strong { font-size:28px; }
-.pdm-tile small { grid-column:1 / -1; font-size:11.5px; color:var(--text-muted); font-variant-numeric:tabular-nums; }
-.pdm-meter { grid-column:1 / -1; height:6px; border-radius:3px; background:var(--bg-subtle,#eef1f5); overflow:hidden; }
+.pdm-tile-label { grid-area:label; font:700 10.5px var(--font-mono, monospace); letter-spacing:.05em; text-transform:uppercase; color:var(--text-muted); }
+.pdm-tile strong { grid-area:rate; font-size:20px; line-height:1; font-variant-numeric:tabular-nums; }
+.pdm-tile-main strong { font-size:24px; }
+.pdm-tile small { grid-area:note; font-size:11.5px; color:var(--text-muted); font-variant-numeric:tabular-nums; }
+.pdm-meter { grid-area:meter; margin-top:4px; height:4px; border-radius:3px; background:var(--bg-subtle,#eef1f5); overflow:hidden; }
 .pdm-meter i { display:block; height:100%; border-radius:3px; background:var(--text-muted); }
 .pdm-tile.pdm-ok .pdm-meter i { background:#2f9e5b; }
 .pdm-tile.pdm-mid .pdm-meter i { background:#d9962b; }
@@ -4356,7 +4371,7 @@ button.pcheck-cell:focus-visible { outline:2px solid var(--accent,#164bca); outl
 .prep-sub { font-size:10pt !important; }
 .kpi-page-link { display:flex; justify-content:flex-end; margin:8px 0; font-size:12px; }
 .kpi-controls { display:flex; flex-wrap:wrap; align-items:end; gap:18px; margin:20px 0 10px; }
-.kpi-section-tabs { display:flex; flex-wrap:wrap; gap:8px; border-bottom:1px solid var(--border-subtle); padding:12px 0 20px; margin-bottom:18px; }
+.kpi-section-tabs { display:flex; flex-wrap:wrap; gap:8px; border-bottom:1px solid var(--border-subtle); padding:8px 0 12px; margin-bottom:14px; }
 .kpi-section-tabs .btn[aria-pressed="true"] { background:var(--accent); border-color:var(--accent); color:var(--paper,#fff); }
 .kpi-group { margin:16px 0 25px; }
 .kpi-group-heading { display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:12px; margin:16px 0 10px; }

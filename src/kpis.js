@@ -98,9 +98,9 @@ function renderKpis() {
   if (province) muniOptions += '</optgroup>';
   var area = isMunicipalUser() ? '<span class="pill idle">' + esc(homeLabel()) + ' · assigned scope</span>' : '<label class="field"><span>Area</span><select data-act="kpi-scope">' + muniOptions + '</select></label>';
   var data = kpiCollect(scope, KPI_UI.stage);
-  body.innerHTML = '<div class="page-banner"><div><span class="eyebrow">Performance monitoring</span><h1>KPI</h1><p class="muted">PCRP indicators retained from the SM7 Monitoring and Evaluation manual. Each indicator includes its manual reference.</p></div><button class="btn ghost" data-act="kpi-export">Export this section</button></div>' +
+  body.innerHTML = '<h1 class="sr-only">KPI: PCRP indicators from the SM7 Monitoring and Evaluation manual</h1>' +
     '<div class="kpi-controls">' + area +
-    '<span class="tiny muted">Pull date: ' + esc(prefs().evalDate || today()) + '</span></div><p class="tiny muted">The Stage switch in the header selects the household participation breakdown by assembly. MResT institutionalization applies across stages. These assembly rates are not a cumulative annual result.</p>' +
+    '<span class="tiny muted">Pull date: ' + esc(prefs().evalDate || today()) + '</span><button class="btn ghost btn-sm kpi-export" data-act="kpi-export">Export this section</button></div><p class="tiny muted">The Stage switch in the header selects the household participation breakdown by assembly. MResT institutionalization applies across stages. These assembly rates are not a cumulative annual result.</p>' +
     '<nav class="kpi-section-tabs" aria-label="KPI sections">' + Object.keys(KPI_SECTIONS).map(function (k) { return '<button type="button" class="btn ghost" data-act="kpi-section" data-v="' + k + '" aria-pressed="' + (KPI_UI.section === k) + '">' + esc(KPI_SECTIONS[k]) + '</button>'; }).join('') + '</nav>' +
     kpiVisibleGroups(data, KPI_UI.section).map(function (g) {
       var content = '<div class="kpi-group-heading"><h2>' + esc(g.label) + '</h2><button class="btn ghost btn-sm" data-act="kpi-target" data-v="' + g.target + '">' + (scope.indexOf('p:') === 0 ? 'Choose municipality →' : 'Open monitoring →') + '</button></div><div class="grid-kpi kpi-dashboard-grid">' + g.cards.map(function (c) {

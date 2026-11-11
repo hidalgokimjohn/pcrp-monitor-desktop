@@ -735,8 +735,8 @@ function renderVerify(keepScroll) {
     munis.map(function (m) { var k = m.province + '|' + m.municipality; return '<option value="' + attr(k) + '"' + (u.muni === k ? ' selected' : '') + '>' + esc(m.municipality + ' (' + m.province + ')') + '</option>'; }).join('') +
     '</select></label>' : '';
   var bySel = '<label class="field"><span>Checked by</span><input id="vf-by" data-act="vf-by" placeholder="Name and position, e.g. J. Cruz (PEA)" value="' + attr(vfVerifier()) + '" style="min-width:220px"></label>';
-  var head = '<div class="card"><div class="card-head"><div><h2>Field Form Verification (Precision Protocol)</h2>' +
-    '<div class="muted">The Precision dimension of the Data Quality Assessment (SM7 Table 8): check what is encoded in KCIS against ' + esc(F.paper) + '.</div></div>' +
+  var head = '<div class="card"><div class="card-head"><div><div class="head-line"><h2>Field Form Verification (Precision Protocol)</h2><details class="head-info"><summary title="About this page" aria-label="About this page">i</summary>' +
+    '<div class="muted head-info-body">The Precision dimension of the Data Quality Assessment (SM7 Table 8): check what is encoded in KCIS against ' + esc(F.paper) + '.</div></details></div></div>' +
     '<div class="row-actions" style="margin:0">' +
       '<button class="btn ghost btn-sm" data-act="vf-sample">' + icon('crosshair') + ' <span>Suggest sample</span></button>' +
       '<button class="btn ghost btn-sm" data-act="vf-csv">' + icon('download') + ' <span>CSV</span></button>' +
