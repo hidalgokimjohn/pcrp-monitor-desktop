@@ -891,6 +891,7 @@ var ICON_SVG = {
   'award': '<circle cx="12" cy="8" r="6"/><path d="M15.477 12.89 17 22l-5-3-5 3 1.523-9.11"/>',
   'user-check': '<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><polyline points="16 11 18 13 22 9"/>',
   'layers': '<path d="m12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83Z"/><path d="m22 17.65-9.17 4.16a2 2 0 0 1-1.66 0L2 17.65"/><path d="m22 12.65-9.17 4.16a2 2 0 0 1-1.66 0L2 12.65"/>',
+  'message-square': '<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>',
   'grid': '<rect width="7" height="7" x="3" y="3" rx="1"/><rect width="7" height="7" x="14" y="3" rx="1"/><rect width="7" height="7" x="14" y="14" rx="1"/><rect width="7" height="7" x="3" y="14" rx="1"/>'
 };
 
@@ -1231,6 +1232,8 @@ function updateTabBadges() {
   var loadedCount = ['activityTracker', 'volunteers', 'movs'].filter(function (k) { return !!LOADED[k]; }).length;
   setBadge('import', loadedCount ? loadedCount + '/3' : '', loadedCount === 3 ? 'good' : '');
   setBadge('sni-badge-import', loadedCount ? loadedCount + '/3' : '', loadedCount === 3 ? 'good' : '');
+  // The SFM Masterlist stands on its own: its badge does not wait for the Activity Tracker.
+  try { var sfmB = typeof sfmBadge === 'function' ? sfmBadge() : null; setBadge('sfm', sfmB ? sfmB.text : '', sfmB ? sfmB.cls : ''); } catch (e) { setBadge('sfm', ''); }
 
   if (!STATE.computed || !S.overview || !SNAP) {
     ['volunteers', 'brest', 'mrest', 'verify', 'health', 'group-volunteers'].forEach(function (id) { setBadge(id, ''); });
@@ -1393,6 +1396,7 @@ function renderPageBody() {
   else if (STATE.page === 'brest') renderBrest();
   else if (STATE.page === 'cspmc') renderCspmc();
   else if (STATE.page === 'mrest') renderMrest();
+  else if (STATE.page === 'sfm') renderSfm();
   else if (STATE.page === 'verify') renderVerify();
   else if (STATE.page === 'health') renderHealth();
   else if (STATE.page === 'settings' || STATE.page === 'import') renderSettings();
@@ -1572,6 +1576,8 @@ function acceptTable(item) {
       delete TABS.Raw_Participants; delete TABS.Raw_HH_Participation;
       delete LOADED.participants; delete LOADED.households;
     }
+    // The SFM Masterlist feeds its own page only: no other index depends on it.
+    if (item.kind === 'sfm') { sfmValidateTable(item.table); TABS.Raw_SFM = item.table; SFM_CACHE = null; LOADED.sfm = { file: item.file, sheet: item.sheet, rows: item.table.rows.length }; return; }
     TABS[info.sheet] = item.table;
     PEOPLE = null; VERIFY.cache = null;
     if (typeof MOV_CACHE !== 'undefined') MOV_CACHE = null;
@@ -1592,17 +1598,23 @@ function handleFiles(fileList) {
     savedFromFile(save).catch(function (e) { setProgress(''); IMPORT_ERRORS.push({ file: save.name, error: e.message }); renderImport(); });
     return;
   }
+  var kinds = {};
   files.reduce(function (pr, f) {
     return pr.then(function () {
       setProgress('Reading ' + f.name + '…');
-      return readDataFile(f, setProgress).then(function (found) { found.forEach(acceptTable); })
+      return readDataFile(f, setProgress).then(function (found) { found.forEach(function (item) { acceptTable(item); kinds[item.kind] = true; }); })
         .catch(function (e) { IMPORT_ERRORS.push({ file: f.name, error: e.message }); });
     });
   }, Promise.resolve()).then(function () {
     setProgress('');
     renderImport(); renderStatus(); updateTabBadges();
     if (typeof savedSaveCurrent === 'function') savedSaveCurrent();
-    if (LOADED.activityTracker) {
+    // Only the SFM Masterlist was dropped: nothing to recompute, open its page.
+    if (kinds.sfm && Object.keys(kinds).length === 1) {
+      setTabsEnabled(true);
+      toast('SFM Masterlist loaded: ' + n(LOADED.sfm.rows) + ' entries.');
+      go('sfm');
+    } else if (LOADED.activityTracker) {
       computeAndShow(STATE.computed ? null : 'profile');
     } else {
       setTabsEnabled(true);
@@ -1649,7 +1661,8 @@ function renderImport() {
   var kinds = [
     { k: 'activityTracker', ico: 'calendar-check', desc: 'Activity attendance summaries and household participation counts in one file.' },
     { k: 'movs', ico: 'files', desc: 'Assessed separately from attendance: uploaded MOV attachment records from KCIS.' },
-    { k: 'volunteers', ico: 'list-checks', desc: 'Needed for 1st BA BResT / SFMSC & MResT tracking.' }
+    { k: 'volunteers', ico: 'list-checks', desc: 'Needed for 1st BA BResT / SFMSC & MResT tracking.' },
+    { k: 'sfm', ico: 'message-square', desc: 'Stakeholders Feedback Mechanism Masterlist: grievances and PINCOs, for the SFM page.' }
   ];
   var p = prefs();
   var cards = kinds.map(function (item) {
@@ -2524,6 +2537,7 @@ $('btn-compute').addEventListener('click', function () { computeAndShow('profile
 var btnComputeSide = $('btn-compute-side');
 if (btnComputeSide) btnComputeSide.addEventListener('click', function () { computeAndShow('profile'); });
 $('btn-clear').addEventListener('click', function () {
+  delete TABS.Raw_SFM; if (typeof SFM_CACHE !== 'undefined') SFM_CACHE = null;
   delete TABS.Raw_MOVs; MOV_CACHE = null; delete TABS.Raw_Activity_Tracker; delete TABS.Raw_Participants; delete TABS.Raw_HH_Participation; delete TABS.Raw_Volunteers;
   LOADED = {}; IMPORT_ERRORS = []; STATE.computed = false; SNAP = null; S.overview = null; S.matrix = null; PEOPLE = null;
   // The saved exports go too; earlier pulls and verification tags stay until "Forget saved data".

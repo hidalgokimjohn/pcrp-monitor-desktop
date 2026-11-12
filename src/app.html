@@ -96,6 +96,7 @@
     </div>
   </div>
   <button role="tab" data-page="mrest" id="tab-mrest" disabled><i data-lucide="award"></i> <span>MResT</span> <span class="tab-badge" id="badge-mrest" hidden></span></button>
+  <button role="tab" data-page="sfm" id="tab-sfm" disabled><i data-lucide="message-square"></i> <span>SFM</span> <span class="tab-badge" id="badge-sfm" hidden></span></button>
   <!-- Group 3: Data Quality Assessment (DQA) -->
   <div class="nav-tab-group" id="group-dqa-wrap">
     <button role="tab" class="tab-group-trigger" id="tab-group-dqa" data-group="dqa" disabled>
@@ -226,7 +227,7 @@
               <input type="file" id="file-input" multiple accept=".xlsx,.csv,.pcrp" hidden>
               <div class="drop-icon"><i data-lucide="upload-cloud"></i></div>
               <span class="drop-title">Drop .xlsx, .csv, or .pcrp files here, or click to browse</span>
-              <span class="drop-sub">Activity Tracker · MOV attachments · Community Volunteer List · or a saved .pcrp session file</span>
+              <span class="drop-sub">Activity Tracker · MOV attachments · Community Volunteer List · SFM Masterlist · or a saved .pcrp session file</span>
               <div class="drop-badges">
                 <span class="drop-badge">.xlsx Workbook</span>
                 <span class="drop-badge">.csv Export</span>
@@ -276,10 +277,12 @@
   <section class="page" id="page-brest"><div id="brt-body"></div></section>
   <section class="page" id="page-cspmc"><div id="cspmc-body"></div></section>
   <section class="page" id="page-mrest"><div id="mrt-body"></div></section>
+  <section class="page" id="page-sfm"><div id="sfm-body"></div></section>
   <section class="page" id="page-verify"><div id="vf-body"></div></section>
   <section class="page" id="page-health"><div id="he-body" class="dh-page"></div></section>
 </main>
 <dialog id="profile-evidence-dialog" class="profile-drawer" aria-labelledby="profile-panel-title"><div id="profile-panel-body"></div></dialog>
+<dialog id="sfm-dialog" class="memo sfm-dialog"><form method="dialog"><div id="sfm-dialog-body"></div><div class="row-actions dialog-foot"><button class="btn ghost" value="close">Close</button></div></form></dialog>
 
 <footer class="app-footer" id="app-footer">
   <div class="footer-container">
@@ -431,6 +434,7 @@ function $(id) { return document.getElementById(id); }
 /*@@MOV_UI@@*/
 /*@@PROFILE@@*/
 /*@@KPIS@@*/
+/*@@SFM@@*/
 </script>
 </body>
 </html>

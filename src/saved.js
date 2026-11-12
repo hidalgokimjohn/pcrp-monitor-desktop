@@ -15,7 +15,7 @@
 var SAVED = { current: null, ledger: {}, available: true, dataStamp: '' };   // dataStamp: which exports are on screen
 var SAVE_DB = 'pcrp-desktop', SAVE_STORE = 'kv', SAVE_KEEP_PULLS = 12;
 // Saves made before v2.15 carry 'Raw_Households' (the old household roster): it is not read back.
-var SAVE_TABLES = ['Raw_Activity_Tracker', 'Raw_Volunteers', 'Raw_MOVs'];
+var SAVE_TABLES = ['Raw_Activity_Tracker', 'Raw_Volunteers', 'Raw_MOVs', 'Raw_SFM'];
 var SAVE_SOURCE = 'activity-tracker-v2';
 var SAVE_FORMAT = 'pcrp-desktop-save';
 var saveTimer = null;
@@ -317,6 +317,13 @@ function savedLoadCurrent(cur) {
     }
     MOV_CACHE = null;
   }
+  if (typeof SFM_CACHE !== 'undefined') {
+    SFM_CACHE = null;
+    if (TABS.Raw_SFM) {
+      try { sfmValidateTable(TABS.Raw_SFM); } catch (error) { delete TABS.Raw_SFM; IMPORT_ERRORS.push({ file: 'Saved SFM Masterlist', error: error.message }); }
+    }
+    if (!TABS.Raw_SFM) delete LOADED.sfm;
+  }
   if (!TABS.Raw_Activity_Tracker) {
     delete LOADED.activityTracker;
     STATE.computed = false; SNAP = null; PEOPLE = null; if (typeof S !== 'undefined') { S.overview = null; S.matrix = null; }
@@ -426,7 +433,8 @@ function savedFromFile(file) {
     var d = JSON.parse(text);
     if (!d || d.format !== SAVE_FORMAT || !d.tables) throw new Error(file.name + ' is not a PCRP save file.');
     if ([2, 3].indexOf(d.version) === -1 || d.sourceType !== SAVE_SOURCE || d.tables.Raw_Participants || d.tables.Raw_HH_Participation) throw new Error('This legacy session cannot be opened. Import the new KCIS Activity Tracker instead. Current data was not changed.');
-    if (!d.tables.Raw_Activity_Tracker && !d.tables.Raw_Volunteers && !d.tables.Raw_MOVs) throw new Error('This session has no supported data tables.');
+    if (!d.tables.Raw_Activity_Tracker && !d.tables.Raw_Volunteers && !d.tables.Raw_MOVs && !d.tables.Raw_SFM) throw new Error('This session has no supported data tables.');
+    if (d.tables.Raw_SFM) sfmValidateTable(d.tables.Raw_SFM);
     if (d.tables.Raw_Activity_Tracker) { validateTrackerTable(d.tables.Raw_Activity_Tracker); d.tables.Raw_Activity_Tracker = trackerTable(d.tables.Raw_Activity_Tracker); }
     if (d.tags && (!d.tags.records || typeof d.tags.records !== 'object' || Array.isArray(d.tags.records))) throw new Error('Invalid saved verification records.');
     if (d.tables.Raw_Volunteers && (!Array.isArray(d.tables.Raw_Volunteers.rows) || d.tables.Raw_Volunteers.rows.some(function (r) { return !Array.isArray(r); }) || !Array.isArray(d.tables.Raw_Volunteers.headers) || checkHeaders(d.tables.Raw_Volunteers.headers, VOLUNTEER_HEADERS).length)) throw new Error('Invalid saved Community Volunteer List.');
@@ -435,6 +443,7 @@ function savedFromFile(file) {
     if (d.tables.Raw_MOVs) d.loaded.movs = { file: file.name, sheet: 'Raw_MOVs', rows: d.tables.Raw_MOVs.rows.length };
     if (d.tables.Raw_Activity_Tracker) d.loaded.activityTracker = { file: file.name, sheet: 'Raw_Activity_Tracker', rows: d.tables.Raw_Activity_Tracker.rows.length };
     if (d.tables.Raw_Volunteers) d.loaded.volunteers = { file: file.name, sheet: 'Raw_Volunteers', rows: d.tables.Raw_Volunteers.rows.length };
+    if (d.tables.Raw_SFM) d.loaded.sfm = { file: file.name, sheet: 'Raw_SFM', rows: d.tables.Raw_SFM.rows.length };
     var p = prefs();
     if (d.home) p.home = d.home;
     if (d.field) p.field = d.field;

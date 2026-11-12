@@ -196,6 +196,7 @@ function detectKind(headers, sheetName) {
   headers.forEach(function (h) { var k = normKey(h); keys[k] = true; if (k === 'name') names++; });
   var has = function (h) { return !!keys[normKey(h)]; };
   var sn = normKey(sheetName || '');
+  if (sn === 'raw_sfm' || (has('Date of Intake') && has('Nature of Issue'))) return 'sfm';
   if (sn === 'raw_movs' || has('Attachment_Type_ID') || has('File Path')) return 'movs';
   if (sn === 'raw_activity_tracker' || has('CRIP/MC09 Activity') || has('Participants - Total')) return 'activityTracker';
   if (sn === 'raw_participants') return 'participants';
@@ -218,6 +219,7 @@ var KIND_INFO = {
   movs: { sheet: 'Raw_MOVs', label: 'MOV attachments', expected: function () { return MOV_HEADERS; } },
   activityTracker: { sheet: 'Raw_Activity_Tracker', label: 'Activity Tracker', expected: function () { return ACTIVITY_TRACKER_HEADERS; } },
   volunteers:   { sheet: 'Raw_Volunteers',   label: 'Community Volunteer List', expected: function () { return VOLUNTEER_HEADERS; } },
+  sfm:          { sheet: 'Raw_SFM',          label: 'SFM Masterlist', expected: function () { return SFM_HEADERS; } },
   baseline:     { sheet: 'Baseline',         label: 'Baseline (monitored barangays)', expected: function () { return ['Province', 'Municipality', 'Barangay']; } },
   activities:   { sheet: 'Activities',       label: 'Activities (field conduct)', expected: function () { return ['Seq', 'Code']; } }
 };
@@ -256,7 +258,7 @@ function readDataFile(file, onProgress) {
     var complete = found.filter(function (item) { return !item.missing.length; });
     if (!complete.length) {
       if (roster) throw new Error(file.name + ': legacy attendance/household exports are no longer supported. Import the new KCIS Activity Tracker instead.');
-      if (!found.length) throw new Error(file.name + ': not an Activity Tracker, MOV attachment export, Community Volunteer List or reference file (column headers were not recognised).');
+      if (!found.length) throw new Error(file.name + ': not an Activity Tracker, MOV attachment export, Community Volunteer List, SFM Masterlist or reference file (column headers were not recognised).');
       throw new Error(file.name + ': missing required columns: ' + found.map(function (item) { return item.missing.join(', '); }).join('; ') + '. Nothing was loaded.');
     }
     var seenKinds = {};
