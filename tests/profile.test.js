@@ -91,6 +91,15 @@ test('swimlane finishes only when every applicable activity is completed',()=>{
  assert.equal(c.profileSwimlaneData(m).status,'active');assert.equal(c.profileSwimlaneData(m).current,'MREST');
 });
 
+test('swimlane race places run without gaps: municipalities level with each other share a place and the next one follows',()=>{
+ const c=context();
+ const positions={A:3,B:2,C:2,D:1,E:1,F:0.5};
+ c.profileSwimlaneData=model=>model;c.profileRaceStanding=model=>({racing:model.municipality!=='G',position:positions[model.municipality]||0,overall:0});
+ const rows=['D','B','A','F','C','E','G'].map(k=>({key:k,model:{province:'P',municipality:k}}));
+ const field=c.profileRaceField(rows),rank=Object.fromEntries(field.map(f=>[f.entry.key,f.rank]));
+ assert.deepEqual(rank,{A:1,B:2,C:2,D:3,E:3,F:4,G:0});
+});
+
 test('swimlane race places each municipality by cleared activities plus the share of the current one',()=>{
  const c=context(),mrest=c.DEFAULT_ACTIVITIES.find(a=>a.code==='MREST').name;c.esc=v=>String(v??'');c.attr=c.esc;
  // Province A's Town clears MResT and half of the 1st BA; Province B's Town has nothing completed.

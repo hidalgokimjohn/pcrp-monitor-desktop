@@ -798,14 +798,14 @@ function profileRaceStanding(data) {
   var racing = data.status === 'active' || data.status === 'complete';
   return { racing: racing, at: at, share: share, position: racing ? at + share : -1, done: done, target: target, overall: target ? done / target : 0 };
 }
-/** Every lane with its standing; ranks use competition ranking (1, 1, 3) so equal positions share a place. */
+/** Every lane with its standing; equal positions share a place and the next place follows without a gap (1, 2, 2, 3). */
 function profileRaceField(rows, stage) {
   var field = rows.map(function (entry) { var data = profileSwimlaneData(entry.model, stage); return { entry: entry, data: data, standing: profileRaceStanding(data), rank: 0 }; });
   function gap(a, b) { return b.standing.position - a.standing.position || b.standing.overall - a.standing.overall; }
   var order = field.filter(function (f) { return f.standing.racing; }).sort(function (a, b) {
     return gap(a, b) || a.entry.model.province.localeCompare(b.entry.model.province) || a.entry.model.municipality.localeCompare(b.entry.model.municipality);
   });
-  order.forEach(function (f, i) { f.rank = i && Math.abs(gap(order[i - 1], f)) < 1e-9 ? order[i - 1].rank : i + 1; });
+  order.forEach(function (f, i) { f.rank = !i ? 1 : order[i - 1].rank + (Math.abs(gap(order[i - 1], f)) < 1e-9 ? 0 : 1); });
   return field;
 }
 function profileSwimlaneHtml(rows, all) {
