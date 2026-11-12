@@ -233,8 +233,12 @@ function sfmBuild(table, opts) {
     e.sev = e.flags.reduce(function (s, id) { var v = SFM_CHECK[id].sev; return v === 'act' || s === 'act' ? 'act' : v === 'fix' || s === 'fix' ? 'fix' : 'review'; }, '');
   });
 
-  var scoped = opts.home ? entries.filter(function (e) { return e.key === opts.home; }) : entries;
-  var scopeMunis = opts.home ? munis.filter(function (m) { return m.province + '|' + m.municipality === opts.home; }) : munis;
+  // Scope: one municipality (home), one province, and a period by date of intake. An entry without an intake date is outside any period.
+  var scoped = entries.filter(function (e) {
+    return (!opts.home || e.key === opts.home) && (!opts.province || e.province === opts.province) &&
+      (!opts.from || (e.intake && e.intake >= opts.from)) && (!opts.to || (e.intake && e.intake <= opts.to));
+  });
+  var scopeMunis = munis.filter(function (m) { return (!opts.home || m.province + '|' + m.municipality === opts.home) && (!opts.province || m.province === opts.province); });
 
   var checks = SFM_CHECKS.map(function (c) {
     var hit = scoped.filter(function (e) { return e.flags.indexOf(c.id) !== -1; }), places = {};
@@ -267,7 +271,8 @@ function sfmBuild(table, opts) {
     }),
     first: intakes[0] || '', last: intakes[intakes.length - 1] || ''
   };
-  return { entries: scoped, all: entries.length, checks: checks, summary: summary, asOf: asOf, munis: scopeMunis, home: opts.home || '', has: has };
+  return { entries: scoped, all: entries.length, checks: checks, summary: summary, asOf: asOf, munis: scopeMunis, home: opts.home || '',
+    province: opts.province || '', from: opts.from || '', to: opts.to || '', has: has };
 }
 
 /** What an entry holds for one breakdown field. */
@@ -368,7 +373,7 @@ function sfmExportSheets(data) {
 // ---- the page -----------------------------------------------------------------
 
 var SFM_CACHE = null;
-var SFM_UI = { view: 'overview', q: '', page: 0, sort: 'flags', restored: false, f: { flag: '', muni: '', barangay: '', status: '', type: '', field: '', value: '' } };
+var SFM_UI = { view: 'overview', q: '', page: 0, sort: 'flags', restored: false, places: { q: '', sort: '', dir: -1 }, report: null, f: { flag: '', muni: '', barangay: '', status: '', type: '', field: '', value: '' } };
 var SFM_PAGE_SIZE = 50;
 
 function sfmData() {
@@ -383,7 +388,7 @@ function sfmRestore() {
   if (SFM_UI.restored) return;
   SFM_UI.restored = true;
   var saved = prefs().sfm || {};
-  if (['overview', 'entries', 'places'].indexOf(saved.view) !== -1) SFM_UI.view = saved.view;
+  if (['overview', 'entries', 'places', 'report'].indexOf(saved.view) !== -1) SFM_UI.view = saved.view;
 }
 function sfmPersist() { var p = prefs(); p.sfm = { view: SFM_UI.view }; savePrefs(p); }
 function sfmClearFilters() { SFM_UI.f = { flag: '', muni: '', barangay: '', status: '', type: '', field: '', value: '' }; SFM_UI.q = ''; SFM_UI.page = 0; }
@@ -517,25 +522,66 @@ function sfmEntries(data) {
     sfmSelect('sort', 'Order', [['flags', 'Needs attention first'], ['new', 'Newest intake first'], ['old', 'Oldest intake first']], SFM_UI.sort) + '</div>' +
     '<div id="sfm-list">' + sfmEntriesBody(data) + '</div>';
 }
-function sfmPlaces(data) {
-  var by = data.home ? 'barangay' : 'municipality', groups = sfmGroups(data, by), province = null, total = { n: 0, open: 0, bc: 0, noDate: 0, fix: 0, dup: 0 };
+// [key, heading, numeric, tooltip] for the place table; 'barangayCount' is dropped inside one municipality.
+var SFM_PLACE_COLS = [
+  ['name', 'Municipality', false, ''], ['n', 'Entries', true, 'Entries in this file'], ['barangayCount', 'Barangays', true, 'Barangays named in at least one entry'],
+  ['open', 'Open', true, 'Entries not yet marked Resolved'], ['bc', 'Type B/C', true, 'Entries classified Type B or Type C'],
+  ['noDate', 'No date addressed', true, 'Resolved entries whose Date Addressed is blank or wrong'], ['fix', 'To fix', true, 'Entries with at least one record gap'],
+  ['dup', 'Possible duplicates', true, 'Entries sharing place, intake date and narrative with another entry'],
+  ['medianLag', 'Days to encode', true, 'Median calendar days from date of intake to date encoded'], ['latest', 'Latest intake', false, 'Most recent date of intake']
+];
+/** The place rows the search keeps, in the chosen order. No sort key keeps the province grouping. */
+function sfmPlaceRows(data, ui) {
+  ui = ui || {};
+  var q = normSearch(ui.q || ''), sort = ui.sort || '', dir = ui.dir === 1 ? 1 : -1;
+  var rows = sfmGroups(data, data.home ? 'barangay' : 'municipality').filter(function (g) { return !q || normSearch(g.name + ' ' + g.province).indexOf(q) !== -1; });
+  if (!sort) return rows;
+  return rows.sort(function (a, b) {
+    if (sort === 'name') return dir * a.name.localeCompare(b.name);
+    // A place with nothing to compare (no entries, no dates) stays at the bottom in either direction.
+    var x = a[sort], y = b[sort], ax = !a.n || x === null || x === '', bx = !b.n || y === null || y === '';
+    if (ax !== bx) return ax ? 1 : -1;
+    return (x > y ? 1 : x < y ? -1 : 0) * dir || a.name.localeCompare(b.name);
+  });
+}
+function sfmPlacesTable(data) {
+  var ui = SFM_UI.places, by = data.home ? 'barangay' : 'municipality', rows = sfmPlaceRows(data, ui), all = sfmGroups(data, by).length;
+  var cols = SFM_PLACE_COLS.filter(function (c) { return by === 'municipality' || c[0] !== 'barangayCount'; }), span = cols.length;
+  var noun = by === 'barangay' ? 'barangays' : 'municipalities', sorted = cols.filter(function (c) { return c[0] === ui.sort; })[0];
+  // Entries whose municipality is blank or off the list get rows of their own; they are not municipalities.
+  var listed = function (list) { return list.filter(function (g) { return g.monitored; }).length; }, off = rows.length - listed(rows);
+  var line = '<div class="sfm-count-line"><span><b>' + n(listed(rows)) + '</b> of ' + n(listed(sfmGroups(data, by))) + ' ' + noun + (off ? ' · ' + n(off) + (off === 1 ? ' group' : ' groups') + ' not on the monitored list' : '') + '</span>' +
+    (sorted ? '<span class="muted">sorted by ' + esc(sorted[0] === 'name' ? 'name' : sorted[1].toLowerCase()) + ', ' +
+      (sorted[0] === 'name' ? (ui.dir === 1 ? 'A to Z' : 'Z to A') : sorted[0] === 'latest' ? (ui.dir === 1 ? 'oldest first' : 'newest first') : (ui.dir === 1 ? 'lowest first' : 'highest first')) + '</span>' +
+      (by === 'municipality' ? '<button type="button" class="link" data-act="sfm-place-sort" data-v="">Group by province</button>' : '<button type="button" class="link" data-act="sfm-place-sort" data-v="">Default order</button>') : '') +
+    (ui.q ? '<button type="button" class="link" data-act="sfm-place-clear">Clear search</button>' : '') + '</div>';
+  if (!rows.length) return line + '<div class="msg info">No ' + noun + ' match “' + esc(ui.q) + '”.</div>';
+  var total = { n: 0, open: 0, bc: 0, noDate: 0, fix: 0, dup: 0 }, lags = [], band = null;
   var cell = function (v, cls) { return '<td class="num">' + (v ? '<span class="' + (cls || '') + '">' + n(v) + '</span>' : '<span class="muted">0</span>') + '</td>'; };
-  var body = groups.map(function (g) {
+  var head = cols.map(function (c) {
+    var on = ui.sort === c[0];
+    return '<th scope="col"' + (c[2] ? ' class="num"' : '') + ' aria-sort="' + (on ? (ui.dir === 1 ? 'ascending' : 'descending') : 'none') + '"><button type="button" class="sfm-sort' + (on ? ' on' : '') + '" data-act="sfm-place-sort" data-v="' + c[0] + '" title="' + attr((c[3] ? c[3] + '. ' : '') + 'Select to sort') + '">' +
+      esc(c[0] === 'name' && by === 'barangay' ? 'Barangay' : c[1]) + '<span class="sfm-sort-ico" aria-hidden="true">' + (on ? (ui.dir === 1 ? '▲' : '▼') : '↕') + '</span></button></th>';
+  }).join('');
+  var body = rows.map(function (g) {
     ['n', 'open', 'bc', 'noDate', 'fix', 'dup'].forEach(function (k) { total[k] += g[k]; });
-    var head = '';
-    var band = g.monitored ? g.province : '(off the list)';
-    if (by === 'municipality' && band !== province) { province = band; head ='<tr class="sfm-prov"><th colspan="9">' + esc(g.monitored ? g.province : 'Not on the monitored list') + '</th></tr>'; }
-    if (!g.n) return head + '<tr class="sfm-silent"><td class="sfm-name">' + esc(g.name) + '</td><td colspan="8"><span class="pill idle">No entries in this file</span></td></tr>';
-    return head + '<tr class="click" tabindex="0" data-act="sfm-place" data-k="' + (by === 'barangay' ? 'barangay' : 'muni') + '" data-v="' + attr(g.key) + '"><td class="sfm-name">' + esc(g.name) + '</td>' +
+    lags = lags.concat(g.lags);
+    var lead = '', key = g.monitored ? g.province : '(off the list)';
+    if (!ui.sort && by === 'municipality' && key !== band) { band = key; lead = '<tr class="sfm-prov"><td colspan="' + span + '"><span>' + esc(g.monitored ? g.province : 'Not on the monitored list') + '</span></td></tr>'; }
+    var name = '<td class="sfm-name">' + esc(g.name) + (ui.sort && by === 'municipality' && g.monitored ? '<small>' + esc(g.province) + '</small>' : '') + '</td>';
+    if (!g.n) return lead + '<tr class="sfm-silent">' + name + '<td colspan="' + (span - 1) + '"><span class="pill idle">No entries in this file</span></td></tr>';
+    return lead + '<tr class="click" tabindex="0" data-act="sfm-place" data-k="' + (by === 'barangay' ? 'barangay' : 'muni') + '" data-v="' + attr(g.key) + '">' + name +
       '<td class="num"><b>' + n(g.n) + '</b></td>' + (by === 'municipality' ? '<td class="num">' + n(g.barangayCount) + '</td>' : '') + cell(g.open, 'sfm-num-bad') + cell(g.bc, 'sfm-num-review') +
       '<td class="num">' + (g.noDate ? '<span class="sfm-num-warn">' + n(g.noDate) + '</span> <small class="muted">' + Math.round(g.noDate / g.n * 100) + '%</small>' : '<span class="muted">0</span>') + '</td>' +
       cell(g.fix, 'sfm-num-warn') + cell(g.dup, 'sfm-num-review') + '<td class="num">' + (g.medianLag === null ? '—' : n(g.medianLag)) + '</td><td class="sfm-date">' + esc(sfmNiceDate(g.latest)) + '</td></tr>';
   }).join('');
-  return '<div class="table-wrap sfm-wrap"><table class="grid sfm-table sfm-places"><thead><tr><th>' + (by === 'barangay' ? 'Barangay' : 'Municipality') + '</th><th class="num">Entries</th>' + (by === 'municipality' ? '<th class="num" title="Barangays named in at least one entry">Barangays</th>' : '') +
-    '<th class="num">Open</th><th class="num">Type B/C</th><th class="num" title="Resolved entries whose Date Addressed is blank or wrong">No date addressed</th><th class="num" title="Entries with at least one record gap">To fix</th><th class="num">Possible duplicates</th>' +
-    '<th class="num" title="Median calendar days from date of intake to date encoded">Days to encode</th><th>Latest intake</th></tr></thead><tbody>' + body + '</tbody>' +
-    '<tfoot><tr class="total"><td class="sfm-name">Total</td><td class="num">' + n(total.n) + '</td>' + (by === 'municipality' ? '<td></td>' : '') + '<td class="num">' + n(total.open) + '</td><td class="num">' + n(total.bc) + '</td><td class="num">' + n(total.noDate) + '</td><td class="num">' + n(total.fix) + '</td><td class="num">' + n(total.dup) + '</td><td class="num">' + (data.summary.medianLag === null ? '—' : n(data.summary.medianLag)) + '</td><td></td></tr></tfoot></table></div>' +
-    '<p class="tiny muted">Select a row to list its entries. A place with no entries has none encoded in this file; that is not a report that no feedback was received.</p>';
+  var median = sfmMedian(lags);
+  return line + '<div class="table-wrap sfm-wrap sfm-places-wrap"><table class="grid sfm-table sfm-places"><thead><tr>' + head + '</tr></thead><tbody>' + body + '</tbody>' +
+    '<tfoot><tr class="total"><td class="sfm-name">' + (rows.length === all ? 'Total' : 'Total shown') + '</td><td class="num">' + n(total.n) + '</td>' + (by === 'municipality' ? '<td></td>' : '') + '<td class="num">' + n(total.open) + '</td><td class="num">' + n(total.bc) + '</td><td class="num">' + n(total.noDate) + '</td><td class="num">' + n(total.fix) + '</td><td class="num">' + n(total.dup) + '</td><td class="num">' + (median === null ? '—' : n(median)) + '</td><td></td></tr></tfoot></table></div>';
+}
+function sfmPlaces(data) {
+  return '<div id="sfm-places">' + sfmPlacesTable(data) + '</div>' +
+    '<p class="tiny muted">Select a heading to sort, a row to list its entries. A place with no entries has none encoded in this file; that is not a report that no feedback was received.</p>';
 }
 
 function renderSfm() {
@@ -549,15 +595,16 @@ function renderSfm() {
   }
   if (isMunicipalUser() && !homeKey()) { body.innerHTML = '<div class="msg info">Choose your municipality in Settings &amp; Setup to see its SFM entries.</div>'; return; }
   var data = sfmData(), view = SFM_UI.view, placeLabel = data.home ? 'Barangays' : 'Municipalities';
-  var tabs = [['overview', 'Overview', 'gauge'], ['entries', 'Entries', 'list-checks'], ['places', placeLabel, 'building-2']].map(function (t) {
+  var tabs = [['overview', 'Overview', 'gauge'], ['entries', 'Entries', 'list-checks'], ['places', placeLabel, 'building-2'], ['report', 'Report', 'file-text']].map(function (t) {
     var on = view === t[0];
     return '<button type="button" role="tab" class="sub-nav-btn' + (on ? ' active' : '') + '" data-act="sfm-view" data-v="' + t[0] + '" aria-selected="' + on + '">' + icon(t[2]) + '<span>' + esc(t[1]) + (t[0] === 'entries' ? ' <b class="sfm-tab-n">' + n(data.entries.length) + '</b>' : '') + '</span></button>';
   }).join('');
-  var search = view === 'entries' ? '<label class="field psearch"><span class="sr-only">Find an entry</span><input id="sfm-search" type="search" value="' + attr(SFM_UI.q) + '" placeholder="Find a reference, name, place or word…" aria-label="Find an entry"></label>' : '';
+  var search = view === 'entries' ? '<label class="field psearch"><span class="sr-only">Find an entry</span><input id="sfm-search" type="search" value="' + attr(SFM_UI.q) + '" placeholder="Find a reference, name, place or word…" aria-label="Find an entry"></label>' :
+    view === 'places' ? '<label class="field psearch"><span class="sr-only">Find a place</span><input id="sfm-place-search" type="search" value="' + attr(SFM_UI.places.q) + '" placeholder="Find ' + (data.home ? 'a barangay' : 'a municipality or province') + '…" aria-label="Find a place"></label>' : '';
   body.innerHTML = '<h1 class="sr-only">Stakeholders Feedback Mechanism, ' + n(data.entries.length) + ' entries</h1>' +
     '<div class="profile-controls profile-tabbar pdir-tabbar sfm-tabbar"><div class="sub-nav-tabs" role="tablist" aria-label="SFM view">' + tabs + '</div><div class="row-actions">' + search +
     '<span class="tiny muted sfm-asof">' + esc(data.home ? homeLabel() + ' · ' : '') + 'as of ' + esc(sfmNiceDate(data.asOf)) + '</span><button type="button" class="btn ghost btn-sm" data-act="sfm-export">' + icon('download') + ' <span>Export</span></button></div></div>' +
-    (view === 'entries' ? sfmEntries(data) : view === 'places' ? sfmPlaces(data) : sfmOverview(data));
+    (view === 'entries' ? sfmEntries(data) : view === 'places' ? sfmPlaces(data) : view === 'report' ? sfmReportView(data) : sfmOverview(data));
   refreshIcons(body);
 }
 
@@ -602,6 +649,14 @@ document.addEventListener('click', function (event) {
   else if (act === 'sfm-clear') { sfmClearFilters(); renderSfm(); }
   else if (act === 'sfm-page') { SFM_UI.page += Number(v); var list = $('sfm-list'); if (list) { list.innerHTML = sfmEntriesBody(sfmData()); refreshIcons(list); } window.scrollTo(0, 0); }
   else if (act === 'sfm-open') sfmOpenEntry(Number(v));
+  else if (act === 'sfm-place-sort') {
+    // A numeric column starts with its highest value; the same heading again reverses it.
+    var p = SFM_UI.places;
+    if (!v) { p.sort = ''; p.dir = -1; } else if (p.sort === v) p.dir = -p.dir; else { p.sort = v; p.dir = v === 'name' ? 1 : -1; }
+    sfmRefreshPlaces();
+  }
+  else if (act === 'sfm-place-clear') { SFM_UI.places.q = ''; renderSfm(); }
+  else if (act.indexOf('sfm-report-') === 0) sfmReportAction(act.slice(11), el);
   else if (act === 'sfm-export') sfmExport();
 });
 document.addEventListener('keydown', function (event) {
@@ -610,14 +665,24 @@ document.addEventListener('keydown', function (event) {
 });
 document.addEventListener('change', function (event) {
   var el = event.target;
+  if (el.getAttribute && el.getAttribute('data-act') === 'sfm-r') { sfmReportSet(el.getAttribute('data-k'), el.type === 'checkbox' ? el.checked : el.value); return; }
   if (!el.getAttribute || el.getAttribute('data-act') !== 'sfm-f') return;
   var k = el.getAttribute('data-k');
   if (k === 'sort') SFM_UI.sort = el.value; else SFM_UI.f[k] = el.value;
   SFM_UI.page = 0; renderSfm();
 });
 document.addEventListener('input', function (event) {
+  if (event.target.id === 'sfm-place-search') { SFM_UI.places.q = event.target.value; sfmRefreshPlaces(); return; }
+  if (event.target.getAttribute && event.target.getAttribute('data-act') === 'sfm-rt') { sfmReportSet(event.target.getAttribute('data-k'), event.target.value, true); return; }
   if (event.target.id !== 'sfm-search') return;
   SFM_UI.q = event.target.value; SFM_UI.page = 0;
   var list = $('sfm-list');
   if (list) list.innerHTML = sfmEntriesBody(sfmData());
 });
+function sfmRefreshPlaces() {
+  var host = $('sfm-places'), data = sfmData();
+  if (!host || !data) return;
+  var wrap = host.querySelector('.sfm-places-wrap'), left = wrap ? wrap.scrollLeft : 0;
+  host.innerHTML = sfmPlacesTable(data);
+  wrap = host.querySelector('.sfm-places-wrap'); if (wrap) wrap.scrollLeft = left;
+}

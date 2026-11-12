@@ -173,7 +173,7 @@ const html = tpl
   .replace('/*@@MOV_UI@@*/', () => safe(fs.readFileSync(path.join(HERE, 'src', 'mov-ui.js'), 'utf8')))
   .replace('/*@@PROFILE@@*/', () => safe(fs.readFileSync(path.join(HERE, 'src', 'municipality-profile.js'), 'utf8')))
   .replace('/*@@KPIS@@*/', () => safe(fs.readFileSync(path.join(HERE, 'src', 'kpis.js'), 'utf8')))
-  .replace('/*@@SFM@@*/', () => safe(fs.readFileSync(path.join(HERE, 'src', 'sfm.js'), 'utf8')))
+  .replace('/*@@SFM@@*/', () => safe(['sfm.js', 'sfm-report.js'].map(f => fs.readFileSync(path.join(HERE, 'src', f), 'utf8')).join('\n')))
   .replace('/*@@TRACKER@@*/', () => safe(fs.readFileSync(path.join(HERE, 'src', 'activity-tracker.js'), 'utf8')))
   .replace('/*@@HEALTH@@*/', () => safe(script('JS_Health.html')))
   .replace('/*@@APP@@*/', () => safe(fs.readFileSync(path.join(HERE, 'src', 'app.js'), 'utf8')))

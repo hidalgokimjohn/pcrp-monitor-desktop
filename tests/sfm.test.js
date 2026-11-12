@@ -14,7 +14,7 @@ function context(){
  c.attr=c.esc;c.icon=()=>'';c.refreshIcons=()=>{};c.movOption=(v,t,s)=>'<option value="'+c.esc(v)+'"'+(s?' selected':'')+'>'+c.esc(t)+'</option>';
  c.baselineMunis=()=>[{province:'Province A',municipality:'Town One',barangays:2},{province:'Province A',municipality:'Town Two',barangays:1},{province:'Province B',municipality:'Quiet Town',barangays:1}];
  c.window=c;vm.createContext(c);
- ['vendor/monitor/Code.js','src/runtime.js','src/sfm.js'].forEach(f=>vm.runInContext(fs.readFileSync(path.join(ROOT,f),'utf8'),c,{filename:f}));
+ ['vendor/monitor/Code.js','src/runtime.js','src/sfm.js','src/sfm-report.js'].forEach(f=>vm.runInContext(fs.readFileSync(path.join(ROOT,f),'utf8'),c,{filename:f}));
  return c;
 }
 let seq=0;
@@ -181,4 +181,109 @@ test('the page renders its three views and an empty state without the Activity T
  assert.match(body.innerHTML,/<b>1<\/b> of 3 entries/);assert.match(body.innerHTML,/No date addressed/);assert.doesNotMatch(body.innerHTML,/undefined|NaN/);
  c.SFM_UI.view='places';c.renderSfm();
  assert.match(body.innerHTML,/No entries in this file/);assert.match(body.innerHTML,/data-act="sfm-place" data-k="muni" data-v="Province A\|Town One"/);assert.doesNotMatch(body.innerHTML,/undefined|NaN/);
+});
+
+test('the place table searches by name or province and sorts by any column, with empty places last',()=>{
+ const c=context();seq=0;
+ const d=build(c,[entry(),entry(),entry({'Status':'Pending','Date Addressed':'','Resolution':'','Date Encoded':'2026-07-08'}),entry({'City / Municipality':'Town Two','Date of Intake':'2026-07-01','Date Addressed':'2026-07-01','Date Encoded':'2026-09-01'})]);
+ const names=ui=>Array.from(c.sfmPlaceRows(d,ui),g=>g.name);
+ assert.deepEqual(names({}),['Town One','Town Two','Quiet Town']);                       // province grouping by default
+ assert.deepEqual(names({q:'province b'}),['Quiet Town']);assert.deepEqual(names({q:'two'}),['Town Two']);assert.deepEqual(names({q:'zzz'}),[]);
+ assert.deepEqual(names({sort:'n',dir:-1}),['Town One','Town Two','Quiet Town']);
+ assert.deepEqual(names({sort:'n',dir:1}),['Town Two','Town One','Quiet Town']);          // a place with no entries stays last
+ assert.deepEqual(names({sort:'medianLag',dir:-1}),['Town Two','Town One','Quiet Town']);
+ assert.deepEqual(names({sort:'latest',dir:1}),['Town Two','Town One','Quiet Town']);
+ assert.deepEqual(names({sort:'name',dir:-1}),['Town Two','Town One','Quiet Town']);
+ const body={innerHTML:''};c.$=id=>id==='sfm-body'?body:null;
+ c.TABS.Raw_SFM={headers:HEAD.slice(),rows:[entry(),entry({'City / Municipality':'Town Two'})]};c.LOADED.sfm={rows:2};
+ c.SFM_UI.view='places';c.renderSfm();
+ assert.match(body.innerHTML,/id="sfm-place-search"/);assert.match(body.innerHTML,/class="sfm-prov"/);assert.match(body.innerHTML,/data-act="sfm-place-sort" data-v="open"/);
+ assert.match(body.innerHTML,/<b>3<\/b> of 3 municipalities/);
+ c.SFM_UI.places={q:'one',sort:'n',dir:-1};c.renderSfm();
+ assert.doesNotMatch(body.innerHTML,/class="sfm-prov"/);assert.match(body.innerHTML,/aria-sort="descending"/);assert.match(body.innerHTML,/Total shown/);
+ assert.match(body.innerHTML,/sorted by entries, highest first/);assert.match(body.innerHTML,/Group by province/);assert.doesNotMatch(body.innerHTML,/undefined|NaN/);
+});
+
+test('a province and a period by date of intake narrow the entries and the monitored list',()=>{
+ const c=context();seq=0;
+ const rows=[entry({'Date of Intake':'2026-06-30','Date Addressed':'2026-06-30'}),entry(),entry({'Date of Intake':'2026-08-03','Date Addressed':'2026-08-03','Date Encoded':'2026-08-10'}),entry({'Date of Intake':''})];
+ const july=build(c,rows,{from:'2026-07-01',to:'2026-07-31'});
+ assert.deepEqual(Array.from(july.entries,e=>e.ref),['000002']);assert.equal(july.asOf,'2026-08-10');assert.equal(july.from,'2026-07-01');
+ assert.equal(build(c,rows,{from:'2026-07-01'}).entries.length,2);assert.equal(build(c,rows,{}).entries.length,4);
+ const b=build(c,rows,{province:'Province B'});
+ assert.equal(b.entries.length,0);assert.equal(b.summary.monitored,1);assert.deepEqual(Array.from(b.summary.silent),['Quiet Town']);
+});
+
+test('numbers are spelled out with the figure in parentheses',()=>{
+ const c=context();
+ assert.equal(c.sfmWords(0),'zero');assert.equal(c.sfmWords(12),'twelve');assert.equal(c.sfmWords(70),'seventy');assert.equal(c.sfmWords(401),'four hundred one');
+ assert.equal(c.sfmWords(1581),'one thousand five hundred eighty-one');assert.equal(c.sfmWords(20000),'twenty thousand');assert.equal(c.sfmWords(1000000),'one million');
+ assert.equal(c.sfmNum(1581),'one thousand five hundred eighty-one (1,581)');
+ assert.equal(c.sfmCount(1,'entry','entries'),'one (1) entry');assert.equal(c.sfmLongDate('2026-11-12'),'12 November 2026');
+ assert.equal(c.sfmList(['A','B','C']),'A, B and C');assert.equal(c.sfmList(['A']),'A');
+});
+
+test('the memorandum states the same figures as the page, withholds names, and reads the same as HTML, text and Word',()=>{
+ const c=context();seq=0;
+ const d=build(c,[entry({'Status':'Pending','Date Addressed':'','Resolution':'','Date Encoded':'2026-07-20'}),entry({'Date Addressed':''}),entry({'Nature of Issue':'Type B','City / Municipality':'Town Two','Feedback':''}),entry({'Sex':'male'})]);
+ const m=c.sfmReportModel(d,{memoFor:'The Regional Director',sender:'The RPMO',name:'Juan Dela Cruz',position:'Project Evaluation Officer',date:'2026-11-12',source:'masterlist.xlsx'});
+ assert.deepEqual(Array.from(m.sections,s=>s.title),['PURPOSE','STATUS OF ENTRIES','NATURE OF THE FEEDBACK','STATUS PER MUNICIPALITY','COMPLETENESS OF THE RECORDS','ENTRIES REQUIRING ACTION','RECOMMENDATIONS','BASIS OF THE FIGURES']);
+ assert.deepEqual(Array.from(m.sections,s=>s.no),[1,2,3,4,5,6,7,8]);
+ assert.deepEqual(Array.from(m.address,r=>r[0]),['FOR','FROM','SUBJECT','DATE']);                 // THRU is left out when blank
+ assert.match(m.address[2][1],/^STATUS OF THE STAKEHOLDERS FEEDBACK MECHANISM \(SFM\) ENTRIES, CARAGA REGION, 6 JULY 2026$/);
+ const text=c.sfmReportText(m),html=c.sfmReportHtml(m),word=c.sfmReportWord(m);
+ assert.match(text,/A total of four \(4\) entries were encoded, coming from two \(2\) of the three \(3\) monitored municipalities\./);
+ assert.match(text,/Three \(3\) entries, or 75 percent, are marked Resolved, while one \(1\) remains open\. Of the open entries, one \(1\) has exceeded/);
+ assert.match(text,/three \(3\) are Type A, one \(1\) Type B and zero \(0\) Type C/);
+ assert.match(text,/Of the three \(3\) entries that carry a feedback rating, three \(3\), or 100 percent, were rated Satisfied or Very Satisfied\. One \(1\) entry carries no rating/);
+ assert.match(text,/One \(1\) monitored municipality has no entry in the KCIS for this coverage: Quiet Town\./);
+ assert.match(text,/Resolved without a Date Addressed: one \(1\) entry \(in Town One\)/);
+ assert.match(text,/That the one \(1\) open entry be acted upon, and its status/);
+ assert.match(text,/That the Area Coordinating Team of Quiet Town confirm whether feedback was received/);
+ assert.match(text,/Town One, Province A\t3\t1\t0\t1\t1\t/);assert.match(text,/Quiet Town, Province B\tNo entry/);assert.match(text,/Total\t4\t1\t1\t1\t2\t/);
+ assert.match(text,/000001\tTown One\tVillage A\t6 July 2026\tSimple\t10/);assert.match(text,/000003\tTown Two\tType B\tCommunity Participation\tResolved\t6 July 2026/);
+ assert.match(text,/\(masterlist\.xlsx\), as of 20 July 2026/);assert.match(text,/Juan Dela Cruz\nProject Evaluation Officer$/);
+ for(const out of [text,html,word]) assert.doesNotMatch(out,/Ana Reyes Cruz|Maria Santos Lopez|undefined|NaN/);                    // no sender or officer names
+ const plain=s=>s.replace(/<style>[\s\S]*?<\/style>/g,'').replace(/<[^>]+>/g,' ').replace(/&nbsp;/g,' ').replace(/&quot;/g,'"').replace(/&amp;/g,'&').replace(/\s+/g,' ');
+ for(const sentence of ['A total of four (4) entries were encoded','One (1) monitored municipality has no entry','In view of the foregoing, the following are respectfully recommended:','For the information, consideration and appropriate action of Management.'])
+  for(const out of [text.replace(/\s+/g,' '),plain(html),plain(word)]) assert.ok(out.includes(sentence),sentence);
+ assert.match(html,/<h1>MEMORANDUM<\/h1>/);assert.match(html,/<td class="r">3<\/td>/);assert.match(word,/urn:schemas-microsoft-com:office:word/);assert.match(word,/@page\{size:8\.5in 11in/);
+});
+
+test('report sections can be left out, an empty coverage says so, and a municipal memorandum goes by barangay',()=>{
+ const c=context();seq=0;
+ const rows=[entry(),entry({'City / Municipality':'Town Two','Barangay':'Village C'})];
+ const lean=c.sfmReportModel(build(c,rows),{sections:{nature:false,places:false,records:false,action:false,recommend:false}});
+ assert.deepEqual(Array.from(lean.sections,s=>s.no+' '+s.title),['1 PURPOSE','2 STATUS OF ENTRIES','3 BASIS OF THE FIGURES']);
+ assert.match(c.sfmReportText(lean),/All two \(2\) entries are marked Resolved\. No entry is open\./);
+ const none=c.sfmReportModel(build(c,rows,{from:'2027-01-01',to:'2027-01-31'}),{});
+ assert.deepEqual(Array.from(none.sections,s=>s.title),['PURPOSE','STATUS OF ENTRIES','BASIS OF THE FIGURES']);
+ assert.match(c.sfmReportText(none),/No SFM entry falls within the coverage and period of this Memorandum\./);
+ assert.match(c.sfmReportText(none),/covering feedback received from 1 January 2027 to 31 January 2027/);
+ const town=c.sfmReportModel(build(c,rows,{home:'Province A|Town Two'}),{});
+ assert.ok(Array.from(town.sections,s=>s.title).includes('STATUS PER BARANGAY'));assert.equal(town.letterhead[3],'Area Coordinating Team, Town Two, Province A');
+ const text=c.sfmReportText(town);assert.match(text,/for the Municipality of Town Two, Province A/);assert.match(text,/A total of one \(1\) entry was encoded\./);assert.match(text,/Village C\t1\t0/);
+ assert.doesNotMatch(text,/monitored municipalit/);
+});
+
+test('the Report tab narrows its coverage and period, and keeps the address block between sessions',()=>{
+ const c=context();seq=0;
+ const body={innerHTML:''};c.$=id=>id==='sfm-body'?body:null;
+ c.TABS.Raw_SFM={headers:HEAD.slice(),rows:[entry(),entry({'Date of Intake':'2026-08-03','Date Addressed':'2026-08-03','Date Encoded':'2026-08-10','City / Municipality':'Town Two'})]};c.LOADED.sfm={rows:2,file:'list.xlsx'};
+ c.SFM_UI.view='report';c.renderSfm();
+ assert.match(body.innerHTML,/Report settings/);assert.match(body.innerHTML,/<b>2<\/b> entries covered/);assert.match(body.innerHTML,/<option value="2026-08">August 2026<\/option>/);
+ assert.match(body.innerHTML,/data-act="sfm-report-print"/);assert.match(body.innerHTML,/A total of two \(2\) entries were encoded/);
+ c.sfmReportSet('period','2026-08');
+ assert.equal(c.SFM_UI.report.from,'2026-08-01');assert.equal(c.SFM_UI.report.to,'2026-08-31');
+ assert.match(body.innerHTML,/<b>1<\/b> entry covered/);assert.match(body.innerHTML,/covering feedback received from 1 August 2026 to 31 August 2026/);
+ c.sfmReportSet('to','2026-08-15');assert.equal(c.SFM_UI.report.period,'custom');
+ c.sfmReportSet('period','all');c.sfmReportSet('scope','p:Province B');
+ assert.match(body.innerHTML,/<b>0<\/b> entries covered/);assert.match(body.innerHTML,/for the Province of Province B/);
+ c.sfmReportSet('memoFor','The Regional Director');c.sfmReportSet('sec:nature',false);
+ assert.equal(c.preferences.sfmReport.memoFor,'The Regional Director');assert.equal(c.preferences.sfmReport.sections.nature,false);
+ c.SFM_UI.report=null;c.renderSfm();
+ assert.match(body.innerHTML,/value="The Regional Director"/);assert.doesNotMatch(body.innerHTML,/NATURE OF THE FEEDBACK|undefined|NaN/);
+ // A PEA / MDM workspace cannot widen the coverage beyond its own municipality.
+ c.preferences={...c.preferences,role:'pea_mdm',homeKey:'Province A|Town Two'};c.SFM_UI.report=null;c.SFM_UI.report=Object.assign(c.sfmReportState(),{scope:''});
+ assert.equal(c.sfmReportData().entries.length,1);c.renderSfm();assert.doesNotMatch(body.innerHTML,/data-k="scope"/);
 });
