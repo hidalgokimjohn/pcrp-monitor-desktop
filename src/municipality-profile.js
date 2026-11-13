@@ -698,7 +698,7 @@ function profileOpenVolunteers(place, body, position) {
   go('volunteers');
 }
 // ---- Municipality directory (RPMO): a sortable table, one row per municipality.
-var PROFILE_DIR = { search: '', sort: 'province', dir: 1, view: 'matrix', format: 'frac', order: 'rank', scope: 'all', mshow: 'all', msort: 'province', animate: true, viewLoaded: false };
+var PROFILE_DIR = { search: '', sort: 'province', dir: 1, view: 'matrix', format: 'frac', order: 'rank', scope: 'all', mshow: 'all', msort: 'high', animate: true, viewLoaded: false };
 var PROFILE_DIR_COLUMNS = [['name', 'Municipality'], ['province', 'Province'], ['barangays', 'Barangays'], ['progress', 'Progress'], ['encoded', 'Encoded'], ['attendees', 'With attendees'], ['movs', 'MOVs submitted'], ['quorum', 'HH quorum'], ['brest', 'BResT'], ['mrest', 'MResT'], ['backlog', 'Attendance due'], ['movDue', 'MOV due']];
 function profileDirectoryRows() {
   var ix = profileIndex(), stage = PROFILE_STATE.stage;
@@ -960,9 +960,11 @@ function profileDirLoadView() {
   PROFILE_DIR.order = saved.order === 'province' ? 'province' : 'rank';
   PROFILE_DIR.scope = saved.scope === 'stage' ? 'stage' : 'all';
   PROFILE_DIR.mshow = saved.mshow === 'behind' ? 'behind' : 'all';
-  PROFILE_DIR.msort = saved.msort === 'low' ? 'low' : 'province';
+  PROFILE_DIR.msort = profileDirMatrixOrder(saved.checklistOrder);
 }
-function profileDirSaveView() { var p = prefs(); p.profileDirectory = { view: PROFILE_DIR.view, format: PROFILE_DIR.format, order: PROFILE_DIR.order, scope: PROFILE_DIR.scope, mshow: PROFILE_DIR.mshow, msort: PROFILE_DIR.msort }; savePrefs(p); }
+function profileDirSaveView() { var p = prefs(); p.profileDirectory = { view: PROFILE_DIR.view, format: PROFILE_DIR.format, order: PROFILE_DIR.order, scope: PROFILE_DIR.scope, mshow: PROFILE_DIR.mshow, checklistOrder: profileDirMatrixOrder(PROFILE_DIR.msort) }; savePrefs(p); }
+/** The checklist's row order: highest Overall first unless another order was chosen. */
+function profileDirMatrixOrder(value) { return value === 'low' || value === 'province' ? value : 'high'; }
 var PROFILE_DIR_OVERALL = '__overall';
 /** The column groups: Overall (one combined percentage), then each activity of the stage in sequence with the measures it has. */
 function profileDirMatrixColumns(models) {
@@ -1081,21 +1083,25 @@ function profileDirMatrixHtml(rows, all) {
       var x = region[PROFILE_DIR_OVERALL + '|' + p[0]];
       return profileDirTile(names[p[0]], x, x ? n(x.v) + ' of ' + n(x.t) + ' ' + noun[p[0]] : '');
     }).join('') + '</div>';
-  var show = PROFILE_DIR.mshow === 'behind' ? 'behind' : 'all', sort = PROFILE_DIR.msort === 'low' ? 'low' : 'province';
+  var show = PROFILE_DIR.mshow === 'behind' ? 'behind' : 'all', sort = profileDirMatrixOrder(PROFILE_DIR.msort), ranked = sort !== 'province';
   function seg(label, act, options, current) {
     return '<div class="pdm-format" role="group" aria-label="' + label + '">' + options.map(function (o) { return '<button type="button" data-act="' + act + '" data-v="' + o[0] + '" aria-pressed="' + (current === o[0]) + '">' + o[1] + '</button>'; }).join('') + '</div>';
   }
   var toolbar = '<div class="pdm-toolbar"><div class="pmap-legend pdm-legend" aria-label="Checklist legend"><span><i class="pdm-swatch pdm-ok"></i>100%</span><span><i class="pdm-swatch pdm-mid"></i>50–99%</span><span><i class="pdm-swatch pdm-low"></i>Below 50%</span><span><i class="pdm-swatch pdm-na"></i>Not assessed or no target</span></div>' +
     '<div class="pdm-tools">' + seg('Show municipalities', 'profile-dir-matrix-show', [['all', 'All <b>' + n(lines.length) + '</b>'], ['behind', 'Below 100% <b>' + n(behind.length) + '</b>']], show) +
-    seg('Order', 'profile-dir-matrix-sort', [['province', 'By province'], ['low', 'Lowest first']], sort) + '</div></div>';
+    seg('Order', 'profile-dir-matrix-sort', [['high', 'Highest first'], ['low', 'Lowest first'], ['province', 'By province']], sort) + '</div></div>';
   var shown = show === 'behind' ? behind : lines;
-  if (sort === 'low') shown = shown.slice().sort(function (a, b) { return (a.rate === null ? 2 : a.rate) - (b.rate === null ? 2 : b.rate) || a.c.model.municipality.localeCompare(b.c.model.municipality); });
+  // Ranked either way, a municipality that is not assessed stays at the bottom.
+  if (ranked) shown = shown.slice().sort(function (a, b) {
+    if ((a.rate === null) !== (b.rate === null)) return a.rate === null ? 1 : -1;
+    return (sort === 'low' ? a.rate - b.rate : b.rate - a.rate) || a.c.model.municipality.localeCompare(b.c.model.municipality);
+  });
   var perProvince = {}; shown.forEach(function (l) { perProvince[l.c.model.province] = (perProvince[l.c.model.province] || 0) + 1; });
   var province = null, span = 1 + cols.reduce(function (t, c) { return t + c.measures.length; }, 0);
   var body = shown.map(function (l) {
     var c = l.c, m = c.model, out = '';
     if (sort === 'province' && m.province !== province) { province = m.province; out += '<tr class="pdm-prov"><th scope="rowgroup" colspan="' + span + '"><span>' + esc(province) + ' <small>' + n(perProvince[province]) + '</small></span></th></tr>'; }
-    out += '<tr data-key="' + attr(c.key) + '"><th scope="row" class="pdm-name"><button type="button" class="profile-cell-button" data-act="profile-open-muni" data-v="' + attr(c.key) + '">' + esc(m.municipality) + '</button>' + (sort === 'low' ? '<span class="pdm-sub">' + esc(m.province) + '</span>' : '') + '</th>' + cols.map(function (col) {
+    out += '<tr data-key="' + attr(c.key) + '"><th scope="row" class="pdm-name"><button type="button" class="profile-cell-button" data-act="profile-open-muni" data-v="' + attr(c.key) + '">' + esc(m.municipality) + '</button>' + (ranked ? '<span class="pdm-sub">' + esc(m.province) + '</span>' : '') + '</th>' + cols.map(function (col) {
       var vals = l.vals[col.act.code];
       if (col.act.overall) {
         var o = l.overall, ot = m.municipality + ' · Overall: ' + profileDirOverallTitle(o);
@@ -1123,7 +1129,7 @@ function profileDirMatrixHtml(rows, all) {
     ' Overall is one percentage per municipality: the average of its Encoded, With attendees and MOVs rates across all of the stage\'s activities (hover it for the parts). Totals add counts and targets, so a total is the region\'s own rate. Click a figure to open that activity in the municipality profile.</p></details>';
   var title = '<h2 class="pdm-title">Activity &amp; MOV checklist <small>Conduct and outputs (MOVs) · Stage ' + PROFILE_STATE.stage + '</small></h2>';
   return notes + profileFieldHtml(rows, all) + title + summary + toolbar +
-    (shown.length ? '<div class="table-wrap pdm-wrap"><table class="grid pdm-table' + (sort === 'low' ? ' pdm-ranked' : '') + '"><thead>' + head1 + head2 + '</thead><tbody>' + body + '</tbody><tfoot>' + foot + '</tfoot></table></div>' :
+    (shown.length ? '<div class="table-wrap pdm-wrap"><table class="grid pdm-table' + (ranked ? ' pdm-ranked' : '') + '"><thead>' + head1 + head2 + '</thead><tbody>' + body + '</tbody><tfoot>' + foot + '</tfoot></table></div>' :
       '<div class="msg info">Every municipality shown is at 100%.</div>') + help;
 }
 /** CSV of the matrix: Overall as a percentage, then counts and targets in their own columns, whatever the on-screen format. */
@@ -1686,7 +1692,7 @@ document.addEventListener('click', function (event) {
     }
     else if (action === 'profile-race-replay') { PROFILE_DIR.animate = true; renderMunicipalityProfile(); }
     else if (action === 'profile-dir-matrix-show') { profileDirLoadView(); PROFILE_DIR.mshow = value === 'behind' ? 'behind' : 'all'; profileDirSaveView(); renderMunicipalityProfile(); }
-    else if (action === 'profile-dir-matrix-sort') { profileDirLoadView(); PROFILE_DIR.msort = value === 'low' ? 'low' : 'province'; profileDirSaveView(); renderMunicipalityProfile(); }
+    else if (action === 'profile-dir-matrix-sort') { profileDirLoadView(); PROFILE_DIR.msort = profileDirMatrixOrder(value); profileDirSaveView(); renderMunicipalityProfile(); }
     else if (action === 'profile-dir-format') { profileDirLoadView(); PROFILE_DIR.format = value === 'pct' ? 'pct' : 'frac'; profileDirSaveView(); renderMunicipalityProfile(); }
     else if (action === 'profile-dir-cell') openMunicipalityProfile(value, button.getAttribute('data-code') || '');
     else if (action === 'profile-dir-matrix-export') downloadCsv('PCRP_Stage' + PROFILE_STATE.stage + '_Municipal_Activity_MOV_checklist.csv', csvOf(profileDirMatrixExportRows()));

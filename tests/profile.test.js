@@ -268,7 +268,7 @@ test('municipal Activity & MOV checklist: municipalities as rows, activity group
  assert.deepEqual([head.indexOf(label+' · Encoded'),head.indexOf(label+' · MOV forms required')].map(i=>i>1),[true,true]);
  assert.deepEqual([town[head.indexOf(label+' · Encoded')],town[head.indexOf(label+' · Target')],town[head.indexOf(label+' · MOV forms submitted')],town[head.indexOf(label+' · MOV forms required')]],[1,2,2,8]);
 });
-test('checklist summary, below-100% filter and lowest-first order work on the same figures as the cells',()=>{
+test('checklist summary, below-100% filter and the row orders work on the same figures as the cells',()=>{
  const c=context();c.esc=v=>String(v??'');c.attr=c.esc;
  // Province A's Town has one of two 1st BAs encoded; Province B's Town has nothing.
  load(c,[tracker(c)],[attachment(c,'29')]);
@@ -277,19 +277,34 @@ test('checklist summary, below-100% filter and lowest-first order work on the sa
  assert.match(html,/class="pdm-summary" aria-label="Region summary, Stage 1"/);assert.match(html,/Region overall · Stage 1<\/span><strong>\d+%<\/strong>/);assert.match(html,/0 of 2 municipalities at 100%/);
  assert.match(html,/>Encoded<\/span><strong>\d+%<\/strong>[\s\S]*?<small>1 of \d+ activity targets<\/small>/);assert.match(html,/MOVs submitted<\/span>[\s\S]*?<small>1 of \d+ required MOV forms<\/small>/);
  assert.match(html,/data-act="profile-dir-matrix-show" data-v="behind" aria-pressed="false">Below 100% <b>2<\/b>/);
- assert.match(html,/class="pdm-prov"><th scope="rowgroup" colspan="\d+"><span>Province A <small>1<\/small>/);assert.match(html,/<i class="pdm-bar" aria-hidden="true"><b style="width:\d+%">/);
+ assert.match(html,/<i class="pdm-bar" aria-hidden="true"><b style="width:\d+%">/);
  const table=h=>h.slice(h.indexOf('<table'));
+ // The list opens with the highest Overall on top: no province groups, the province named on each row.
+ assert.equal(c.PROFILE_DIR.msort,'high');assert.match(html,/data-act="profile-dir-matrix-sort" data-v="high" aria-pressed="true">Highest first/);
+ assert.doesNotMatch(html,/class="pdm-prov"/);assert.match(html,/pdm-table pdm-ranked/);assert.match(html,/<span class="pdm-sub">Province A<\/span>/);
  assert.ok(table(html).indexOf('data-v="Province A|Town"')<table(html).indexOf('data-v="Province B|Town"'));
- // Lowest first drops the province groups, names the province on each row and puts the weakest on top.
+ // Lowest first puts the weakest on top.
  c.PROFILE_DIR.msort='low';html=c.profileDirMatrixHtml(all,all);
  assert.doesNotMatch(html,/class="pdm-prov"/);assert.match(html,/<span class="pdm-sub">Province B<\/span>/);
  assert.ok(table(html).indexOf('data-v="Province B|Town"')<table(html).indexOf('data-v="Province A|Town"'));
+ // By province brings the groups back.
+ c.PROFILE_DIR.msort='province';html=c.profileDirMatrixHtml(all,all);
+ assert.match(html,/class="pdm-prov"><th scope="rowgroup" colspan="\d+"><span>Province A <small>1<\/small>/);assert.doesNotMatch(html,/pdm-ranked|class="pdm-sub"/);
+ assert.ok(table(html).indexOf('data-v="Province A|Town"')<table(html).indexOf('data-v="Province B|Town"'));
+ // In either ranked order a municipality that is not assessed stays last.
+ const rates={'Province A|Town':null,'Province B|Town':0.4},keep=c.profileDirMatrixValues;
+ c.profileDirMatrixValues=(m,code)=>{const v=keep(m,code);if(v&&v.overall&&rates[m.key]===null)v.overall={...v.overall,assessed:false};return v;};
+ for(const order of ['high','low']){c.PROFILE_DIR.msort=order;html=c.profileDirMatrixHtml(all,all);assert.ok(table(html).indexOf('data-v="Province B|Town"')<table(html).indexOf('data-v="Province A|Town"'),order);}
+ c.profileDirMatrixValues=keep;c.PROFILE_DIR.msort='low';
  // A municipality at 100% leaves the below-100% list, and the footer then totals only what is shown.
  const done=all[0].model;c.profileStageActivities(done,1).forEach(a=>{a.tally.encoded=a.tally.complete=a.tally.expected;a.tally.movSubmitted=a.tally.movRequired;});
  c.PROFILE_DIR.mshow='behind';html=c.profileDirMatrixHtml(all,all);
  assert.match(html,/1 of 2 municipalities at 100%/);assert.match(html,/Total shown/);assert.doesNotMatch(table(html),/data-act="profile-open-muni" data-v="Province A\|Town"/);
  c.profileDirSaveView();c.PROFILE_DIR.mshow='all';c.PROFILE_DIR.msort='province';c.PROFILE_DIR.viewLoaded=false;c.profileDirLoadView();
  assert.equal(c.PROFILE_DIR.mshow,'behind');assert.equal(c.PROFILE_DIR.msort,'low');
+ // An order saved before "highest first" existed was only the old default, so it is not carried over.
+ c.preferences.profileDirectory={msort:'province'};c.PROFILE_DIR.viewLoaded=false;c.profileDirLoadView();assert.equal(c.PROFILE_DIR.msort,'high');
+ assert.equal(c.profileDirMatrixOrder('province'),'province');assert.equal(c.profileDirMatrixOrder('nonsense'),'high');
  // Without a MOV import the MOV columns and tile are left out rather than shown as dashes.
  const c2=context();c2.esc=v=>String(v??'');c2.attr=c2.esc;load(c2,[tracker(c2)]);const r2=c2.profileDirectoryRows();html=c2.profileDirMatrixHtml(r2,r2);
  assert.doesNotMatch(html,/>MOV<\/abbr>/);assert.doesNotMatch(html,/MOVs submitted<\/span>/);assert.match(html,/The MOV columns appear once they are imported/);
