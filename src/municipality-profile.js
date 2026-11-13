@@ -808,6 +808,79 @@ function profileRaceField(rows, stage) {
   order.forEach(function (f, i) { f.rank = !i ? 1 : order[i - 1].rank + (Math.abs(gap(order[i - 1], f)) < 1e-9 ? 0 : 1); });
   return field;
 }
+/**
+ * A short code for each municipality, unique across the list: initials for a name of several words (LN, GL), the
+ * first three letters for a single word (BAC). Names that would share a code are told apart by their consonants
+ * (TBY, TBJ) or by their last word (SMI, SMO); the same name in two provinces takes its province's initial.
+ */
+function profileMuniCodes(models) {
+  function options(m) {
+    var words = String(m.municipality).replace(/[^A-Za-zÀ-ɏ ]+/g, ' ').trim().split(/\s+/).filter(Boolean), one = words.join(''), list = [];
+    if (!one) return ['?'];
+    if (words.length > 1) {
+      var last = words[words.length - 1];
+      list.push(words.map(function (w) { return w.charAt(0); }).join('').slice(0, 3), words[0].charAt(0) + last.slice(0, 2), words[0].slice(0, 2) + last.charAt(0));
+    } else {
+      list.push(one.slice(0, 3), (one.charAt(0) + one.slice(1).replace(/[aeiou]/gi, '')).slice(0, 3), one.slice(0, 2) + one.slice(-1));
+    }
+    var province = String(m.province).replace(/[^A-Za-zÀ-ɏ ]+/g, ' ').trim().split(/\s+/).filter(Boolean);
+    list.push(one.slice(0, 2) + (province[0] || '').charAt(0), one.charAt(0) + province.map(function (w) { return w.charAt(0); }).join(''));
+    return list.map(function (c) { return c.toUpperCase(); }).filter(function (c, i, a) { return a.indexOf(c) === i; });
+  }
+  var items = models.map(function (m) { return { key: m.key, options: options(m), level: 0 }; }), moved = true;
+  while (moved) {
+    moved = false;
+    var taken = {};
+    items.forEach(function (it) { var c = it.options[it.level]; (taken[c] = taken[c] || []).push(it); });
+    Object.keys(taken).forEach(function (c) {
+      if (taken[c].length < 2) return;
+      taken[c].forEach(function (it) { if (it.level < it.options.length - 1) { it.level++; moved = true; } });
+    });
+  }
+  // Nothing left to tell two names apart: number them.
+  var codes = {}, seen = {};
+  items.forEach(function (it) { var c = it.options[it.level]; seen[c] = (seen[c] || 0) + 1; codes[it.key] = seen[c] > 1 ? c + seen[c] : c; });
+  return codes;
+}
+// "Where the field is": the conduct of the activities at a glance. A marker for every municipality, carrying its
+// initials, stacked over the activity it is conducting now (the first not yet completed in all of its locations).
+// It sits above the Activity & MOV checklist, which adds the outputs (MOVs) to the same activities.
+function profileFieldHtml(rows, all) {
+  if (!LOADED.activityTracker || !rows.length) return '';
+  var scope = profileRaceScope(), whole = scope === 'all', acts = profileRaceActivities(rows[0].model, scope);
+  if (!acts.length) return '';
+  var done = whole ? 'All stages complete' : 'Stage complete', everyone = all && all.length ? all : rows;
+  var legs = [], legStart = {}; acts.forEach(function (a, i) { var last = legs[legs.length - 1]; if (last && last.stage === a.stage) last.count++; else { legs.push({ stage: a.stage, count: 1 }); if (i) legStart[a.code] = true; } });
+  // Initials and places are decided against every monitored municipality, so a search never changes them.
+  var codes = profileMuniCodes(everyone.map(function (r) { return r.model; })), shown = {}; rows.forEach(function (r) { shown[r.key] = true; });
+  var racers = profileRaceField(everyone, scope).filter(function (f) { return shown[f.entry.key] && f.standing.racing; }).sort(function (a, b) { return a.rank - b.rank || a.entry.model.municipality.localeCompare(b.entry.model.municipality); });
+  if (!racers.length) return '';
+  var buckets = acts.map(function () { return []; }), home = [];
+  racers.forEach(function (f) { (f.data.status === 'complete' ? home : buckets[f.standing.at]).push(f); });
+  var most = Math.max.apply(null, buckets.map(function (b) { return b.length; }));
+  var dots = function (list) {
+    return list.map(function (f) {
+      var m = f.entry.model, label = m.municipality + ', ' + m.province + ' · ' + profileOrdinal(f.rank) + ' place · show its row in the checklist';
+      return '<button type="button" class="psw-dot' + (f.rank < 4 ? ' psw-rank-' + f.rank : '') + '" data-act="profile-race-focus" data-v="' + attr(m.key) + '" title="' + attr(label) + '" aria-label="' + attr(label) + '">' + esc(codes[m.key]) + '</button>';
+    }).join('');
+  };
+  var strip = acts.map(function (a, i) {
+    var list = buckets[i];
+    return '<div class="psw-field-col' + (legStart[a.code] ? ' psw-leg-start' : '') + (most > 1 && list.length === most ? ' psw-busiest' : '') + '" title="' + attr('Activity ' + a.seq + ' · ' + a.label + ' · ' + list.length + ' here') + '"><div class="psw-dots">' + dots(list) + '</div><b>' + (list.length || '') + '</b><span>' + esc(a.seq) + '</span><em>' + esc(a.label) + '</em></div>';
+  }).join('') + '<div class="psw-field-col psw-field-fin" title="' + attr(done + ' · ' + home.length) + '"><div class="psw-dots">' + dots(home) + '</div><b>' + (home.length || '') + '</b><span>Finish</span><em>' + done + '</em></div>';
+  var legRow = whole && legs.length > 1 ? legs.map(function (l, i) { return '<span class="psw-field-leg' + (i ? ' psw-leg-start' : '') + '" style="grid-column:span ' + l.count + '">Stage ' + esc(l.stage) + '</span>'; }).join('') + '<span class="psw-field-leg psw-field-leg-fin"></span>' : '';
+  var provinces = [], byProvince = {};
+  everyone.slice().sort(function (a, b) { return a.model.province.localeCompare(b.model.province) || a.model.municipality.localeCompare(b.model.municipality); }).forEach(function (r) {
+    if (!byProvince[r.model.province]) { byProvince[r.model.province] = []; provinces.push(r.model.province); }
+    byProvince[r.model.province].push('<span><b>' + esc(codes[r.key]) + '</b> ' + esc(r.model.municipality) + '</span>');
+  });
+  var key = '<details class="pdm-help psw-key"><summary>Key to the initials</summary><dl>' + provinces.map(function (p) { return '<div><dt>' + esc(p) + '</dt><dd>' + byProvince[p].join('') + '</dd></div>'; }).join('') + '</dl></details>';
+  var stage = PROFILE_STATE.stage;
+  return '<section class="psw-fieldcard" aria-label="Where the field is"><div class="psw-fieldcard-head"><div><h2>Where the field is <small>Conduct of the CRIP activities</small></h2>' +
+    '<p class="tiny muted">Each marker is a municipality, placed over the activity it is conducting now: the first one not yet completed in all of its locations. Gold, silver and bronze mark the three places in front. Select a marker to find its row in the checklist.</p></div>' +
+    '<div class="pdm-format" role="group" aria-label="Course">' + [['all', 'All stages'], ['stage', 'Stage ' + stage + ' only']].map(function (f) { return '<button type="button" data-act="profile-race-scope" data-v="' + f[0] + '" aria-pressed="' + ((whole ? 'all' : 'stage') === f[0]) + '">' + f[1] + '</button>'; }).join('') + '</div></div>' +
+    '<div class="psw-field-scroll"><div class="psw-field" style="--n:' + acts.length + '">' + strip + legRow + '</div></div>' + key + '</section>';
+}
 function profileSwimlaneHtml(rows, all) {
   if (isMunicipalUser()) return '';
   var scope = profileRaceScope(), whole = scope === 'all';
@@ -833,8 +906,7 @@ function profileSwimlaneHtml(rows, all) {
   var leader = field.filter(function (f) { return f.rank; }).sort(function (a, b) { return a.rank - b.rank; })[0];
   var summary = !LOADED.activityTracker ? '' : '<div class="psw-summary" aria-label="Race summary"><span><b>' + n(count.finished) + '</b> finished</span><span><b>' + n(count.swimming) + '</b> swimming</span><span><b>' + n(count.blocks) + '</b> on the blocks</span>' +
     (count.out ? '<span><b>' + n(count.out) + '</b> not in the race</span>' : '') + (leader ? '<span class="psw-lead">In front: <b>' + esc(leader.entry.model.municipality) + '</b></span>' : '') + '</div>';
-  // Race board: the three leaders, and a dot for every municipality stacked over the activity it is currently in,
-  // which shows at a glance where the field is bunched up.
+  // Race board: the three leaders. "Where the field is" sits above the Activity & MOV checklist (profileFieldHtml).
   var racers = field.filter(function (f) { return f.standing.racing; }).sort(function (a, b) { return a.rank - b.rank; }), board = '';
   if (LOADED.activityTracker && racers.length) {
     var podium = racers.slice(0, 3).map(function (f) {
@@ -843,22 +915,7 @@ function profileSwimlaneHtml(rows, all) {
       return '<li><span class="psw-rank psw-rank-' + f.rank + '">' + f.rank + '</span><div>' + profileButton('profile-open-muni', m.municipality, m.key) +
         '<span class="psw-note">' + esc(m.province) + ' · ' + where + '</span><span class="psw-meter" aria-hidden="true"><i style="width:' + Math.round(st.position / acts.length * 100) + '%"></i></span></div></li>';
     }).join('');
-    var buckets = acts.map(function () { return []; }), home = [];
-    racers.forEach(function (f) { (f.data.status === 'complete' ? home : buckets[f.standing.at]).push(f); });
-    var most = Math.max.apply(null, buckets.map(function (b) { return b.length; }));
-    var dots = function (list) {
-      return list.map(function (f) {
-        var m = f.entry.model, label = m.municipality + ', ' + m.province + ' · ' + profileOrdinal(f.rank) + ' place · show its lane';
-        return '<button type="button" class="psw-dot' + (f.rank < 4 ? ' psw-rank-' + f.rank : '') + '" data-act="profile-race-focus" data-v="' + attr(m.key) + '" title="' + attr(label) + '" aria-label="' + attr(label) + '"></button>';
-      }).join('');
-    };
-    var strip = acts.map(function (a, i) {
-      var list = buckets[i];
-      return '<div class="psw-field-col' + (legStart[a.code] ? ' psw-leg-start' : '') + (most > 1 && list.length === most ? ' psw-busiest' : '') + '" title="' + attr('Activity ' + a.seq + ' · ' + a.label + ' · ' + list.length + ' here') + '"><div class="psw-dots">' + dots(list) + '</div><b>' + (list.length || '') + '</b><span>' + esc(a.seq) + '</span></div>';
-    }).join('') + '<div class="psw-field-col psw-field-fin" title="' + attr(done + ' · ' + home.length) + '"><div class="psw-dots">' + dots(home) + '</div><b>' + (home.length || '') + '</b><span>Finish</span></div>';
-    board = '<div class="psw-board"><div class="psw-board-part"><h3>Leaders</h3><ol class="psw-podium">' + podium + '</ol></div>' +
-      '<div class="psw-board-part psw-board-field"><h3>Where the field is</h3><p class="tiny muted">One dot per municipality, over the activity it is currently in. Select a dot to jump to its lane.</p>' +
-      '<div class="psw-field" style="--n:' + acts.length + '">' + strip + '</div></div></div>';
+    board = '<div class="psw-board psw-board-solo"><div class="psw-board-part"><h3>Leaders</h3><ol class="psw-podium">' + podium + '</ol></div></div>';
   }
   var head = '<div class="psw-head"><div class="psw-name">Municipality</div><div class="psw-track">' +
     (whole ? legs.map(function (l, i) { return '<span class="psw-leg' + (i ? ' psw-leg-start' : '') + '" style="grid-column:span ' + l.count + '">Stage ' + esc(l.stage) + '</span>'; }).join('') + '<span class="psw-leg psw-fin"></span>' : '') +
@@ -1038,7 +1095,7 @@ function profileDirMatrixHtml(rows, all) {
   var body = shown.map(function (l) {
     var c = l.c, m = c.model, out = '';
     if (sort === 'province' && m.province !== province) { province = m.province; out += '<tr class="pdm-prov"><th scope="rowgroup" colspan="' + span + '"><span>' + esc(province) + ' <small>' + n(perProvince[province]) + '</small></span></th></tr>'; }
-    out += '<tr><th scope="row" class="pdm-name"><button type="button" class="profile-cell-button" data-act="profile-open-muni" data-v="' + attr(c.key) + '">' + esc(m.municipality) + '</button>' + (sort === 'low' ? '<span class="pdm-sub">' + esc(m.province) + '</span>' : '') + '</th>' + cols.map(function (col) {
+    out += '<tr data-key="' + attr(c.key) + '"><th scope="row" class="pdm-name"><button type="button" class="profile-cell-button" data-act="profile-open-muni" data-v="' + attr(c.key) + '">' + esc(m.municipality) + '</button>' + (sort === 'low' ? '<span class="pdm-sub">' + esc(m.province) + '</span>' : '') + '</th>' + cols.map(function (col) {
       var vals = l.vals[col.act.code];
       if (col.act.overall) {
         var o = l.overall, ot = m.municipality + ' · Overall: ' + profileDirOverallTitle(o);
@@ -1064,7 +1121,8 @@ function profileDirMatrixHtml(rows, all) {
     (PROFILE_STATE.stage === 1 && !movs ? '<div class="msg warn">Import KCIS MOV attachments to assess MOV submission. The MOV columns appear once they are imported.</div>' : '');
   var help = '<details class="pdm-help"><summary>How these figures are counted</summary><p class="tiny muted"><b>Enc</b> Encoded and <b>Att</b> With attendees count against each activity\'s target (barangays, or the municipality for municipal activities).' + (hasMovCols ? ' <b>MOV</b> counts the required MOV forms submitted.' : '') +
     ' Overall is one percentage per municipality: the average of its Encoded, With attendees and MOVs rates across all of the stage\'s activities (hover it for the parts). Totals add counts and targets, so a total is the region\'s own rate. Click a figure to open that activity in the municipality profile.</p></details>';
-  return notes + summary + toolbar +
+  var title = '<h2 class="pdm-title">Activity &amp; MOV checklist <small>Conduct and outputs (MOVs) · Stage ' + PROFILE_STATE.stage + '</small></h2>';
+  return notes + profileFieldHtml(rows, all) + title + summary + toolbar +
     (shown.length ? '<div class="table-wrap pdm-wrap"><table class="grid pdm-table' + (sort === 'low' ? ' pdm-ranked' : '') + '"><thead>' + head1 + head2 + '</thead><tbody>' + body + '</tbody><tfoot>' + foot + '</tfoot></table></div>' :
       '<div class="msg info">Every municipality shown is at 100%.</div>') + help;
 }
@@ -1618,11 +1676,12 @@ document.addEventListener('click', function (event) {
     else if (action === 'profile-race-order') { profileDirLoadView(); PROFILE_DIR.order = value === 'province' ? 'province' : 'rank'; PROFILE_DIR.animate = true; profileDirSaveView(); renderMunicipalityProfile(); }
     else if (action === 'profile-race-scope') { profileDirLoadView(); PROFILE_DIR.scope = value === 'stage' ? 'stage' : 'all'; PROFILE_DIR.animate = true; profileDirSaveView(); renderMunicipalityProfile(); }
     else if (action === 'profile-race-focus') {
-      var raceLane = Array.prototype.filter.call(document.querySelectorAll('.psw-lane'), function (lane) { return lane.getAttribute('data-key') === value; })[0];
-      if (raceLane) {
+      var raceLane = Array.prototype.filter.call(document.querySelectorAll('.psw-lane, .pdm-table tr[data-key]'), function (lane) { return lane.getAttribute('data-key') === value; })[0];
+      if (!raceLane) openMunicipalityProfile(value);
+      else {
         raceLane.scrollIntoView({ block: 'center', behavior: 'smooth' }); raceLane.classList.add('psw-flash');
         setTimeout(function () { raceLane.classList.remove('psw-flash'); }, 2600);
-        var laneButton = raceLane.querySelector('.psw-name button'); if (laneButton) laneButton.focus({ preventScroll: true });
+        var laneButton = raceLane.querySelector('.psw-name button, .pdm-name button'); if (laneButton) laneButton.focus({ preventScroll: true });
       }
     }
     else if (action === 'profile-race-replay') { PROFILE_DIR.animate = true; renderMunicipalityProfile(); }

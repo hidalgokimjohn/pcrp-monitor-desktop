@@ -100,6 +100,42 @@ test('swimlane race places run without gaps: municipalities level with each othe
  assert.deepEqual(rank,{A:1,B:2,C:2,D:3,E:3,F:4,G:0});
 });
 
+test('municipality initials are short, readable and never shared',()=>{
+ const c=context();
+ const names=[['Agusan del Norte','Las Nieves'],['Agusan del Norte','Santiago'],['Agusan del Norte','Tubay'],['Agusan del Sur','Loreto'],['Dinagat Islands','Loreto'],['Dinagat Islands','Tubajon'],['Dinagat Islands','Cagdianao'],
+  ['Surigao del Sur','Cagwait'],['Surigao del Sur','San Miguel'],['Surigao del Norte','Santa Monica'],['Surigao del Norte','San Isidro'],['Surigao del Norte','General Luna'],['Surigao del Norte','Bacuag'],['Surigao del Sur','San Agustin']];
+ const codes=c.profileMuniCodes(names.map(x=>({key:x[0]+'|'+x[1],province:x[0],municipality:x[1]}))),of=(p,m)=>codes[p+'|'+m];
+ assert.equal(of('Agusan del Norte','Las Nieves'),'LN');assert.equal(of('Surigao del Norte','General Luna'),'GL');assert.equal(of('Surigao del Norte','Bacuag'),'BAC');
+ assert.equal(of('Surigao del Norte','San Isidro'),'SI');assert.equal(of('Surigao del Sur','San Agustin'),'SA');assert.equal(of('Agusan del Norte','Santiago'),'SAN');
+ // Names that would share a code are told apart: by consonants, by the last word, or by province.
+ assert.equal(of('Agusan del Norte','Tubay'),'TBY');assert.equal(of('Dinagat Islands','Tubajon'),'TBJ');
+ assert.equal(of('Dinagat Islands','Cagdianao'),'CGD');assert.equal(of('Surigao del Sur','Cagwait'),'CGW');
+ assert.equal(of('Surigao del Sur','San Miguel'),'SMI');assert.equal(of('Surigao del Norte','Santa Monica'),'SMO');
+ assert.equal(of('Agusan del Sur','Loreto'),'LOA');assert.equal(of('Dinagat Islands','Loreto'),'LOD');
+ assert.equal(new Set(Object.values(codes)).size,names.length);
+ // Even the same name in two provinces with the same initial stays apart.
+ const twins=c.profileMuniCodes([{key:'a',province:'Sur',municipality:'Uno'},{key:'b',province:'Sur',municipality:'Uno'}]);assert.notEqual(twins.a,twins.b);
+});
+
+test('where the field is: a marker with initials per municipality over its current activity, above the checklist',()=>{
+ const c=context(),mrest=c.DEFAULT_ACTIVITIES.find(a=>a.code==='MREST').name;c.esc=v=>String(v??'');c.attr=c.esc;
+ load(c,[tracker(c,{Barangay:'','CRIP/MC09 Activity':mrest}),tracker(c)]);
+ const rows=c.profileDirectoryRows();let html=c.profileFieldHtml(rows,rows);
+ assert.match(html,/<section class="psw-fieldcard" aria-label="Where the field is">/);assert.equal((html.match(/class="psw-dot[ "]/g)||[]).length,2);
+ assert.match(html,/class="psw-dot psw-rank-1" data-act="profile-race-focus" data-v="Province A\|Town" title="Town, Province A · 1st place · show its row in the checklist" aria-label="[^"]+">TPA<\/button>/);
+ assert.match(html,/>TPB<\/button>/);assert.match(html,/Key to the initials/);assert.match(html,/<b>TPA<\/b> Town/);assert.match(html,/class="psw-field-leg/);
+ assert.match(html,/data-act="profile-race-scope" data-v="all" aria-pressed="true"/);
+ // A search shows fewer markers but keeps every initial and place.
+ html=c.profileFieldHtml(rows.filter(r=>r.key==='Province B|Town'),rows);
+ assert.equal((html.match(/class="psw-dot[ "]/g)||[]).length,1);assert.match(html,/2nd place[^>]*>TPB</);
+ // The checklist tab opens with the chart, then the checklist itself, whose rows the markers can find.
+ html=c.profileDirMatrixHtml(rows,rows);
+ assert.ok(html.indexOf('Where the field is')>-1&&html.indexOf('Where the field is')<html.indexOf('class="pdm-title"')&&html.indexOf('class="pdm-title"')<html.indexOf('class="pdm-summary"'));
+ assert.match(html,/<tr data-key="Province A\|Town"><th scope="row" class="pdm-name">/);
+ // Without the Activity Tracker there is no conduct to place, so the chart is left out.
+ delete c.LOADED.activityTracker;assert.equal(c.profileFieldHtml(rows,rows),'');
+});
+
 test('swimlane race places each municipality by cleared activities plus the share of the current one',()=>{
  const c=context(),mrest=c.DEFAULT_ACTIVITIES.find(a=>a.code==='MREST').name;c.esc=v=>String(v??'');c.attr=c.esc;
  // Province A's Town clears MResT and half of the 1st BA; Province B's Town has nothing completed.
@@ -112,9 +148,8 @@ test('swimlane race places each municipality by cleared activities plus the shar
  const rows=c.profileDirectoryRows();let html=c.profileSwimlaneHtml(rows,rows);
  assert.match(html,/style="--at:1;--f:0.5"/);assert.match(html,/<strong>1st<\/strong>/);assert.match(html,/psw-race psw-go/);
  assert.ok(html.indexOf('data-v="Province A|Town"')<html.indexOf('data-v="Province B|Town"'),'leader first');
- // The race board lists the leaders and puts one dot per municipality over its current activity.
- assert.match(html,/<ol class="psw-podium"><li><span class="psw-rank psw-rank-1">1<\/span>/);assert.equal((html.match(/class="psw-dot[ "]/g)||[]).length,2);
- assert.match(html,/class="psw-dot psw-rank-1" data-act="profile-race-focus" data-v="Province A\|Town" title="Town, Province A · 1st place · show its lane"/);
+ // The race board lists the leaders; the field chart now sits above the checklist.
+ assert.match(html,/<ol class="psw-podium"><li><span class="psw-rank psw-rank-1">1<\/span>/);assert.doesNotMatch(html,/class="psw-dot[ "]|Where the field is/);
  assert.match(html,/class="psw-lane psw-is-active" role="listitem" data-key="Province A\|Town"/);
  // A search keeps the place earned against the whole field, and a re-render does not replay the race.
  html=c.profileSwimlaneHtml(rows.filter(r=>r.key==='Province B|Town'),rows);
@@ -243,15 +278,16 @@ test('checklist summary, below-100% filter and lowest-first order work on the sa
  assert.match(html,/>Encoded<\/span><strong>\d+%<\/strong>[\s\S]*?<small>1 of \d+ activity targets<\/small>/);assert.match(html,/MOVs submitted<\/span>[\s\S]*?<small>1 of \d+ required MOV forms<\/small>/);
  assert.match(html,/data-act="profile-dir-matrix-show" data-v="behind" aria-pressed="false">Below 100% <b>2<\/b>/);
  assert.match(html,/class="pdm-prov"><th scope="rowgroup" colspan="\d+"><span>Province A <small>1<\/small>/);assert.match(html,/<i class="pdm-bar" aria-hidden="true"><b style="width:\d+%">/);
- assert.ok(html.indexOf('data-v="Province A|Town"')<html.indexOf('data-v="Province B|Town"'));
+ const table=h=>h.slice(h.indexOf('<table'));
+ assert.ok(table(html).indexOf('data-v="Province A|Town"')<table(html).indexOf('data-v="Province B|Town"'));
  // Lowest first drops the province groups, names the province on each row and puts the weakest on top.
  c.PROFILE_DIR.msort='low';html=c.profileDirMatrixHtml(all,all);
  assert.doesNotMatch(html,/class="pdm-prov"/);assert.match(html,/<span class="pdm-sub">Province B<\/span>/);
- assert.ok(html.indexOf('data-v="Province B|Town"')<html.indexOf('data-v="Province A|Town"'));
+ assert.ok(table(html).indexOf('data-v="Province B|Town"')<table(html).indexOf('data-v="Province A|Town"'));
  // A municipality at 100% leaves the below-100% list, and the footer then totals only what is shown.
  const done=all[0].model;c.profileStageActivities(done,1).forEach(a=>{a.tally.encoded=a.tally.complete=a.tally.expected;a.tally.movSubmitted=a.tally.movRequired;});
  c.PROFILE_DIR.mshow='behind';html=c.profileDirMatrixHtml(all,all);
- assert.match(html,/1 of 2 municipalities at 100%/);assert.match(html,/Total shown/);assert.doesNotMatch(html,/data-act="profile-open-muni" data-v="Province A\|Town"/);
+ assert.match(html,/1 of 2 municipalities at 100%/);assert.match(html,/Total shown/);assert.doesNotMatch(table(html),/data-act="profile-open-muni" data-v="Province A\|Town"/);
  c.profileDirSaveView();c.PROFILE_DIR.mshow='all';c.PROFILE_DIR.msort='province';c.PROFILE_DIR.viewLoaded=false;c.profileDirLoadView();
  assert.equal(c.PROFILE_DIR.mshow,'behind');assert.equal(c.PROFILE_DIR.msort,'low');
  // Without a MOV import the MOV columns and tile are left out rather than shown as dashes.
