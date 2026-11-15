@@ -51,7 +51,7 @@ function kpiCollect(scope, stage) {
     var complete = tracker && q.listed > 0 && q.reporting === q.barangays;
     return { id: 'quorum-' + code, label: 'Household participation in barangay assemblies · ' + code,
       value: complete ? pctText(q.present / q.listed) : null,
-      detail: tracker ? q.present + '/' + q.listed + ' reported households · ' + q.reporting + '/' + q.barangays + ' barangays reporting · 70% target' + (complete ? '' : ' · Complete household counts required') : 'Import Activity Tracker with household counts',
+      detail: tracker ? q.present + '/' + q.listed + ' reported households · ' + q.reporting + '/' + q.barangays + ' barangays reporting · 70% target' + (complete ? '' : ' · Complete household counts required') + ' · ' + profileAssemblySource() : 'Import the Activity Tracker and the BA Household Participation export',
       source: 'SM7 §2.4, p. 27; Results Matrix, p. 56; Indicator Documentation, p. 68' };
   });
   return { scope: scope, stage: stage, models: models, groups: [

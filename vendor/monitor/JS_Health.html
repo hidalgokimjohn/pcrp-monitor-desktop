@@ -215,11 +215,11 @@ function dhChecks(o) {
     {
       id: 'quorum', dim: 'reliability', name: 'Household counts that do not add up', icon: 'scale', severity: 'critical',
       unit: ['problem', 'problems'], total: (h.householdFlags || []).filter(function (r) { return r.kind !== 'HH / attendance discrepancy'; }).length,
-      meaning: 'Assemblies whose household counts in the Activity Tracker cannot be right, which makes the 70% quorum unreliable.',
-      why: 'Only one of the two counts is encoded, the assembly has several KCIS records with different counts, or more households are represented than the barangay has.',
+      meaning: 'Assemblies whose household or individual counts in the ' + dhHhSource(h) + ' cannot be right, which makes the 70% quorum unreliable.',
+      why: 'Only one of the two household counts is encoded, the assembly has several KCIS records with different counts, or more households are represented than the barangay has.',
       steps: ['Compare "Total Hh In Barangay" and "Total Hh Represented" with the Household Participation Form of that assembly.',
               'Correct the counts in KCIS; where an assembly has several records, give them the same counts or keep them on one record.',
-              'Re-export and re-import the Activity Tracker.'],
+              'Re-export and re-import the ' + dhHhSource(h) + '.'],
       rows: function () { return (h.householdFlags || []).filter(function (r) { return r.kind !== 'HH / attendance discrepancy'; }); }, places: one,
       cols: [colMuni, colProv, colBrgy, colAsm,
              col('Problem', function (r) { return '<span class="tiny">' + esc(r.kind || '') + '</span>'; }, function (r) { return r.kind; }),
@@ -369,10 +369,33 @@ function dhQualityChecks(dq, col, colMuni, colProv, colPlace, colAct, one) {
  * Activity Tracker checks. Only added once the export is
  * imported: before that every assembly would read as "counts not encoded".
  */
+/** The export the household counts were read from. */
+function dhHhSource(h) {
+  return h && h.householdCounts && h.householdCounts.source === 'ba' ? 'BA Household Participation export' : 'Activity Tracker';
+}
+
 function dhHouseholdCountChecks(o, col, colMuni, colProv, colAsm, one) {
   var h = o.health || {};
   if (!h.householdCounts || !h.householdCounts.imported) return [];
-  return [
+  var ba = h.householdCounts.source === 'ba';
+  return (ba ? [{
+      id: 'baindiv', dim: 'completeness', name: 'Assembly attendance not in the BA summary', icon: 'users', severity: 'verify',
+      unit: ['barangay assembly', 'barangay assemblies'], total: (h.baAttendanceMissing || []).length,
+      meaning: 'The Activity Tracker reports participants for the assembly, but its record in the BA Household Participation export carries no individual counts. Assembly attendance comes from that export, so the assembly reads as having no attendees.',
+      why: 'The individual counts (female, male, total) of the assembly were not encoded in its Barangay Assembly Household Participation summary in KCIS.',
+      steps: ['Get the attendance sheet of that assembly.',
+              'Encode the individual counts (female, male, total) on its Household Participation summary in KCIS.',
+              'Re-export and re-import the BA Household Participation export.'],
+      rows: function () { return h.baAttendanceMissing || []; }, places: one,
+      cols: [colMuni, colProv,
+             col('Barangay', function (r) {
+               return dhFindingLink('baindiv', r, r.barangay || '—', 1, 'Inspect Quorum Scorecard for ' + r.barangay, { search: r.barangay });
+             }, function (r) { return r.barangay; }),
+             colAsm,
+             col('Activity Tracker participants', function (r) { return n(r.trackerParticipants); }, function (r) { return r.trackerParticipants; }, 'num')],
+      text: function (r) { return [r.province, r.municipality, r.barangay, hhActLabel(r.actCode), r.trackerParticipants]; },
+      detail: function (r) { return hhActLabel(r.actCode) + ': ' + r.trackerParticipants + ' participants in the Activity Tracker, no individual counts in the BA summary'; }
+    }] : []).concat([
     {
       id: 'hhcounts', dim: 'completeness', name: 'Assembly encoded, household counts not encoded', icon: 'home', severity: 'verify',
       unit: ['barangay assembly', 'barangay assemblies'], total: (h.householdCountsMissing || []).length,
@@ -380,7 +403,7 @@ function dhHouseholdCountChecks(o, col, colMuni, colProv, colAsm, one) {
       why: 'The household counts from the Household Participation Form were not encoded on the activity in KCIS.',
       steps: ['Get the Household Participation Form of that assembly.',
               'Encode "Total Hh In Barangay" and "Total Hh Represented" on the activity in KCIS.',
-              'Re-export and re-import the Activity Tracker.'],
+              'Re-export and re-import the ' + dhHhSource(h) + '.'],
       rows: function () { return h.householdCountsMissing || []; }, places: one,
       cols: [colMuni, colProv,
              col('Barangay', function (r) {
@@ -390,7 +413,7 @@ function dhHouseholdCountChecks(o, col, colMuni, colProv, colAsm, one) {
       text: function (r) { return [r.province, r.municipality, r.barangay, hhActLabel(r.actCode)]; },
       detail: function (r) { return hhActLabel(r.actCode) + ': household counts not encoded'; }
     }
-  ];
+  ]);
 }
 
 /**

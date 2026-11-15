@@ -1290,11 +1290,16 @@ function profileMunicipalHtml(model, activity) {
     }).join('') + '</div>') + '</div>';
   return html;
 }
+/** Where assembly attendance and household counts come from, in a few words. */
+function profileAssemblySource() {
+  return LOADED.baParticipation ? 'Source: BA Household Participation export' : 'Source: Activity Tracker (BA Household Participation export not imported)';
+}
 function profileActivityHtml(model, activity) {
   var rows = profileFilterRows(model, activity, profileFilters());
   var html = '<div class="profile-main-title"><div><span class="eyebrow">' + (activity.appraisal ? 'Municipal MOV follow-up' : 'Sequence ' + esc(activity.seq) + ' · ' + esc(activity.level) + ' activity') + '</span><h2>' + esc(activity.label) + '</h2></div><div class="row-actions">' + profileButton('profile-export', 'Export this view') + profileButton('profile-dqa', 'DQA findings', '', model.trackerImported ? '' : ' disabled title="Import Tracker to open DQA findings"') + '</div></div>';
   // The step's donuts above already chart this activity's progress, so only the counts are repeated here.
-  if (!activity.appraisal) html += '<div class="profile-activity-progress">' + profileMeasures(model, activity.tally, activity.stage) + (activity.households && model.trackerImported ? profileQuorumSummary(model, activity.code) : '') + '<p class="tiny muted">Full activity target. Filtering the list below does not change these totals.</p></div>';
+  if (!activity.appraisal) html += '<div class="profile-activity-progress">' + profileMeasures(model, activity.tally, activity.stage) + (activity.households && model.trackerImported ? profileQuorumSummary(model, activity.code) : '') + '<p class="tiny muted">Full activity target. Filtering the list below does not change these totals.' +
+    (activity.households ? ' Attendees and household counts: ' + profileAssemblySource().replace(/^Source: /, '') + '.' : '') + '</p></div>';
   else html += '<p class="muted">MRP follow-up trigger: ' + esc(activity.rows[0].group && activity.rows[0].group.dateEnd || 'No MRP actual end recorded') + '</p>';
   if (activity.level === 'Municipal') return html + profileMunicipalHtml(model, activity);
   html += '<div class="card profile-activity-card"><div class="profile-view-tabs" role="group" aria-label="Activity view">' +

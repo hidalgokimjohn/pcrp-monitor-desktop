@@ -45,15 +45,30 @@ function computeAll(evalDate) {
   return SNAP;
 }
 
+// The Barangay Assembly Household Participation export (KCIS). It holds, per assembly record, the
+// summaries KCIS keeps for an assembly instead of a roster: the individuals present (Individual
+// Female / Male / Total) and the households represented. Only the columns below are required.
+var BA_PARTICIPATION_HEADERS = ['Province Name', 'City Name', 'Barangay Name', 'Name',
+  'Individual Female', 'Individual Male', 'Individual Total', 'Total Hh In Barangay', 'Total Hh Represented'];
+function validateBaParticipationTable(t) {
+  if (!t || !Array.isArray(t.headers) || !Array.isArray(t.rows) || t.rows.some(function (r) { return !Array.isArray(r); })) throw new Error('Invalid BA Household Participation table.');
+  var missing = checkHeaders(t.headers, BA_PARTICIPATION_HEADERS);
+  if (missing.length) throw new Error('BA Household Participation: ' + missing.join('; ') + '.');
+}
+
 // Desktop inputs have one authoritative summary table; legacy raw exports are never read.
+// Barangay assemblies take their attendance and household counts from the BA Household
+// Participation export once it is imported; until then, and for every other activity,
+// the Activity Tracker is the source.
 buildSnapshot = function (evalDateIso) {
   var table = readRawTable('Raw_Activity_Tracker');
   validateTrackerTable(table);
   var stored = TABS.Raw_Activity_Tracker;
   var rows = table.rows.map(function (r, i) { var copy = r.slice(); copy.sourceRow = stored.rowNumbers ? stored.rowNumbers[i] : i + 2; return copy; });
   var base = readBaseline(), acts = readActivities(), volunteers = readRawTable(SHEETS.VOLUNTEERS);
-  var snap = computeSnapshot(rows, rows, base.rows, base.monitored, acts, table.headers, table.headers,
-    evalDateIso, volunteers.rows, volunteers.headers, typeof movBuild === 'function' ? { table: TABS.Raw_MOVs || null } : null);
+  var ba = TABS.Raw_BA_Participation && TABS.Raw_BA_Participation.rows.length ? TABS.Raw_BA_Participation : null;
+  var snap = computeSnapshot(rows, ba ? ba.rows : rows, base.rows, base.monitored, acts, table.headers, ba ? ba.headers : table.headers,
+    evalDateIso, volunteers.rows, volunteers.headers, typeof movBuild === 'function' ? { table: TABS.Raw_MOVs || null } : null, { baAttendance: !!ba });
   snap.generatedAt = new Date().toISOString(); snap.activities = acts;
   return snap;
 };
@@ -199,6 +214,8 @@ function detectKind(headers, sheetName) {
   if (sn === 'raw_sfm' || (has('Date of Intake') && has('Nature of Issue'))) return 'sfm';
   if (sn === 'raw_movs' || has('Attachment_Type_ID') || has('File Path')) return 'movs';
   if (sn === 'raw_activity_tracker' || has('CRIP/MC09 Activity') || has('Participants - Total')) return 'activityTracker';
+  // The BA Household Participation export carries individual counts; the older household export did not.
+  if (sn === 'raw_ba_participation' || ((has('Total Hh Represented') || has('Total Hh In Barangay')) && has('Individual Total'))) return 'baParticipation';
   if (sn === 'raw_participants') return 'participants';
   if (sn === 'raw_hh_participation') return 'households';
   if (sn === 'raw_households') return 'roster';
@@ -219,6 +236,7 @@ var KIND_INFO = {
   movs: { sheet: 'Raw_MOVs', label: 'MOV attachments', expected: function () { return MOV_HEADERS; } },
   activityTracker: { sheet: 'Raw_Activity_Tracker', label: 'Activity Tracker', expected: function () { return ACTIVITY_TRACKER_HEADERS; } },
   volunteers:   { sheet: 'Raw_Volunteers',   label: 'Community Volunteer List', expected: function () { return VOLUNTEER_HEADERS; } },
+  baParticipation: { sheet: 'Raw_BA_Participation', label: 'BA Household Participation', expected: function () { return BA_PARTICIPATION_HEADERS; } },
   sfm:          { sheet: 'Raw_SFM',          label: 'SFM Masterlist', expected: function () { return SFM_HEADERS; } },
   baseline:     { sheet: 'Baseline',         label: 'Baseline (monitored barangays)', expected: function () { return ['Province', 'Municipality', 'Barangay']; } },
   activities:   { sheet: 'Activities',       label: 'Activities (field conduct)', expected: function () { return ['Seq', 'Code']; } }
@@ -251,14 +269,15 @@ function readDataFile(file, onProgress) {
       if (kind === 'activities') missing = [];
       if (kind === 'movs' && !missing.length) validateMovTable(t);
       if (kind === 'activityTracker' && !missing.length) { validateTrackerTable(t); t = trackerTable(t); }
+      if (kind === 'baParticipation' && !missing.length) validateBaParticipationTable(t);
       found.push({ file: file.name, sheet: nm, kind: kind, table: t, missing: missing });
     });
     // A legacy or incomplete sheet only rejects the file when nothing else in it is usable;
     // beside a complete table (an Activity Tracker, say) it is skipped and reported.
     var complete = found.filter(function (item) { return !item.missing.length; });
     if (!complete.length) {
-      if (roster) throw new Error(file.name + ': legacy attendance/household exports are no longer supported. Import the new KCIS Activity Tracker instead.');
-      if (!found.length) throw new Error(file.name + ': not an Activity Tracker, MOV attachment export, Community Volunteer List, SFM Masterlist or reference file (column headers were not recognised).');
+      if (roster) throw new Error(file.name + ': legacy attendance/household exports are no longer supported. Import the KCIS Activity Tracker, and for assemblies the Barangay Assembly Household Participation export.');
+      if (!found.length) throw new Error(file.name + ': not an Activity Tracker, BA Household Participation export, MOV attachment export, Community Volunteer List, SFM Masterlist or reference file (column headers were not recognised).');
       throw new Error(file.name + ': missing required columns: ' + found.map(function (item) { return item.missing.join(', '); }).join('; ') + '. Nothing was loaded.');
     }
     var seenKinds = {};

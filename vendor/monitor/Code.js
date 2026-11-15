@@ -124,6 +124,34 @@ function resolveHhCounts(records) {
 }
 
 /**
+ * One barangay assembly's attendance from the Barangay Assembly Household
+ * Participation export (Individual Female / Male / Total). KCIS keeps only these
+ * summaries for an assembly, so they are its attendance. Records without a count
+ * are ignored and identical ones collapse; the record that also carries the
+ * household counts in use (hc) is preferred, then the largest total. Two or more
+ * different counts is a conflict. Returns {female, male, total, records, conflict,
+ * variants}; total is null when no record carries an individual count.
+ */
+function resolveBaAttendance(records, hc) {
+  var seen = {}, variants = [];
+  function sameHh(r) { return !!hc && hc.total !== null && parseHhCount(r.total) === hc.total && parseHhCount(r.represented, true) === hc.represented; }
+  (records || []).forEach(function (r) {
+    var d = r.detail || {};
+    var f = parseHhCount(d.indivFemale, true), m = parseHhCount(d.indivMale, true), t = parseHhCount(d.indivTotal, true);
+    if (t === null && (f !== null || m !== null)) t = (f || 0) + (m || 0);
+    if (t === null) return;
+    var k = f + '|' + m + '|' + t;
+    if (seen[k]) { seen[k].hh = seen[k].hh || sameHh(r); return; }
+    seen[k] = { female: f, male: m, total: t, hh: sameHh(r) };
+    variants.push(seen[k]);
+  });
+  variants.sort(function (a, b) { return (b.hh - a.hh) || (b.total - a.total); });
+  var best = variants[0] || { female: null, male: null, total: null };
+  return { female: best.female, male: best.male, total: best.total, records: (records || []).length,
+           conflict: variants.length > 1, variants: variants.map(function (v) { return { female: v.female, male: v.male, total: v.total }; }) };
+}
+
+/**
  * Optional breakdown columns of the Household Participation export: individuals
  * by sex, and the 4Ps, IP and SLP households (and families) among those
  * represented, plus KCIS's own participation rate (a percent). Shown beside K2;
@@ -1352,6 +1380,7 @@ function dqaFindings(health) {
   (dq.lateAttendance || []).forEach(function (r) { add('late', r, r.actCode, '', 1); });
   (h.householdFlags || []).forEach(function (r) { add(r.kind === 'HH / attendance discrepancy' ? 'hhattendance' : 'quorum', r, r.actCode, r.kind, 1); });
   (h.householdCountsMissing || []).forEach(function (r) { add('hhcounts', r, r.actCode, '', 1); });
+  (h.baAttendanceMissing || []).forEach(function (r) { add('baindiv', r, r.actCode, '', 1); });
   (h.outOfSequenceRows || []).forEach(function (r) { add('sequence', r, '', '', 1); });
   (dq.dateIssues || []).forEach(function (r) { add('dates', r, r.actCode, r.problems.join('; '), 1); });
   (dq.multiDate || []).forEach(function (r) { add('multidate', r, r.actCode, '', r.sittings.length); });
@@ -1429,7 +1458,7 @@ function dqaCompare(current, ledger) {
  * Returns a snapshot object; nothing else in the app recomputes anything.
  */
 function computeSnapshot(participants, households, baselineRows, monitored,
-                         activities, pHeaders, hHeaders, evalDateIso, vRows, vHeaders, movInput) {
+                         activities, pHeaders, hHeaders, evalDateIso, vRows, vHeaders, movInput, opts) {
   var index = buildActivityIndex(activities);
   var base = buildBaseline(baselineRows, monitored);
   var colP = buildColumnIndex(pHeaders, P_DEFAULT);
@@ -1666,6 +1695,23 @@ function computeSnapshot(participants, households, baselineRows, monitored,
     });
   });
   var hhImported = households.length > 0;
+
+  // ---- barangay assembly attendance --------------------------------
+  // With the BA Household Participation export, an assembly's attendance is its
+  // individual counts there (KCIS keeps only these summaries for assemblies).
+  // Every other activity keeps the Activity Tracker's Participants. Encoding and
+  // conduct dates stay with the Activity Tracker.
+  var baAttendance = !!(opts && opts.baAttendance) && hhImported;
+  if (baAttendance) {
+    Object.keys(rec).forEach(function (key) {
+      if (!hhActsMap[key.split('|')[3]]) return;
+      var s = rec[key], a = resolveBaAttendance(hhRecs[key], resolveHhCounts(hhRecs[key]));
+      s.trackerAtt = { total: s.att, male: s.m, female: s.f, unspecified: s.u };
+      s.baAtt = a;
+      s.att = a.total || 0; s.f = a.female || 0; s.m = a.male || 0;
+      s.u = a.total ? Math.max(0, a.total - (a.female || 0) - (a.male || 0)) : 0;
+    });
+  }
   var movs = colP.summary && movInput && typeof movBuild === 'function'
     ? movBuild(base, index, rec, movInput.table, evalDateIso || todayIso(), true) : null;
 
@@ -1707,6 +1753,7 @@ function computeSnapshot(participants, households, baselineRows, monitored,
   var outOfSequence = 0;
   var hhFlags = [];             // household counts that do not add up, one per problem
   var hhMissing = [];           // assembly encoded, no household counts
+  var baAttMissing = [];        // assembly with Activity Tracker participants, no individual counts in the BA export
   var noAttendeesRecords = [];
 
   base.rows.forEach(function (r) {
@@ -1752,6 +1799,11 @@ function computeSnapshot(participants, households, baselineRows, monitored,
         actObj.hhConflict = hc.conflict;
         actObj.hhIncomplete = !both && (hc.total !== null || hc.represented !== null);
         actObj.hhDetail = hhDetailOf(hc.detail);   // individuals by sex, 4Ps / IP / SLP households; null when not encoded
+        actObj.attendanceSource = baAttendance ? 'ba' : 'tracker';
+        if (baAttendance && actSlot && actSlot.baAtt) {
+          actObj.baAttendance = { female: actSlot.baAtt.female, male: actSlot.baAtt.male, total: actSlot.baAtt.total, conflict: actSlot.baAtt.conflict };
+          actObj.trackerParticipants = actSlot.trackerAtt ? actSlot.trackerAtt.total : 0;
+        }
 
         var place = { province: r.province, municipality: r.municipality, barangay: r.barangay, actCode: a.code };
         var flag = function (kind, issue) { hhFlags.push(Object.assign({ kind: kind, issue: issue }, place)); };
@@ -1773,6 +1825,14 @@ function computeSnapshot(participants, households, baselineRows, monitored,
         }
         if (hhImported && isApplicable && st !== STATUS.NOT_ENCODED && hc.total === null && hc.represented === null) {
           hhMissing.push(Object.assign({ records: hc.records }, place));
+        }
+        if (baAttendance && actSlot && actSlot.baAtt) {
+          var ba = actSlot.baAtt, trk = actSlot.trackerAtt ? actSlot.trackerAtt.total : 0;
+          if (isApplicable && ba.total === null && trk > 0) baAttMissing.push(Object.assign({ trackerParticipants: trk, records: ba.records }, place));
+          if (ba.conflict) {
+            flag('Conflicting records', ba.variants.length + ' different individual counts in ' + ba.records + ' KCIS records (female / male / total: ' +
+                 ba.variants.map(function (v) { return [v.female, v.male, v.total].map(function (x) { return x === null ? '—' : x; }).join(' / '); }).join(', ') + '); ' + ba.total + ' attendees is used');
+          }
         }
       }
       row.activities[a.code] = actObj;
@@ -2136,8 +2196,10 @@ function computeSnapshot(participants, households, baselineRows, monitored,
       outOfSequenceRows: outOfSequenceRows,
       householdFlags: hhFlags,             // {place, actCode, kind, issue}
       householdCountsMissing: hhMissing,   // {place, actCode, records}; empty until the export is imported
+      baAttendanceMissing: baAttMissing,   // {place, actCode, trackerParticipants, records}; BA export only
       householdCounts: {
         imported: hhImported,
+        source: baAttendance ? 'ba' : 'tracker',   // 'ba': BA Household Participation export, also the assemblies' attendance
         records: households ? households.length : 0,
         conflicts: hhFlags.filter(function (f) { return f.kind === 'Conflicting records'; }).length,
         incomplete: hhFlags.filter(function (f) { return f.kind === 'Counts incomplete'; }).length,

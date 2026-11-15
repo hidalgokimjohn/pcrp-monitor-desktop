@@ -1229,9 +1229,9 @@ function updateTabBadges() {
     el.textContent = text;
     el.className = 'tab-badge' + (cls ? ' ' + cls : '');
   };
-  var loadedCount = ['activityTracker', 'volunteers', 'movs'].filter(function (k) { return !!LOADED[k]; }).length;
-  setBadge('import', loadedCount ? loadedCount + '/3' : '', loadedCount === 3 ? 'good' : '');
-  setBadge('sni-badge-import', loadedCount ? loadedCount + '/3' : '', loadedCount === 3 ? 'good' : '');
+  var loadedCount = ['activityTracker', 'baParticipation', 'volunteers', 'movs'].filter(function (k) { return !!LOADED[k]; }).length;
+  setBadge('import', loadedCount ? loadedCount + '/4' : '', loadedCount === 4 ? 'good' : '');
+  setBadge('sni-badge-import', loadedCount ? loadedCount + '/4' : '', loadedCount === 4 ? 'good' : '');
   // The SFM Masterlist stands on its own: its badge does not wait for the Activity Tracker.
   try { var sfmB = typeof sfmBadge === 'function' ? sfmBadge() : null; setBadge('sfm', sfmB ? sfmB.text : '', sfmB ? sfmB.cls : ''); } catch (e) { setBadge('sfm', ''); }
 
@@ -1298,7 +1298,7 @@ function updateTabBadges() {
     setBadge('settings', 'Update', 'good');
     setBadge('sni-badge-updates', 'Update', 'good');
   } else {
-    setBadge('settings', loadedCount ? loadedCount + '/3' : '', loadedCount === 3 ? 'good' : '');
+    setBadge('settings', loadedCount ? loadedCount + '/4' : '', loadedCount === 4 ? 'good' : '');
     setBadge('sni-badge-updates', '');
   }
   renderBrandUpdateStatus();
@@ -1661,6 +1661,7 @@ function renderImport() {
   var kinds = [
     { k: 'activityTracker', ico: 'calendar-check', desc: 'Activity attendance summaries and household participation counts in one file.' },
     { k: 'movs', ico: 'files', desc: 'Assessed separately from attendance: uploaded MOV attachment records from KCIS.' },
+    { k: 'baParticipation', ico: 'home', desc: 'Barangay assemblies: attendance (individual counts) and household participation. Without it, assemblies use the Activity Tracker.' },
     { k: 'volunteers', ico: 'list-checks', desc: 'Needed for 1st BA BResT / SFMSC & MResT tracking.' },
     { k: 'sfm', ico: 'message-square', desc: 'Stakeholders Feedback Mechanism Masterlist: grievances and PINCOs, for the SFM page.' }
   ];
@@ -2155,6 +2156,7 @@ function exportExcel() {
     ['Pull date', prefs().evalDate || today()],
     ['Monitor rules', 'v' + BUILT_IN.monitorVersion],
     ['Activity Tracker file', LOADED.activityTracker ? LOADED.activityTracker.file : ''],
+    ['BA Household Participation file', LOADED.baParticipation ? LOADED.baParticipation.file : 'Not imported: assembly attendance and households from the Activity Tracker'],
     ['Volunteer file', LOADED.volunteers ? LOADED.volunteers.file : ''],
     ['MOV file', LOADED.movs ? LOADED.movs.file : ''],
     ['Progress measures', 'Encoded, With attendees and MOVs ready are independent. Attendance backlog and MOV backlog are separate.'], []];
@@ -2538,6 +2540,7 @@ var btnComputeSide = $('btn-compute-side');
 if (btnComputeSide) btnComputeSide.addEventListener('click', function () { computeAndShow('profile'); });
 $('btn-clear').addEventListener('click', function () {
   delete TABS.Raw_SFM; if (typeof SFM_CACHE !== 'undefined') SFM_CACHE = null;
+  delete TABS.Raw_BA_Participation;
   delete TABS.Raw_MOVs; MOV_CACHE = null; delete TABS.Raw_Activity_Tracker; delete TABS.Raw_Participants; delete TABS.Raw_HH_Participation; delete TABS.Raw_Volunteers;
   LOADED = {}; IMPORT_ERRORS = []; STATE.computed = false; SNAP = null; S.overview = null; S.matrix = null; PEOPLE = null;
   // The saved exports go too; earlier pulls and verification tags stay until "Forget saved data".
