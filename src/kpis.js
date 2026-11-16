@@ -47,11 +47,12 @@ function kpiCollect(scope, stage) {
       ['listed', 'present', 'reporting', 'barangays'].forEach(function (k) { t[k] += a[k]; });
       return t;
     }, { listed: 0, present: 0, reporting: 0, barangays: 0 });
-    // Do not report a partial denominator as the whole area's official KPI.
-    var complete = tracker && q.listed > 0 && q.reporting === q.barangays;
+    // The rate uses the barangays that reported; a partial denominator is computed but noted.
+    var assessed = tracker && q.listed > 0, missing = q.barangays - q.reporting;
     return { id: 'quorum-' + code, label: 'Household participation in barangay assemblies · ' + code,
-      value: complete ? pctText(q.present / q.listed) : null,
-      detail: tracker ? q.present + '/' + q.listed + ' reported households · ' + q.reporting + '/' + q.barangays + ' barangays reporting · 70% target' + (complete ? '' : ' · Complete household counts required') + ' · ' + profileAssemblySource() : 'Import the Activity Tracker and the BA Household Participation export',
+      value: assessed ? pctText(q.present / q.listed) : null,
+      note: assessed && missing > 0 ? 'Partial: computed from ' + q.reporting + ' of ' + q.barangays + ' barangays. ' + missing + (missing === 1 ? ' barangay has' : ' barangays have') + ' no complete household counts and ' + (missing === 1 ? 'is' : 'are') + ' not in the rate.' : '',
+      detail: tracker ? q.present + '/' + q.listed + ' reported households · ' + q.reporting + '/' + q.barangays + ' barangays reporting · 70% target · ' + profileAssemblySource() : 'Import the Activity Tracker and the BA Household Participation export',
       source: 'SM7 §2.4, p. 27; Results Matrix, p. 56; Indicator Documentation, p. 68' };
   });
   return { scope: scope, stage: stage, models: models, groups: [
@@ -69,7 +70,7 @@ function kpiVisibleGroups(data, section) {
 function kpiExportRows(data, section) {
   var rows = [['Area', 'Stage / form scope', 'Section', 'Indicator', 'Value', 'Details', 'Manual reference']];
   kpiVisibleGroups(data, section).forEach(function (g) {
-    g.cards.forEach(function (c) { rows.push([data.scope || 'Whole region', g.id === 'households' ? data.stage : 'All stages', g.label, c.label, c.value === null ? 'Not assessed' : c.value, c.detail, c.source]); });
+    g.cards.forEach(function (c) { rows.push([data.scope || 'Whole region', g.id === 'households' ? data.stage : 'All stages', g.label, c.label, c.value === null ? 'Not assessed' : c.value, (c.note ? c.note + ' ' : '') + c.detail, c.source]); });
   });
   return rows;
 }
@@ -104,7 +105,7 @@ function renderKpis() {
     '<nav class="kpi-section-tabs" aria-label="KPI sections">' + Object.keys(KPI_SECTIONS).map(function (k) { return '<button type="button" class="btn ghost" data-act="kpi-section" data-v="' + k + '" aria-pressed="' + (KPI_UI.section === k) + '">' + esc(KPI_SECTIONS[k]) + '</button>'; }).join('') + '</nav>' +
     kpiVisibleGroups(data, KPI_UI.section).map(function (g) {
       var content = '<div class="kpi-group-heading"><h2>' + esc(g.label) + '</h2><button class="btn ghost btn-sm" data-act="kpi-target" data-v="' + g.target + '">' + (scope.indexOf('p:') === 0 ? 'Choose municipality →' : 'Open monitoring →') + '</button></div><div class="grid-kpi kpi-dashboard-grid">' + g.cards.map(function (c) {
-        return '<article class="kpi kpi-dashboard-card' + (c.value === null ? ' is-unassessed' : '') + '" data-metric="' + c.id + '"><h3 class="kpi-label">' + esc(c.label) + '</h3><div class="kpi-value">' + (c.value === null ? 'Not assessed' : esc(typeof c.value === 'number' ? n(c.value) : c.value)) + '</div><p class="kpi-sub">' + esc(c.detail) + '</p><p class="tiny muted">' + esc(c.source) + '</p></article>';
+        return '<article class="kpi kpi-dashboard-card' + (c.value === null ? ' is-unassessed' : '') + (c.note ? ' is-partial' : '') + '" data-metric="' + c.id + '"><h3 class="kpi-label">' + esc(c.label) + '</h3><div class="kpi-value">' + (c.value === null ? 'Not assessed' : esc(typeof c.value === 'number' ? n(c.value) : c.value)) + '</div>' + (c.note ? '<p class="kpi-note" role="note">⚠ ' + esc(c.note) + '</p>' : '') + '<p class="kpi-sub">' + esc(c.detail) + '</p><p class="tiny muted">' + esc(c.source) + '</p></article>';
       }).join('') + '</div>';
       return '<section class="kpi-group">' + content + '</section>';
     }).join('');

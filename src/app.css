@@ -4406,6 +4406,8 @@ button.pcheck-cell:focus-visible { outline:2px solid var(--accent,#164bca); outl
 .kpi-dashboard-card .kpi-value { font-size:27px; overflow-wrap:anywhere; }
 .kpi-dashboard-card.is-unassessed .kpi-value { font-size:20px; color:var(--text-muted); }
 .kpi-dashboard-card .kpi-sub { margin-bottom:0; }
+.kpi-dashboard-grid .kpi-dashboard-card.is-partial { border-top-color:var(--warn); }
+.kpi-dashboard-card .kpi-note { margin:8px 0 0; padding:6px 8px; font-size:12px; line-height:1.4; color:var(--warn-text); background:var(--warn-bg); border:1px solid var(--warn-border); border-radius:6px; }
 details.kpi-group { border:1px solid var(--border-subtle); padding:14px 18px; }
 details.kpi-group>summary { cursor:pointer; font-weight:700; }
 .kpi-form { max-width:350px; margin:18px 0; }

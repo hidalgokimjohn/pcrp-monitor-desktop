@@ -52,11 +52,14 @@ test('stage-specific household rates keep separate denominators and preserve pro
  assert.equal(metric(d,'quorum-BA2').value,'80.0%');assert.equal(metric(d,'quorum-BA3').value,'50.0%');
  assert.equal(metric(d,'quorum-BA1'),undefined);assert.equal(c.PROFILE_STATE.stage,1);
 });
-test('missing imports and partial denominators stay unassessed; reported zero remains zero',()=>{
+test('missing imports stay unassessed; partial denominators are computed with a note; reported zero remains zero',()=>{
  const c=context();assert.equal(metric(c.kpiCollect('',1),'quorum-BA1').value,null);
  load(c,[households(c,'Province A',100,0)]);
- assert.equal(metric(c.kpiCollect('m:Province A|Town',1),'quorum-BA1').value,'0.0%');
- const partial=metric(c.kpiCollect('',1),'quorum-BA1');assert.equal(partial.value,null);assert.match(partial.detail,/1\/2 barangays reporting/);
+ const full=metric(c.kpiCollect('m:Province A|Town',1),'quorum-BA1');assert.equal(full.value,'0.0%');assert.equal(full.note,'');
+ load(c,[households(c,'Province A',100,80)]);
+ const partial=metric(c.kpiCollect('',1),'quorum-BA1');assert.equal(partial.value,'80.0%');assert.match(partial.detail,/1\/2 barangays reporting/);
+ assert.match(partial.note,/Partial: computed from 1 of 2 barangays\. 1 barangay has no complete household counts/);
+ assert.match(c.kpiExportRows(c.kpiCollect('',1),'households')[1][5],/^Partial: /);
  load(c,[]);assert.equal(metric(c.kpiCollect('',1),'quorum-BA1').value,null);
 });
 test('committee rosters and EO verification do not establish MResT institutionalization',()=>{
@@ -78,5 +81,7 @@ test('KPI rendering exposes only retained tabs and manual-backed cards',()=>{
  c.KPI_UI.scope='m:Province A|Town';c.renderKpis();
  assert.match(body.innerHTML,/80.0%/);assert.match(body.innerHTML,/Indicator Documentation/);
  assert.doesNotMatch(body.innerHTML,/data-v="(?:quality|verification|movs|volunteers)"|Composite readiness/);
+ assert.doesNotMatch(body.innerHTML,/kpi-note/);
+ c.KPI_UI.scope='';c.renderKpis();assert.match(body.innerHTML,/is-partial/);assert.match(body.innerHTML,/class="kpi-note"[^>]*>⚠ Partial: computed from 1 of 2 barangays/);assert.match(body.innerHTML,/80.0%/);
  c.KPI_UI.section='mrest';c.renderKpis();assert.match(body.innerHTML,/Not assessed/);assert.match(body.innerHTML,/Local Development Council/);
 });
