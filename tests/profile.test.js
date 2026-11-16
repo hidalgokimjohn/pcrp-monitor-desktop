@@ -322,6 +322,26 @@ test('the evidence panel lists only the activity requirements, with no review co
  assert.doesNotMatch(html,/data-act="mov-back"|data-act="profile-from-mov"/);
  assert.doesNotMatch(html,/data-act="mov-approve"|data-act="mov-requirement"|Review|<details|Source attachments and supplementary files/);
  assert.equal(c.renderMovs,undefined);assert.equal(c.movApproveAssignment,undefined);
+ // The third column is the upload date; an export without that column says so instead of a date.
+ assert.match(html,/<th>Required MOV<\/th><th>Submission status<\/th><th>Uploaded date<\/th>/);assert.doesNotMatch(html,/Credited evidence/);
+ assert.match(html,/Date not in this export/);assert.match(html,/has no Uploaded Date column/);
+});
+test('the evidence panel shows when each file was uploaded, earliest first, with its path still copyable',()=>{
+ const c=context();c.esc=v=>String(v??'');c.attr=c.esc;
+ const heads=Array.from(c.MOV_HEADERS).concat(['Uploaded Date']),row=(type,path,up)=>attachment(c,type,{'File Path':path}).concat([up]);
+ c.TABS.Raw_Activity_Tracker={headers:Array.from(c.ACTIVITY_TRACKER_HEADERS),rows:[tracker(c)]};c.LOADED.activityTracker={};
+ c.TABS.Raw_MOVs={headers:heads,rows:[row('29','attachments/b.pdf',46268.87759610303),row('29','attachments/a.pdf','2026-08-03 09:05:00'),row('30','attachments/m.pdf',''),row('29','attachments/a.pdf',46300.5)]};c.LOADED.movs={};
+ c.computeAll('2026-11-05');c.STATE.computed=true;c.S.overview=c.apiOverview('');
+ const m=c.profileModel('Province A|Town'),html=c.movRenderGroup(m.mov,m.byCode.BA1.rows[0].group);
+ assert.equal(m.mov.stats.uploadedColumn,true);
+ const att=html.slice(html.indexOf('Barangay Activity Attendance Sheets'));
+ assert.match(att,/<div class="mov-upload" title="a.pdf"><time datetime="2026-08-03T09:05">3 Aug 2026 · 9:05 AM<\/time> <button class="link" data-act="mov-copy"[^>]*>Copy path<\/button><\/div><div class="mov-upload" title="b.pdf"><time datetime="2026-09-03T21:03">3 Sep 2026 · 9:03 PM<\/time>/);
+ assert.match(html,/No upload date/);assert.doesNotMatch(html,/Date not in this export|has no Uploaded Date column/);
+ assert.match(html,/<td>Barangay Household participation form<\/td><td><span class="pill[^"]*">[^<]*<\/span><\/td><td><span class="tiny">Not uploaded<\/span>/);
+ assert.equal(c.movUploadedAt(''),'');assert.equal(c.movUploadedAt('1970-01-01'),'1970-01-01 00:00');assert.equal(c.movUploadedAt(12),'');assert.equal(c.movUploadedAt('soon'),'');
+ const req=c.movExportRows(m.mov,()=>true),head=req[0];
+ assert.equal(head[8],'Uploaded dates');assert.equal(req.find(r=>r[4]==='Barangay Activity Attendance Sheets'&&r[2]==='Village A')[8],'2026-08-03 09:05\n2026-09-03 21:03');
+ const att2=c.movAttachmentExportRows(m.mov,()=>true);assert.equal(att2[0][11],'Uploaded date');assert.ok(att2.slice(1).some(r=>r[11]==='2026-08-03 09:05'));
 });
 test('scope checks block other municipalities, including same-name towns and exported rows',()=>{
  const c=context();load(c);const other=c.profileModel('Province B|Town');c.preferences={role:'pea_mdm',homeKey:'Province A|Town'};

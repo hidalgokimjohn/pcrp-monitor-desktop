@@ -138,7 +138,7 @@ test('empty attachment rows and repeats never inflate coverage', () => {
   const c = context(), a = attachment(c), empty = attachment(c, '', { 'File Path': '', 'File Name': '', 'File Type': '' });
   const s = load(c, [tracker(c)], [a, a.slice(), a.slice(), empty]);
   assert.equal(group(s).submitted, 1);
-  assert.deepEqual(plain(s.movs.stats), { records: 4, attachmentRows: 3, emptyRows: 1, distinctPaths: 1, repeatedPaths: 1, repeatedOccurrences: 2 });
+  assert.deepEqual(plain(s.movs.stats), { records: 4, attachmentRows: 3, emptyRows: 1, distinctPaths: 1, repeatedPaths: 1, repeatedOccurrences: 2, uploadedColumn: false });
 });
 test('photos and training reports stay visible without uncertain requirement matches', () => {
   const c = context(), s = load(c, [tracker(c)], [attachment(c, '20', { 'File Name': 'Geotagged Photo' }), attachment(c, '14', { 'File Name': 'Activity Training Report' })]);

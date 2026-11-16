@@ -57,6 +57,21 @@ function movHintMatches(hint, filename) {
   if (!(hint in MOV_HINT_RE)) { try { MOV_HINT_RE[hint] = new RegExp(hint, 'i'); } catch (e) { MOV_HINT_RE[hint] = null; } }
   return !!MOV_HINT_RE[hint] && MOV_HINT_RE[hint].test(filename);
 }
+/**
+ * "Uploaded Date" (optional; older exports do not have it) as 'YYYY-MM-DD HH:MM', or '' when blank or unreadable.
+ * KCIS writes an Excel date-time serial; ISO text is read too. The time is the one KCIS recorded, not converted.
+ */
+function movUploadedAt(v) {
+  if (v === null || v === undefined || v === '') return '';
+  var x = typeof v === 'number' ? v : (/^\s*\d+(\.\d+)?\s*$/.test(String(v)) ? Number(v) : NaN);
+  if (isFinite(x)) {
+    if (x < 20000 || x > 80000) return '';
+    return new Date(Math.round((x - 25569) * 86400000)).toISOString().slice(0, 16).replace('T', ' ');
+  }
+  var m = /^\s*(\d{4})-(\d{2})-(\d{2})(?:[T ](\d{1,2}):(\d{2}))?/.exec(String(v));
+  if (!m || +m[2] < 1 || +m[2] > 12 || +m[3] < 1 || +m[3] > 31) return '';
+  return m[1] + '-' + m[2] + '-' + m[3] + ' ' + (m[4] ? (m[4].length < 2 ? '0' : '') + m[4] + ':' + m[5] : '00:00');
+}
 function movHas(v) { return v !== null && v !== undefined && !/^(?:\s*|null|none)$/i.test(String(v).trim()); }
 function movPath(v) { return movHas(v) ? String(v).trim().replace(/\\/g, '/') : ''; }
 function movPlaceKey(p) { return [p.province, p.municipality, p.barangay || ''].map(normKey).join('|'); }
@@ -96,6 +111,7 @@ function movBuild(base, index, rec, table, evalDate, trackerImported) {
   var pathRows = Object.create(null), attachmentIndex = {}, byGroup = {};
   if (table) {
     var cols = movColumnIndex(table.headers);
+    stats.uploadedColumn = cols[normKey('Uploaded Date')] !== undefined || cols[normKey('Upload Date')] !== undefined;
     table.rows.forEach(function (row, i) {
       function val(name) { return row[cols[normKey(name)]]; }
       var sourceRow = table.rowNumbers ? table.rowNumbers[i] : i + 2;
@@ -117,11 +133,17 @@ function movBuild(base, index, rec, table, evalDate, trackerImported) {
       var type = movHas(val('Attachment_Type_ID')) ? String(val('Attachment_Type_ID')).trim() : '';
       var label = normText(val('File Name'));
       var identity = JSON.stringify([path, movPlaceKey(place), code || category, activityId, type, normKey(label)]);
-      if (attachmentIndex[identity]) { attachmentIndex[identity].sourceRows.push(sourceRow); return; }
+      var uploaded = movUploadedAt(val('Upload Date') !== undefined ? val('Upload Date') : val('Uploaded Date'));
+      if (attachmentIndex[identity]) {
+        var seen = attachmentIndex[identity];
+        seen.sourceRows.push(sourceRow);
+        if (uploaded && (!seen.uploaded || uploaded < seen.uploaded)) seen.uploaded = uploaded;   // the first upload of a repeated row
+        return;
+      }
       var filename = path.split('/').pop(); try { filename = decodeURIComponent(filename); } catch (e) {}
       var a = Object.assign({ key: identity, path: path, filename: filename, label: label, typeId: type, activityId: activityId, category: category,
         actCode: code || '', groupKey: movGroupKey(place, code || ''), sourceRows: [sourceRow], dateStart: formatDateVal(val('Date Start')),
-        dateEnd: formatDateVal(val('Date End')), tab: normText(val('Display On (Tab)')), mime: normText(val('File Type')),
+        dateEnd: formatDateVal(val('Date End')), uploaded: uploaded, tab: normText(val('Display On (Tab)')), mime: normText(val('File Type')),
         locationOK: !!canonical, activityOK: activityOK, supplementary: ['14', '20', '33', '35', '36'].indexOf(type) !== -1 }, place);
       attachments.push(a); attachmentIndex[identity] = a; byAttachmentKey[identity] = a;
       (byGroup[a.groupKey] = byGroup[a.groupKey] || []).push(a);
