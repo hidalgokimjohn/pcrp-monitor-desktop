@@ -1,5 +1,5 @@
 // Stage 1 only. Reference: Field Guide, Stage 1!D4:I38. Presence is not content verification.
-var MOV_REFERENCE_VERSION = 'stage1-field-guide-2026-11-04';
+var MOV_REFERENCE_VERSION = 'stage1-field-guide-2026-11-16';
 var MOV_HEADERS = ['Region Name', 'Province Name', 'City Name', 'Barangay Name', 'Activity_ID', 'Activity_Category',
   'Date End', 'Date Start', 'Display On (Tab)', 'Attachment_Type_ID', 'File Type', 'File Name',
   'lib_region.code_correspondence', 'lib_province.code_correspondence', 'lib_city.code_correspondence',
@@ -7,7 +7,7 @@ var MOV_HEADERS = ['Region Name', 'Province Name', 'City Name', 'Barangay Name',
 var MOV_ACTIVITY_IDS = { '1': 'MREST', '2': 'BA1', '16': 'PROFILE', '17': 'WALK', '18': 'MAP', '19': 'FGD', '3': 'BPRVA', '4': 'MRP', '5': 'BDC' };
 var MOV_TYPES = { '26': 'Municipal Activity Minutes Form', '27': 'Municipal Activity Attendance Sheet',
   '29': 'Barangay Activity Attendance Sheet', '30': 'Barangay Activity Minutes Form', '31': 'Barangay Household Participation Form',
-  '32': 'EO Forming the MResT', '37': 'Community Volunteer Profile Form', '38': 'Risk Mapping Content',
+  '32': 'EO Forming the MResT', '35': 'BDC Resolution Forming BResT', '36': 'BDC Resolution Forming SFMSC', '37': 'Community Volunteer Profile Form', '38': 'Risk Mapping Content',
   '39': 'Format for Summary of FGD and PRVA Results', '41': 'Municipal Profile', '42': 'MRP Template', '43': 'Sub-Project Concept Note' };
 var MOV_CATALOG = {};
 (function () {
@@ -28,6 +28,9 @@ var MOV_CATALOG = {};
   records('BA1', false, 10, 11);
   add('BA1', 'households', 'Barangay Household participation form', 12, ['31']);
   add('BA1', 'profiles', 'Community Volunteers Profile (BResT, CSFMC)', 13, ['37']);
+  // Added 16 Nov 2026 at the RPMO's request (not rows of the Field Guide): KCIS files them as their own types.
+  add('BA1', 'brest_reso', 'BDC Resolution Forming BResT', '', ['35']);
+  add('BA1', 'sfmsc_reso', 'BDC Resolution Forming SFMSC', '', ['36']);
   add('PROFILE', 'profile', 'Validated Community Profile', 14, [], ['40', '67'], false, 'community.*profile');
   add('WALK', 'notes_map', 'BResT Note and Accomplished baseline Map', 15, [], ['38', '40', '67']);
   add('MAP', 'risk_map', 'Risk Map', 16, ['38']);
@@ -144,7 +147,7 @@ function movBuild(base, index, rec, table, evalDate, trackerImported) {
       var a = Object.assign({ key: identity, path: path, filename: filename, label: label, typeId: type, activityId: activityId, category: category,
         actCode: code || '', groupKey: movGroupKey(place, code || ''), sourceRows: [sourceRow], dateStart: formatDateVal(val('Date Start')),
         dateEnd: formatDateVal(val('Date End')), uploaded: uploaded, tab: normText(val('Display On (Tab)')), mime: normText(val('File Type')),
-        locationOK: !!canonical, activityOK: activityOK, supplementary: ['14', '20', '33', '35', '36'].indexOf(type) !== -1 }, place);
+        locationOK: !!canonical, activityOK: activityOK, supplementary: ['14', '20', '33'].indexOf(type) !== -1 }, place);
       attachments.push(a); attachmentIndex[identity] = a; byAttachmentKey[identity] = a;
       (byGroup[a.groupKey] = byGroup[a.groupKey] || []).push(a);
     });

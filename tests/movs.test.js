@@ -61,8 +61,23 @@ test('header reordering and PSGC matching preserve correct location and submissi
   c.TABS.Raw_MOVs = { headers: Array.from(c.MOV_HEADERS).reverse(), rows: [attachment(c, '29', { 'Barangay Name': 'wrong name' }).reverse()] };
   const s = load(c); assert.equal(group(s).submitted, 1); assert.equal(group(s).requirements.find(r => r.id === 'attendance').status, 'Submitted');
 });
+test('the 1st BA requires the BDC resolutions forming the BResT and the SFMSC, credited by their own KCIS types', () => {
+  const c = context(), ba1 = c.MOV_CATALOG.BA1;
+  assert.deepEqual(Array.from(ba1, r => r.id), ['minutes', 'attendance', 'households', 'profiles', 'brest_reso', 'sfmsc_reso']);
+  assert.deepEqual(Array.from(ba1.find(r => r.id === 'brest_reso').types), ['35']); assert.deepEqual(Array.from(ba1.find(r => r.id === 'sfmsc_reso').types), ['36']);
+  // Only the four Field Guide forms: the BResT resolution is still lacking, and it is credited once uploaded.
+  let s = load(c, [tracker(c)], ['29', '30', '31', '37', '36'].map(t => attachment(c, t)));
+  const req = id => group(s).requirements.find(r => r.id === id);
+  assert.equal(req('sfmsc_reso').status, 'Submitted'); assert.equal(req('brest_reso').status, 'Lacking'); assert.equal(group(s).ready, false); assert.equal(group(s).required, 6);
+  s = load(c, [tracker(c)], ['29', '30', '31', '37', '36', '35'].map(t => attachment(c, t)));
+  assert.equal(group(s).ready, true); assert.equal(group(s).submitted, 6);
+  // Filed on the 1st BA with a mismatched activity ID, it is still credited as a candidate, like every other form.
+  s = load(c, [tracker(c)], [attachment(c, '35', { Activity_ID: 3 })]);
+  assert.equal(group(s).requirements.find(r => r.id === 'brest_reso').attachmentKeys.length, 1);
+  assert.equal(group(s).requirements.find(r => r.id === 'sfmsc_reso').attachmentKeys.length, 0);
+});
 test('catalog is limited to Stage 1 and expands agreed shared PRVA requirements', () => {
-  const c = context(); assert.equal(Object.values(c.MOV_CATALOG).flat().length, 40);
+  const c = context(); assert.equal(Object.values(c.MOV_CATALOG).flat().length, 42);
   assert.equal(c.MOV_CATALOG.BA2, undefined);
   for (const code of ['WALK', 'MAP', 'FGD', 'BPRVA']) assert.equal(c.MOV_CATALOG[code].filter(r => ['attendance', 'minutes'].includes(r.id)).length, 2);
   assert.ok(c.MOV_CATALOG.BPRVA.some(r => r.id === 'cause_effect'));
@@ -75,7 +90,7 @@ test('without MOV import attendance completion remains available in both stages'
   assert.ok(s.region.stage1Pct > 0); assert.equal(s.movs.imported, false);
 });
 test('all clear BA1 requirements plus attendance complete the activity and reconcile tallies', () => {
-  const c = context(), s = load(c, [tracker(c)], ['29', '30', '31', '37'].map(t => attachment(c, t)));
+  const c = context(), s = load(c, [tracker(c)], ['29', '30', '31', '37', '35', '36'].map(t => attachment(c, t)));
   assert.equal(status(s), 'Complete'); assert.equal(group(s).ready, true);
   const t = s.pipeline.find(p => p.code === 'BA1');
   assert.equal(t.expected, t.complete + t.noAttendees + t.notEncoded);
@@ -90,7 +105,7 @@ test('due missing MOVs contribute only to MOV backlog', () => {
 });
 
 test('encoding, attendance and MOV readiness are independent and repeats count once', () => {
-  const c = context(), evidence = ['29','30','31','37'].map(t => attachment(c,t));
+  const c = context(), evidence = ['29','30','31','37','35','36'].map(t => attachment(c,t));
   const count = s => s.pipeline.find(p => p.code === 'BA1');
   let s = load(c,[],evidence);
   assert.equal(count(s).encoded,0); assert.equal(count(s).complete,0); assert.equal(count(s).movsReady,1);
