@@ -691,6 +691,9 @@ async function runAll() {
       assert.strictEqual(sandbox.classifyStage2Committee('Stakeholder and Feedback Mechanism Sub-Committee (SFMSC)', 'Chairperson'), null);
       assert.strictEqual(sandbox.classifyStage2Committee('Barangay Resilience Team (BResT)', 'Member'), null);
       assert.strictEqual(sandbox.classifyStage2Committee('Municipal Resilience Team (MResT)', 'Member'), null);
+      // 11. The newer KCIS names of the SFM bodies (Community Volunteer List of 2026-11-24)
+      assert.strictEqual(sandbox.classifyStage2Committee('Barangay SFM Sub-Committee', 'Member'), null);
+      assert.strictEqual(sandbox.classifyStage2Committee('Municipal SFM Committee', 'Chairperson'), null);
     });
 
     test('Stage 2 Compliance: evaluateCspmcBarangay evaluates quorum, leadership, and women quota', () => {
@@ -2262,6 +2265,19 @@ async function runAll() {
       assert.strictEqual(snap.issues.duplicate[0].rows, 1);
       assert.strictEqual(snap.issues.noCommittee[0].rows, 1);
       assert.strictEqual(snap.issues.noSex[0].rows, 1);
+    });
+
+    test('Community Volunteer List: the SFM bodies are recognised under their older and newer KCIS names', () => {
+      const kind = sandbox.cvCommitteeKind;
+      assert.strictEqual(kind('Stakeholders Feedback Mechanism Sub Committee (SFMSC - Barangay)'), 'SFMSC');
+      assert.strictEqual(kind('Barangay SFM Sub-Committee'), 'SFMSC');
+      assert.strictEqual(kind('Stakeholder and Feedback Mechanism Sub-Committee (SFMSC)'), 'SFMSC');
+      assert.strictEqual(kind('Stakeholders Feedback Mechanism Committee (SFMC - Municipal)'), 'SEQ1');
+      assert.strictEqual(kind('Municipal SFM Committee'), 'SEQ1');
+      assert.strictEqual(kind('SFMC'), 'SEQ1');
+      assert.strictEqual(kind('Barangay Resilience Team'), 'BREST');
+      assert.strictEqual(kind('Municipal Resilience Team'), 'SEQ1');
+      assert.strictEqual(kind(''), 'NONE');
     });
   }
 

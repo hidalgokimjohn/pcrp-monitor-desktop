@@ -56,7 +56,7 @@ function classifyStage2Committee(committee, position) {
   if (
     c.indexOf('barangayresilienceteam') !== -1 || c === 'brest' ||
     c.indexOf('municipalresilienceteam') !== -1 || c.indexOf('mrest') !== -1 ||
-    c.indexOf('sfmsc') !== -1 || c.indexOf('sfmc') !== -1 ||
+    c.indexOf('sfmsc') !== -1 || c.indexOf('sfm') !== -1 ||
     c.indexOf('feedbackmechanism') !== -1
   ) {
     return null;

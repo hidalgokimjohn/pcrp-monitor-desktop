@@ -1117,10 +1117,14 @@ function cvCommitteeKind(v) {
   if (!a) return 'NONE';
   if (a.indexOf('barangayresilienceteam') !== -1 || a === 'brest') return 'BREST';
   if (a.indexOf('sfmsc') !== -1) return 'SFMSC';
-  if (a.indexOf('municipalresilienceteam') !== -1 || a.indexOf('mrest') !== -1 || a.indexOf('sfmc') !== -1) return 'SEQ1';
-  if (a.indexOf('feedbackmechanism') !== -1) {
+  if (a.indexOf('municipalresilienceteam') !== -1 || a.indexOf('mrest') !== -1) return 'SEQ1';
+  // The SFM bodies under their older and newer KCIS names: "Stakeholders Feedback Mechanism Sub Committee
+  // (SFMSC - Barangay)" / "Barangay SFM Sub-Committee", and "Stakeholders Feedback Mechanism Committee
+  // (SFMC - Municipal)" / "Municipal SFM Committee".
+  if (a.indexOf('feedbackmechanism') !== -1 || a.indexOf('sfm') !== -1) {
     if (a.indexOf('municipal') !== -1) return 'SEQ1';
-    if (a.indexOf('sub') !== -1) return 'SFMSC';
+    if (a.indexOf('sub') !== -1 || a.indexOf('barangay') !== -1) return 'SFMSC';
+    if (a.indexOf('sfmc') !== -1) return 'SEQ1';
   }
   if (['cspmc', 'cmsc', 'subprojectmanagement', 'monitoringsubcommittee', 'procurement',
        'operationandmaintenance', 'omsc', 'ppsc'].some(function (k) { return a.indexOf(k) !== -1; })) return 'BA2';

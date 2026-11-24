@@ -1,10 +1,14 @@
-# Caraga PCRP Progress Tracker Tool (v2.16.0)
+# Caraga PCRP Progress Tracker Tool (v2.16.1)
 
 **KALAHI-CIDSS PCRP · Caraga Region Offline Field Console**
 
 One offline file, `dist/PCRP Encoding and Data Quality Assessment Tool.html`, that displays the Encoding Monitor's analytics, compliance scorecards, and findings for KCIS exports you drop into it. Double-click it to open it in Microsoft Edge, Google Chrome, or any modern browser; it requires zero internet and no installation. Files are processed entirely in-memory on the computer and never uploaded to any remote server.
 
 ---
+
+## What's New in v2.16.1
+
+- **New KCIS committee names:** The Community Volunteer List export now names the barangay SFM body "Barangay SFM Sub-Committee" (formerly "Stakeholders Feedback Mechanism Sub Committee (SFMSC - Barangay)") and the municipal one "Municipal SFM Committee" (formerly "Stakeholders Feedback Mechanism Committee (SFMC - Municipal)"). The tool reads both the old and the new names. Before this fix, the new export showed every barangay's SFMSC as not encoded.
 
 ## What's New in v2.16.0
 

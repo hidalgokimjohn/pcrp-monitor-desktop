@@ -1,16 +1,18 @@
 {
-  "version": "2.14.0",
-  "releaseDate": "2026-10-21",
-  "title": "Caraga PCRP Progress Tracker Tool v2.14.0",
+  "version": "2.16.1",
+  "releaseDate": "2026-11-24",
+  "title": "Caraga PCRP Progress Tracker Tool v2.16.1",
   "minAppVersion": "2.0.0",
   "downloadUrl": "https://raw.githubusercontent.com/hidalgokimjohn/pcrp-monitor-desktop/main/dist/PCRP%20Encoding%20and%20Data%20Quality%20Assessment%20Tool.html",
   "releaseUrl": "https://github.com/hidalgokimjohn/pcrp-monitor-desktop",
-  "fileSize": "1119 KB",
+  "fileSize": "1436 KB",
   "notes": [
-    "Universal DQA finding deep links with contextual return breadcrumbs across all audit checks",
-    "Duplicate record visual highlights, inline badges, and quick filter presets in Attendance and Household modules",
-    "Persistent header subtitle version status chip with instant check and 30-minute automated polling",
-    "Streamlined Settings navigation with Municipal Scope as Section 1 and clean header layout",
-    "Caraga Region official branding and implementation attribution in About notice"
+    "Reads the new KCIS committee names in the Community Volunteer List (Barangay SFM Sub-Committee, Municipal SFM Committee)",
+    "SFM page: import the SFM Masterlist to see open entries and records to fix, and write a status memorandum",
+    "Import the KCIS BA Household Participation export for barangay assembly attendance and household participation",
+    "KPI tab computes household participation even when some barangays have no counts, with a Partial note",
+    "The 1st BA now needs six MOVs, including the BDC resolutions forming the BResT and the SFMSC",
+    "MOV upload dates in the evidence panel and the Excel export",
+    "Activity & MOV checklist opens with where each municipality is in the CRIP activities"
   ]
 }

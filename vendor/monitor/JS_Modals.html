@@ -29,11 +29,21 @@ S.changelogSearch = '';
 
 var CHANGELOG_DATA = [
   {
-    version: '2.16.0',
-    date: 'October 26, 2026',
+    version: '2.16.1',
+    date: 'November 24, 2026',
     tag: 'Latest Release',
     tagColor: 'bg-emerald-100 text-emerald-900 border-emerald-300 dark:bg-emerald-950/60 dark:text-emerald-300 dark:border-emerald-700',
     spotlight: true,
+    items: [
+      { type: 'fix', label: 'New KCIS Committee Names', text: 'The Community Volunteer List now reads the committee names KCIS uses since November 2026: Barangay SFM Sub-Committee (formerly Stakeholders Feedback Mechanism Sub Committee) and Municipal SFM Committee. Without this, every barangay showed its SFMSC as not encoded. Older exports still read the same.', page: 'people', pageLabel: 'People' }
+    ]
+  },
+  {
+    version: '2.16.0',
+    date: 'October 26, 2026',
+    tag: 'Previous Release',
+    tagColor: 'bg-slate-100 text-slate-800 border-slate-300 dark:bg-slate-800 dark:text-slate-300 dark:border-slate-700',
+    spotlight: false,
     items: [
       { type: 'feature', label: 'Civic Institutional Footer & Status Anchoring', text: 'Added BetterGov.ph civic editorial footer anchoring the console with live versioning, real-time update polling pill, active workspace scope pill, and developer attribution.', page: 'admin', pageLabel: 'Workspace' },
       { type: 'enhancement', label: 'Header & Scope Modernization', text: 'Cleaned top header branding for KALAHI-CIDSS PCRP Caraga Region; standardized sharp PEA / MDM and RPMO scope pills across all modules.', page: 'overview', pageLabel: 'Overview' },
